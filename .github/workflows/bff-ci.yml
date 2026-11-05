@@ -1,0 +1,23 @@
+name: BFF foundation CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  bff-and-solution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Restore solution
+        run: dotnet restore foundation-backend.slnx
+      - name: Build solution
+        run: dotnet build foundation-backend.slnx --no-restore -c Release
+      - name: BFF session store tests
+        run: dotnet test tests/Foundation.Bff.Tests/Foundation.Bff.Tests.csproj --no-build -c Release --logger "trx;LogFileName=bff-results.trx"
+      - name: Existing Identity unit tests
+        run: dotnet test tests/Shinera.Identity.Tests/Shinera.Identity.Tests.csproj --no-build -c Release
