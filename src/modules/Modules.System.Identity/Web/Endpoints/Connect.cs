@@ -46,8 +46,7 @@ public sealed class Connect : EndpointGroupBase
         }
 
         var requestedContext = request.GetParameter("login_context")?.ToString();
-        if (!string.IsNullOrWhiteSpace(requestedContext) &&
-            requestedContext is not ("system" or "tenant"))
+        if (requestedContext is not ("system" or "tenant"))
         {
             return OAuthError(
                 OpenIddictConstants.Errors.InvalidRequest,
@@ -61,6 +60,22 @@ public sealed class Connect : EndpointGroupBase
             return OAuthError(
                 OpenIddictConstants.Errors.InvalidClient,
                 "The client application is not registered.");
+        }
+
+        // This slice only supports the explicitly enabled first-party confidential BFF.
+        // An arbitrary client's implicit-consent setting must not grant access to
+        // a privileged existing Identity Server session.
+        if (!configuration.GetValue<bool>("Identity:Bff:Enabled") ||
+            !string.Equals(
+                request.ClientId,
+                configuration["Identity:Bff:ClientId"],
+                StringComparison.Ordinal) ||
+            await applicationManager.GetClientTypeAsync(application, cancellationToken)
+                != OpenIddictConstants.ClientTypes.Confidential)
+        {
+            return OAuthError(
+                OpenIddictConstants.Errors.UnauthorizedClient,
+                "The client is not an enabled first-party BFF client.");
         }
 
         var consentType = await applicationManager.GetConsentTypeAsync(
@@ -127,11 +142,11 @@ public sealed class Connect : EndpointGroupBase
         }
 
         if (accountType == "tenant" &&
-            !string.IsNullOrWhiteSpace(requestedTenant) &&
+            (string.IsNullOrWhiteSpace(requestedTenant) ||
             !string.Equals(
                 requestedTenant,
                 principal.FindFirst("tenant")?.Value,
-                StringComparison.OrdinalIgnoreCase))
+                StringComparison.OrdinalIgnoreCase)))
         {
             return OAuthError(
                 OpenIddictConstants.Errors.AccessDenied,
@@ -163,9 +178,8 @@ public sealed class Connect : EndpointGroupBase
         IConfiguration configuration,
         string? requestedContext)
     {
-        var loginContext = requestedContext is "system" or "tenant"
-            ? requestedContext
-            : "tenant";
+        var loginContext = requestedContext!;
+
 
         var setting = loginContext == "system"
             ? "Identity:LoginUrls:System"

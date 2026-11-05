@@ -50,6 +50,7 @@ public sealed class IdentityPrincipalFactory(
         var userGroups = db.UserGroups.IgnoreQueryFilters(["tenant"])
             .Where(x => x.UserId == user.Id &&
                         x.TenantId == scopeTenantId &&
+                        x.Group.TenantId == scopeTenantId &&
                         x.Group.IsActive);
 
         var userPermissions = db.UserPermissions.IgnoreQueryFilters(["tenant"])
