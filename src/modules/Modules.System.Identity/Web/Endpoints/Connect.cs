@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Configuration;
@@ -214,7 +215,7 @@ public sealed class Connect : EndpointGroupBase
     }
 
     private static bool IsSafeLocalPath(string value)
-        => value.StartsWith('/', StringComparison.Ordinal) &&
+        => value.StartsWith("/", StringComparison.Ordinal) &&
            !value.StartsWith("//", StringComparison.Ordinal) &&
            !value.Contains('\\') &&
            !value.Contains('\r') &&

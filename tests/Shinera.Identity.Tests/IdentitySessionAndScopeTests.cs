@@ -33,8 +33,8 @@ public sealed class IdentitySessionAndScopeTests
 
         Assert.Contains("platform-operator", roles);
         Assert.DoesNotContain("tenant-admin", roles);
-        Assert.Contains("Platform manage", permissions);
-        Assert.DoesNotContain("Tenant secrets", permissions);
+        Assert.Contains("Platform Manage", permissions);
+        Assert.DoesNotContain("Tenant Secrets", permissions);
         Assert.Null(principal.FindFirst("tenant_id"));
     }
 
