@@ -1,0 +1,27 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Application/Application.csproj" />
+    <Project Path="src/Domain/Domain.csproj" />
+    <Project Path="src/Infrastructure/Infrastructure.csproj" />
+    <Project Path="src/Migrator/Migrator.csproj" Id="a5841b43-db81-4258-a5e1-e1a325d1535c" />
+    <Project Path="src/Web/Web.csproj" />
+  </Folder>
+  <Folder Name="/src/modules/">
+    <Project Path="src/modules/Modules.System.FileStorage/Modules.System.FileStorage.csproj" />
+    <Project Path="src/modules/Modules.System.Identity/Modules.System.Identity.csproj" />
+    <Project Path="src/modules/Modules.System.Scalar.ClientGeneration/Modules.System.Scalar.ClientGeneration.csproj" Id="1d522f36-5396-4efe-92b5-61dafe661cc7" />
+  </Folder>
+  <Folder Name="/src/shared/">
+    <Project Path="src/shared/Application.Sharedkernel/Application.Sharedkernel.csproj" />
+    <Project Path="src/shared/Domain.Sharedkernel/Domain.Sharedkernel.csproj" />
+    <Project Path="src/shared/Infrastructure.Sharedkernel/Infrastructure.Sharedkernel.csproj" />
+    <Project Path="src/shared/Web.Sharedkernel/Web.Sharedkernel.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Shinera.Identity.Tests/Shinera.Identity.Tests.csproj" />
+  </Folder>
+</Solution>

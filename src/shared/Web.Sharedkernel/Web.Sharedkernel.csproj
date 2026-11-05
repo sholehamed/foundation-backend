@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="FluentValidation.AspNetCore" />
+		<PackageReference Include="Ardalis.GuardClauses" />
+	</ItemGroup>
+  <ItemGroup>
+    <Folder Include="Endpoints\" />
+    <Folder Include="Services\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Application.Sharedkernel\Application.Sharedkernel.csproj" />
+    <ProjectReference Include="..\Infrastructure.Sharedkernel\Infrastructure.Sharedkernel.csproj" />
+  </ItemGroup>
+</Project>

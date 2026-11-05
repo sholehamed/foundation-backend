@@ -1,0 +1,14 @@
+﻿global using Application.SharedKernel.Abstractions;
+global using Application.SharedKernel.Abstractions.Mapping;
+global using Application.SharedKernel.Abstractions.Messaging;
+global using Application.SharedKernel.Models;
+global using Ardalis.GuardClauses;
+global using AutoMapper;
+global using AutoMapper.QueryableExtensions;
+global using FluentValidation;
+global using Microsoft.AspNetCore.Builder;
+global using Microsoft.AspNetCore.Http;
+global using Microsoft.AspNetCore.Http.HttpResults;
+global using Microsoft.AspNetCore.Mvc;
+global using Microsoft.EntityFrameworkCore;
+global using Web.SharedKernel.Util;

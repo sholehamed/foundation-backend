@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+
+
+		<PackageId>Scalar.ClientGeneration</PackageId>
+		<Version>0.1.0</Version>
+
+		<Authors>deathly</Authors>
+
+		<Description>
+			Adds client generation actions to Scalar API Reference.
+		</Description>
+
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+	</PropertyGroup>
+
+	<ItemGroup>
+
+		<EmbeddedResource Include="Assets\scalar-client-plugin.js" LogicalName="Scalar.ClientGeneration.Assets.scalar-client-plugin.js" />
+
+		<EmbeddedResource Include="Assets\scalar-client-config.js" LogicalName="Scalar.ClientGeneration.Assets.scalar-client-config.js" />
+
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+		<PackageReference Include="Scalar.AspNetCore" />
+
+	</ItemGroup>
+
+</Project>

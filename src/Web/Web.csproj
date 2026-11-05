@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <UserSecretsId>8686f074-0322-46aa-aa57-0a69eb3a2721</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\modules\Modules.System.FileStorage\Modules.System.FileStorage.csproj" />
+    <ProjectReference Include="..\modules\Modules.System.Identity\Modules.System.Identity.csproj" />
+    <ProjectReference Include="..\modules\Modules.System.Scalar.ClientGeneration\Modules.System.Scalar.ClientGeneration.csproj" />
+  </ItemGroup>
+
+</Project>

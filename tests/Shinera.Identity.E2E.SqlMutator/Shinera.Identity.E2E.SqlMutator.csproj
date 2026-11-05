@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- This executable is test-only, not referenced by the production API. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/modules/Modules.System.Identity/Modules.System.Identity.csproj" />
+  </ItemGroup>
+</Project>
