@@ -23,3 +23,13 @@ Identity, OpenIddict Authorization Server, user/role/permission and tenant conte
 
 - `dotnet test tests/Shinera.Identity.Tests/Shinera.Identity.Tests.csproj -c Release`
 - Current credential tests cover System/Tenant account selection, tenant binding, invalid passwords and five-attempt lockout.
+
+
+## BFF-03 — in progress (not merged)
+
+- [PR #11](https://github.com/sholehamed/foundation-backend/pull/11): `IdentityPrincipalFactory`, `IdentitySessionValidator`, `OpenIddictBffClientSeeder`, and `Connect` authorization endpoint.
+- New claims are scoped by the master System tenant or the user's owning tenant, including nested role/group/permission assignments.
+- Existing Identity Server cookie is revalidated against current user/tenant/security stamp state before a code can be issued.
+- Confidential client registration uses exact callback URLs and external secrets; the feature is disabled by default.
+- Integration tests and Android/Angular browser migration are not part of this merged Identity module yet. Do not mistake the presence of the route for a finished BFF.
+- See [implementation notes](../../../docs/development/BFF-03-IMPLEMENTATION.md).

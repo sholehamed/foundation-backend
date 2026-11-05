@@ -30,7 +30,7 @@ A slice is complete only when code, tests, integration evidence and documentatio
 - Does not yet authenticate `/api/connect/authorize`, issue an authorization code or create a BFF cookie.
 
 ### BFF-03 — OpenIddict authorization endpoint and first-party client registration
-[Tracking issue #9](https://github.com/sholehamed/foundation-backend/issues/9) · **Next implementation slice**
+[Tracking issue #9](https://github.com/sholehamed/foundation-backend/issues/9) · [Draft PR #11](https://github.com/sholehamed/foundation-backend/pull/11) · **In progress — not merged; code and integration tests are not fully verified**
 
 Scope:
 - Define/register a confidential first-party BFF client with exact callback URI(s), authorization-code and refresh-token permissions, allowed scopes, and a secret/key sourced only from secure configuration.
@@ -104,6 +104,14 @@ Acceptance:
 - Production signing/encryption credentials, BFF client credentials, Data Protection key ring and distributed cache configured through secret management.
 - Test multi-instance operation, store outage, concurrent refresh/rotation, logout/revocation, deployment restart and incident logging.
 - Complete threat review, deployment runbook and operational alerts.
+
+## Test and documentation checkpoint for BFF-03
+
+- Scoped principal factory, cookie revalidation, configurable BFF client seeder and authorization endpoint are implemented on the branch.
+- Unit tests for identity session revalidation and scope filtering were added; CI and actual OpenIddict code + PKCE round-trip still require a green result.
+- The existing Angular password-grant login does **not** complete the Authorization Code return URL; this needs an explicit continuation design before browser E2E.
+- See [BFF-03 implementation notes](development/BFF-03-IMPLEMENTATION.md) and [project state](PROJECT-STATE.md).
+- Never mark a slice complete just because code was committed.
 
 ## Carry-forward notes
 
