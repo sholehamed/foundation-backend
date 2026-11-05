@@ -110,6 +110,51 @@ public sealed class OpenIddictAuthorizationHttpTests
     }
 
     [Fact]
+    public async Task Unknown_client_must_not_receive_an_authorization_code()
+    {
+        await using var harness = await Harness.StartAsync();
+        var cookie = await harness.SignInAsSystemAsync();
+        var response = await harness.AuthorizeAsync(cookie, clientId: "unregistered-client");
+
+        AssertOAuthRejected(response);
+    }
+
+    [Fact]
+    public async Task Missing_pkce_challenge_must_not_proceed_to_login()
+    {
+        await using var harness = await Harness.StartAsync();
+        var response = await harness.AuthorizeAsync(cookie: null, includePkce: false);
+
+        AssertOAuthRejected(response);
+    }
+
+    [Fact]
+    public async Task Unknown_scope_must_not_receive_an_authorization_code()
+    {
+        await using var harness = await Harness.StartAsync();
+        var cookie = await harness.SignInAsSystemAsync();
+        var response = await harness.AuthorizeAsync(cookie, scopes: "openid unauthorized_scope");
+
+        AssertOAuthRejected(response);
+    }
+
+    private static void AssertOAuthRejected(HttpResponseMessage response)
+    {
+        if (response.Headers.Location is { } location)
+        {
+            var query = QueryHelpers.ParseQuery(location.Query);
+            Assert.True(query.ContainsKey("error"),
+                $"OAuth request should be rejected, not redirected to login or completed: {location}");
+            Assert.False(query.ContainsKey("code"));
+            return;
+        }
+
+        Assert.True(response.StatusCode is HttpStatusCode.BadRequest or
+                HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden,
+            $"Unexpected OAuth response: {(int)response.StatusCode}");
+    }
+
+    [Fact]
     public async Task Tenant_cookie_cannot_authorize_system_context()
     {
         await using var harness = await Harness.StartAsync();
@@ -294,22 +339,28 @@ public sealed class OpenIddictAuthorizationHttpTests
         }
 
         public async Task<HttpResponseMessage> AuthorizeAsync(
-            string? cookie, string redirectUri = RedirectUri)
+            string? cookie, string redirectUri = RedirectUri,
+            string clientId = ClientId, string scopes = "openid profile api",
+            bool includePkce = true)
         {
             var challenge = WebEncoders.Base64UrlEncode(
                 SHA256.HashData(Encoding.ASCII.GetBytes(Verifier)));
             var query = new Dictionary<string, string?>
             {
                 ["response_type"] = "code",
-                ["client_id"] = ClientId,
+                ["client_id"] = clientId,
                 ["redirect_uri"] = redirectUri,
-                ["scope"] = "openid profile api",
+                ["scope"] = scopes,
                 ["state"] = "teststate123",
                 ["nonce"] = "testnonce123",
-                ["code_challenge"] = challenge,
-                ["code_challenge_method"] = "S256",
                 ["login_context"] = "system"
             };
+            if (includePkce)
+            {
+                query["code_challenge"] = challenge;
+                query["code_challenge_method"] = "S256";
+            }
+
             using var request = new HttpRequestMessage(
                 global::System.Net.Http.HttpMethod.Get,
                 QueryHelpers.AddQueryString("/api/connect/authorize", query));
