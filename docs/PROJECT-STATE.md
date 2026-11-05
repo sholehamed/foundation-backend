@@ -82,7 +82,7 @@ PR #8 is merged; active implementation is now tracked by [BFF-03 issue #9](https
 - `Infrastructure/Persistence/OpenIddictBffClientSeeder.cs`: optional confidential first-party BFF client, strict exact redirects, PKCE, secrets from private configuration. Do not silently mutate an existing client's secret/redirects on application restart.
 - `Web/Endpoints/Connect.cs`: handles `/api/connect/authorize` with explicit `Foundation.IdentityServer` cookie authentication; only configured first-party BFF client with implicit consent may proceed; validates account context and tenant slug; delegates code issuance to OpenIddict. Errors use the OpenIddict authentication scheme.
 - `tests/Shinera.Identity.Tests/IdentitySessionAndScopeTests.cs`: adds tests for cross-tenant claims, inactive user/tenant, security stamp, role revocation and context mismatch.
-- `tests/Shinera.Identity.Tests/OpenIddictAuthorizationHttpTests.cs`: new TestServer harness to cover actual OpenIddict authorization-code/PKCE round-trip and negative protocol behavior; latest CI on the new harness is not yet confirmed.
+- `tests/Shinera.Identity.Tests/OpenIddictAuthorizationHttpTests.cs`: isolated TestServer HTTP protocol coverage including successful authorization-code/PKCE exchange, replay, invalid redirect, wrong tenant context and POST rejection; three additional negative cases added for unknown client, missing PKCE and unsupported scope, pending latest-head CI.
 - `tests/Shinera.Identity.Tests/UserCredentialAuthenticatorTests.cs` adapted to the new principal factory constructor.
 - `src/Web/appsettings.json`: BFF client feature disabled by default; callback arrays empty; never commit `ClientSecret`.
 
@@ -107,3 +107,9 @@ Update this section with actual PR number, head/merge SHA and CI run; move BFF-0
 3. Check live GitHub PR/CI state before assuming the checkpoint above is still current.
 4. Work as vertical slices: branch → implementation → automated tests → docs update → CI → review → merge.
 5. Update this file and the roadmap in every PR that changes implementation status or the next planned work.
+
+## BFF-03 verification checkpoint
+
+- [Run 42129834641](https://github.com/sholehamed/foundation-backend/actions/runs/42129834641): passed 6 BFF + 38 Identity tests on the POST-rejection implementation.
+- Additional unknown-client/missing-PKCE/unknown-scope regression tests were committed subsequently; full latest-head verification must pass before merge.
+- Once BFF-03 is merged, update this table and the roadmap with merge SHA and explicitly retain the Angular authorization-returnUrl blocker for BFF-04/06.
