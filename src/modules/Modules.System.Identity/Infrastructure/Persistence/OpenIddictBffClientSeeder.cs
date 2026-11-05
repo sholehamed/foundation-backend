@@ -71,7 +71,33 @@ public static class OpenIddictBffClientSeeder
             return;
         }
 
-        await applicationManager.UpdateAsync(existing, descriptor, cancellationToken);
+        // Do not silently overwrite secrets, registered redirects or grants when
+        // the application is already provisioned. Changing an OAuth client is an
+        // explicit deployment migration, not a side effect of normal app startup.
+        if (await applicationManager.GetClientTypeAsync(existing, cancellationToken)
+                != OpenIddictConstants.ClientTypes.Confidential ||
+            await applicationManager.GetConsentTypeAsync(existing, cancellationToken)
+                != OpenIddictConstants.ConsentTypes.Implicit ||
+            !await applicationManager.ValidateClientSecretAsync(
+                existing, clientSecret, cancellationToken))
+        {
+            throw new InvalidOperationException(
+                "The existing BFF client type, consent policy or secret differs from configuration. Apply a reviewed client migration.");
+        }
+
+        var existingDescriptor = new OpenIddictApplicationDescriptor();
+        await applicationManager.PopulateAsync(existingDescriptor, existing, cancellationToken);
+
+        if (!existingDescriptor.RedirectUris.ToHashSet().SetEquals(redirectUris) ||
+            !existingDescriptor.PostLogoutRedirectUris.ToHashSet().SetEquals(postLogoutRedirectUris) ||
+            !existingDescriptor.Requirements.Contains(
+                OpenIddictConstants.Requirements.Features.ProofKeyForCodeExchange) ||
+            !existingDescriptor.Permissions.ToHashSet().SetEquals(descriptor.Permissions))
+        {
+            throw new InvalidOperationException(
+                "The existing BFF client permissions, PKCE requirement or callback URIs differ from configuration. Apply a reviewed client migration.");
+        }
+
     }
 
     private static IReadOnlyList<Uri> ReadUris(
