@@ -88,6 +88,18 @@ public sealed class OpenIddictAuthorizationHttpTests
     }
 
     [Fact]
+    public async Task Post_authorization_request_is_rejected_without_losing_form_parameters()
+    {
+        await using var harness = await Harness.StartAsync();
+        var response = await harness.AuthorizePostAsync();
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var parameters = QueryHelpers.ParseQuery(response.Headers.Location!.Query);
+        Assert.Equal(OpenIddictConstants.Errors.InvalidRequest, parameters["error"].ToString());
+        Assert.False(parameters.ContainsKey("code"));
+    }
+
+    [Fact]
     public async Task Unregistered_redirect_uri_is_rejected_before_login()
     {
         await using var harness = await Harness.StartAsync();
@@ -304,6 +316,25 @@ public sealed class OpenIddictAuthorizationHttpTests
             if (!string.IsNullOrWhiteSpace(cookie))
                 request.Headers.Add("Cookie", cookie);
             return await _client.SendAsync(request);
+        }
+
+        public async Task<HttpResponseMessage> AuthorizePostAsync()
+        {
+            var challenge = WebEncoders.Base64UrlEncode(
+                SHA256.HashData(Encoding.ASCII.GetBytes(Verifier)));
+            return await _client.PostAsync("/api/connect/authorize",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["response_type"] = "code",
+                    ["client_id"] = ClientId,
+                    ["redirect_uri"] = RedirectUri,
+                    ["scope"] = "openid profile api",
+                    ["state"] = "teststate123",
+                    ["nonce"] = "testnonce123",
+                    ["code_challenge"] = challenge,
+                    ["code_challenge_method"] = "S256",
+                    ["login_context"] = "system"
+                }));
         }
 
         public async Task<HttpResponseMessage> ExchangeAsync(string code, string verifier)

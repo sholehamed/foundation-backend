@@ -38,6 +38,15 @@ public sealed class Connect : EndpointGroupBase
         if (request is null)
             return Results.BadRequest(new { error = "invalid_request" });
 
+        // Login continuation preserves the validated query string. Until a protected
+        // POST continuation is implemented, fail closed instead of losing form fields.
+        if (!HttpMethods.IsGet(httpContext.Request.Method))
+        {
+            return OAuthError(
+                OpenIddictConstants.Errors.InvalidRequest,
+                "Only GET authorization requests are supported by this BFF integration.");
+        }
+
         if (request.ResponseType != OpenIddictConstants.ResponseTypes.Code ||
             !request.GetScopes().Contains(OpenIddictConstants.Scopes.OpenId))
         {
