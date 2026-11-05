@@ -1,6 +1,22 @@
-# BFF architecture — design specification (planned)
+# BFF architecture — design and implementation status
 
-> **Status:** approved design, not implemented. [ADR](../decisions/ADR-0001-browser-bff.md).
+> **Status:** Accepted target architecture; implementation is in progress. The full browser flow is **not yet operational**. [ADR](../decisions/ADR-0001-browser-bff.md).
+
+## Delivery checkpoint — 2026-11-06
+
+| Slice | Status | Evidence | Boundary |
+| --- | --- | --- | --- |
+| BFF-01 — server-side ticket store | Implemented, CI green | `Modules.System.Bff/DistributedBffTicketStore.cs`, PR #6 | The reusable store/cookie primitives exist; the BFF module is not composed into `Web`. |
+| BFF-02 — Identity interactive session | Implemented, CI green | `IdentityServerCookieDefaults`, `IUserCredentialAuthenticator`, `Auth.cs`, PR #8 | Issues only the separate Identity Server cookie. It does not yet complete OpenIddict authorization or create a BFF session. |
+| Authorization Code + PKCE | Planned | Roadmap BFF-03 | Authorization endpoint must authenticate the Identity cookie and issue a one-time code. |
+| BFF OIDC callback + session | Planned | Roadmap BFF-04 | Confidential client, callback validation, server-side token/ticket storage and BFF cookie are not wired. |
+| Browser endpoints + Angular migration | Planned | Roadmap BFF-05/06 | No production browser BFF endpoints or Angular migration yet. |
+
+The current implementation is deliberately split across two independent cookies:
+- `__Host-Foundation.Identity`: Authorization Server's interactive user session, owned by `Modules.System.Identity`.
+- `__Host-Foundation.Bff`: browser application session, owned by `Modules.System.Bff`; this is backed by the server-side ticket store and is **not issued yet**.
+
+The legacy Password Grant remains enabled for existing consumers during migration. Do not infer that the new interactive endpoint is a completed BFF login flow.
 
 ## Boundaries
 
@@ -74,3 +90,30 @@ Important: use ASP.NET Core's OIDC middleware/registration where possible; do no
 2. Enforce safe environment/secret policy for AS signing, BFF client registration, Data Protection and logging.
 3. Define session idle/absolute expiration and privileged reauthentication SLA.
 4. Test OIDC remote callback, third-party cookie and custom-domain behavior across browsers.
+
+
+## Next implementation issue
+
+[BFF-03 — OpenIddict authorization endpoint and identity-context validation](https://github.com/sholehamed/foundation-backend/issues/9). This must close the System master-scope claim isolation and security-stamp revalidation gates before the Identity cookie can authorize a code.
+
+## Implemented Identity session slice (BFF-02)
+
+The Identity module currently exposes the following endpoints under the configured backend prefix and System/Auth endpoint group:
+
+- `GET /api/system/Auth/csrf`: creates the ASP.NET Core antiforgery cookie and exposes the request token in the JavaScript-readable `XSRF-TOKEN` cookie. Unsafe login requests send it in `X-XSRF-TOKEN`.
+- `POST /api/system/Auth/interactive-login`: validates antiforgery token and CAPTCHA, authenticates either a System account or a Tenant account, then issues only `__Host-Foundation.Identity`. It returns no OAuth tokens.
+- Existing `POST /api/system/Auth/login`: token endpoint passthrough for the legacy Password and Refresh Token grants; credential checks now use the same `IUserCredentialAuthenticator`.
+
+Identity cookie settings: HttpOnly, Secure, host-only (`__Host-` prefix), Path=/, SameSite=Lax, 8-hour ticket lifetime with sliding expiration. Login endpoint has an IP-partitioned fixed-window limit of 20 requests/minute. The ASP.NET antiforgery cookie is also HttpOnly/Secure/host-only; only the request token is exposed to Angular.
+
+### Important current limitations
+
+- The OpenIddict authorization endpoint is configured for Authorization Code + PKCE but its passthrough handler does not yet authenticate this cookie or issue a code from it.
+- The BFF OIDC client, callback, server-side BFF ticket registration in the Web host, BFF session/logout endpoints and Angular migration are not implemented.
+- The Identity cookie is not yet a production-ready authorization session: user/security-stamp/role/tenant revocation revalidation must be integrated into the authorization endpoint before it is trusted for code issuance.
+- System-account role/permission scope must be explicitly tested against the master system scope before the authorization endpoint is enabled. The current authenticator preserves the legacy system-account claim query; do not treat its role claims as the final authorization source.
+- HTTPS is required for the `__Host-` cookies. Local HTTP development must use the documented HTTPS origin/proxy; do not weaken Secure cookie policy to make HTTP appear to work.
+
+## Implementation rule
+
+Every implementation slice updates this page, [project state](../PROJECT-STATE.md), [roadmap](../PROJECT-ROADMAP.md), the relevant module README and HTTP contract. A design item is not marked implemented until code, automated tests, integration evidence and documentation agree.

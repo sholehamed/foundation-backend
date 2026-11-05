@@ -1,5 +1,10 @@
 # Foundation Backend Documentation
 
+## Project continuity
+
+- [Current project state and handoff](PROJECT-STATE.md)
+- [Implementation roadmap and acceptance gates](PROJECT-ROADMAP.md)
+
 این پوشه مرجع فنی کد فعلی و تصمیم‌های معماری Foundation است. هر تغییر رفتار مهم باید همراه کد و تست در همان PR مستند شود.
 
 - [ADR-0001 — Full BFF for browser clients](decisions/ADR-0001-browser-bff.md)

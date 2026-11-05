@@ -1,6 +1,6 @@
 # ADR-0001 — Full Backend-for-Frontend for browser clients
 
-- **Status:** Accepted (architecture), Not implemented
+- **Status:** Accepted (architecture), Implementation in progress
 - **Date:** 2026-11-06
 - **Owners:** Foundation Backend + Frontend
 - **Related:** [Design](../architecture/browser-bff.md) | [HTTP contract](../reference/browser-auth-contract.md)
@@ -45,7 +45,18 @@ A generic OAuth framework, dynamic identity provider federation, arbitrary wildc
 
 ## Evidence & status
 
-This is an accepted target architecture, **not a completed implementation**. As of this ADR, `src/modules/Modules.System.Identity/DependencyInjections.cs` configures Authorization Code and PKCE, but `Web/Endpoints/Auth.cs` processes password and refresh grants; there is no tested interactive authorize+callback flow. Frontend `src/app/shared/services/token-storage.service.ts` currently persists tokens in localStorage.
+This is an accepted target architecture, **not a completed BFF implementation**.
+
+Implemented slices:
+- **BFF-01 (PR #6, merged):** protected server-side ticket storage through `ITicketStore`, opaque random ticket keys, expiration/removal and an isolated BFF cookie registration primitive. The BFF module is not yet composed into the Web host.
+- **BFF-02 (PR #8):** separate host-only Identity Server cookie, reusable credential authenticator shared by legacy token grant and interactive sign-in, CAPTCHA + antiforgery bootstrap/validation, and IP-based login rate limiting. The interactive endpoint creates no OAuth token and is not yet connected to authorization-code issuance.
+
+Not implemented:
+- A tested OpenIddict authorization endpoint that authenticates the Identity cookie, validates account/tenant/security state and issues Authorization Codes.
+- A registered confidential BFF client, OIDC challenge/callback, server-side token exchange and BFF ticket creation.
+- Browser session/CSRF/logout/revocation endpoints, tenant-host binding and Angular migration.
+
+The current Angular frontend still persists OAuth tokens in localStorage and the legacy Password Grant remains enabled for staged migration. See [project state](../PROJECT-STATE.md) and [roadmap](../PROJECT-ROADMAP.md) for the current checkpoint and remaining acceptance gates.
 
 ## References
 
