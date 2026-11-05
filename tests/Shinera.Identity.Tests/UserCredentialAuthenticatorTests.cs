@@ -107,7 +107,8 @@ public sealed class UserCredentialAuthenticatorTests
         public Tenant AddTenant(string slug)
         {
             var tenant = new Tenant(
-                Guid.NewGuid(), null, $"Tenant {slug}", slug, $"{slug}.example.test");
+                Guid.NewGuid(), null, $"Tenant {slug}", slug, $"{slug}.example.test")
+            { RowVersion = [1] };
             Db.Tenants.Add(tenant);
             Db.SaveChanges();
             return tenant;
@@ -119,6 +120,7 @@ public sealed class UserCredentialAuthenticatorTests
                 Guid.NewGuid(), tenantId, username, $"{username}@example.test",
                 "Test", "User", type)
             {
+                RowVersion = [1],
                 NormalizedUserName = username.Trim().ToUpperInvariant(),
                 NormalizedEmail = $"{username}@example.test".ToUpperInvariant(),
                 SecurityStamp = Guid.NewGuid().ToString("N"),
