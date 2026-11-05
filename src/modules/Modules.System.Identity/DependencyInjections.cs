@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 ﻿using Application.SharedKernel;
 using Infrastructure.SharedKernel;
 using Microsoft.AspNetCore.Identity;
@@ -155,14 +156,12 @@ namespace Modules.System.Identity
                 {
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     context.Response.Headers.CacheControl = "no-store";
-                    context.HandleResponse();
                     return Task.CompletedTask;
                 };
                 options.Events.OnRedirectToAccessDenied = context =>
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     context.Response.Headers.CacheControl = "no-store";
-                    context.HandleResponse();
                     return Task.CompletedTask;
                 };
             });
