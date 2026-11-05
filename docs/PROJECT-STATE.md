@@ -51,7 +51,7 @@
 
 ## BFF-04 in progress — first isolated security slice
 
-- Branch: `feat/bff-04-return-url-security` (Draft PR pending). This first slice adds `Modules.System.Bff.Security.BffLocalReturnUrl` with unit tests; it validates same-origin relative return URLs for the future OIDC browser login challenge.
+- Branch: `feat/bff-04-return-url-security` · [Draft PR #14](https://github.com/sholehamed/foundation-backend/pull/14). This first slice adds `Modules.System.Bff.Security.BffLocalReturnUrl` with unit tests; it validates same-origin relative return URLs for the future OIDC browser login challenge.
 - It does **not** yet introduce a browser login route, callback, BFF Cookie, OAuth token exchange or Angular runtime change. Do not mark BFF-04 completed.
 - The BFF challenge must carry the validated return URL in protected OIDC `AuthenticationProperties`; Identity login flow and tenant context must remain verifiable independently.
 - Next implementation work is the confidential OIDC challenge/callback and real browser session integration, tracked by [issue #12](https://github.com/sholehamed/foundation-backend/issues/12).
