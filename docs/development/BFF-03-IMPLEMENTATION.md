@@ -84,3 +84,11 @@ When enabled, deploy `Identity__Bff__ClientSecret` via a secret manager or envir
 - `prompt=login` and `max_age` are explicitly rejected with `login_required` until a secure one-time reauthentication continuation is implemented. The previous immediate sign-out/redirect approach would loop on the same authorization request.
 - The first TestServer HTTP suite built but did **not** pass: two successful-cookie cases returned HTTP 500 and a cross-context case returned an OAuth redirect error rather than a direct 403. The tests now expose response bodies for diagnosis and assert that no authorization code is issued on context mismatch. **Do not merge until this is resolved.**
 - Initial successful BFF-03 pre-HTTP-test CI: [run 42127975232](https://github.com/sholehamed/foundation-backend/actions/runs/42127975232). It does not verify HTTP protocol behavior.
+
+
+## Extended protocol regression (2026-11-06)
+
+- The branch now includes an isolated HTTP OpenIddict TestServer suite covering a successful one-time authorization-code + PKCE exchange, incorrect verifier, callback mismatch, missing session login redirect, tenant-vs-system rejection, GET-only authorization behavior, and additional negative cases for unknown client, missing PKCE and unregistered scope.
+- Last green protocol CI before the three newest negative tests: [run 42129834641](https://github.com/sholehamed/foundation-backend/actions/runs/42129834641) — Build, 6 BFF tests and 38 Identity tests passed. The newest tests require a separate latest-head CI run before the PR is ready.
+- The new code rejects `prompt=login` and `max_age` instead of looping indefinitely until an explicit reauthentication UI is implemented. This remains a conscious limitation, tracked for future BFF/Identity UI integration.
+- A real SQL Server/deployed-browser verification remains a later production gate. Passing TestServer HTTP tests is not equivalent to an end-to-end Angular/BFF browser flow.
