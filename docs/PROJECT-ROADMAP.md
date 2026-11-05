@@ -120,3 +120,7 @@ Acceptance:
 - The BFF module is optional and must not override global OpenIddict bearer authentication for native/API routes.
 - Tenant ID in request headers/URL is context only, never proof of membership.
 - Update [PROJECT-STATE.md](PROJECT-STATE.md) after every merged slice and update this roadmap if scope/order changes.
+
+### BFF-03 acceptance update
+
+The authorization endpoint currently handles GET; POST is explicitly refused to avoid losing form parameters on the login continuation path. Tests cover this behavior. Browser-based Identity login continuation and a full Angular BFF session are **not** part of BFF-03 and remain explicit blockers for subsequent slices.
