@@ -39,7 +39,8 @@ public sealed class OpenIddictAuthorizationHttpTests
         var cookie = await harness.SignInAsSystemAsync();
 
         var response = await harness.AuthorizeAsync(cookie);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.True(response.StatusCode == HttpStatusCode.Redirect,
+            $"Expected 302 but received {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
         var destination = response.Headers.Location;
         Assert.NotNull(destination);
         Assert.Equal(new Uri(RedirectUri).GetLeftPart(UriPartial.Path),
@@ -65,7 +66,8 @@ public sealed class OpenIddictAuthorizationHttpTests
         await using var harness = await Harness.StartAsync();
         var cookie = await harness.SignInAsSystemAsync();
         var response = await harness.AuthorizeAsync(cookie);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.True(response.StatusCode == HttpStatusCode.Redirect,
+            $"Expected 302 but received {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
         var code = QueryHelpers.ParseQuery(response.Headers.Location!.Query)["code"].ToString();
 
         var token = await harness.ExchangeAsync(code, "definitely-wrong-code-verifier-but-long-enough");
@@ -78,7 +80,8 @@ public sealed class OpenIddictAuthorizationHttpTests
         await using var harness = await Harness.StartAsync();
         var response = await harness.AuthorizeAsync(cookie: null);
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.True(response.StatusCode == HttpStatusCode.Redirect,
+            $"Expected 302 but received {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
         Assert.NotNull(response.Headers.Location);
         Assert.StartsWith("/system/auth/login?", response.Headers.Location!.OriginalString);
         Assert.DoesNotContain("https://evil.example", response.Headers.Location.OriginalString);
@@ -101,8 +104,21 @@ public sealed class OpenIddictAuthorizationHttpTests
         var cookie = await harness.SignInAsTenantAsync();
         var response = await harness.AuthorizeAsync(cookie);
 
-        Assert.NotEqual(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        // OpenIddict may redirect a protocol-level access_denied error to the
+        // previously validated callback. Either way, no code may be issued.
+        var location = response.Headers.Location;
+        if (location is not null)
+        {
+            var parameters = QueryHelpers.ParseQuery(location.Query);
+            Assert.True(parameters.ContainsKey("error"),
+                $"Cross-context request unexpectedly redirected without an OAuth error: {location}");
+            Assert.False(parameters.ContainsKey("code"));
+        }
+        else
+        {
+            Assert.True(response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Forbidden,
+                $"Cross-context request unexpectedly succeeded: {(int)response.StatusCode}");
+        }
     }
 
     private sealed class Harness : IAsyncDisposable
@@ -178,6 +194,7 @@ public sealed class OpenIddictAuthorizationHttpTests
             });
 
             var app = builder.Build();
+            app.UseDeveloperExceptionPage();
             app.UseAuthentication();
             app.UseAuthorization();
 
