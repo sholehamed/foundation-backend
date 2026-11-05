@@ -39,6 +39,14 @@ namespace Modules.System.Identity
                             PermitLimit = 5, Window = TimeSpan.FromMinutes(1),
                             QueueLimit = 0, AutoReplenishment = true
                         }));
+                options.AddPolicy("identity-login", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 20, Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
             });
             services.AddScoped<ICurrentUser, CurrentUser>();
 
@@ -64,6 +72,7 @@ namespace Modules.System.Identity
             services.AddCustomCqrs<AppMappingProfile>(assembly); services.AddDataProtection();
             services.AddScoped<CaptchaService>();
             services.AddScoped<RefreshGrantValidator>();
+            services.AddScoped<IUserCredentialAuthenticator, UserCredentialAuthenticator>();
             services.AddScoped<IAuthorizationHandler, ActiveSystemAdministratorHandler>();
             // Scoped append-only writer, independent of the rejected grant transaction.
             services.AddScoped<PlatformAccessDenialAudit>();
@@ -131,6 +140,41 @@ namespace Modules.System.Identity
                 options.DefaultScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
                 options.DefaultAuthenticateScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
                 options.DefaultChallengeScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+            })
+            .AddCookie(IdentityServerCookieDefaults.AuthenticationScheme, options =>
+            {
+                options.Cookie.Name = IdentityServerCookieDefaults.CookieName;
+                options.Cookie.Path = "/";
+                options.Cookie.Domain = null;
+                options.Cookie.HttpOnly = true;
+                options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+                options.Cookie.SameSite = SameSiteMode.Lax;
+                options.SlidingExpiration = true;
+                options.ExpireTimeSpan = TimeSpan.FromHours(8);
+                options.Events.OnRedirectToLogin = context =>
+                {
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    context.Response.Headers.CacheControl = "no-store";
+                    context.HandleResponse();
+                    return Task.CompletedTask;
+                };
+                options.Events.OnRedirectToAccessDenied = context =>
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    context.Response.Headers.CacheControl = "no-store";
+                    context.HandleResponse();
+                    return Task.CompletedTask;
+                };
+            });
+            services.Configure<AntiforgeryOptions>(options =>
+            {
+                options.HeaderName = "X-XSRF-TOKEN";
+                options.Cookie.Name = "__Host-Foundation.Antiforgery";
+                options.Cookie.Path = "/";
+                options.Cookie.Domain = null;
+                options.Cookie.HttpOnly = true;
+                options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+                options.Cookie.SameSite = SameSiteMode.Lax;
             });
             services.AddScoped<ISeedContributor, DefaultIdentitySeedContributor>();
             services.AddAuthorization(options =>
