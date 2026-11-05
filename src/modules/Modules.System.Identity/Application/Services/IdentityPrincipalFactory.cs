@@ -110,7 +110,8 @@ public sealed class IdentityPrincipalFactory(
             new("account_type", context == IdentityLoginContext.System ? "system" : "tenant"),
             new("security_stamp", user.SecurityStamp ?? string.Empty),
             new("auth_time", (authenticationTimeUnixSeconds ??
-                DateTimeOffset.UtcNow.ToUnixTimeSeconds()).ToString(CultureInfo.InvariantCulture))
+                DateTimeOffset.UtcNow.ToUnixTimeSeconds()).ToString(CultureInfo.InvariantCulture),
+                ClaimValueTypes.Integer64)
         };
 
         if (tenant is not null)
