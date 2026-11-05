@@ -49,3 +49,23 @@
 7. Concurrent refresh and multi-instance/restart tests succeed with shared session store.
 8. Existing bearer/native consumers retain explicitly declared access during migration.
 9. Angular guards use `/bff/session`, not localStorage token presence.
+
+
+---
+
+## Existing Identity Server endpoints — BFF-02 (implemented, not the BFF contract)
+
+These endpoints belong to `Modules.System.Identity`. They are an intermediate Identity Server session primitive, **not** the future `/bff/*` browser API.
+
+| Method | Path | Auth / protection | Behavior |
+| --- | --- | --- | --- |
+| GET | `/api/system/Auth/csrf` | Anonymous bootstrap | Sets HttpOnly antiforgery cookie plus readable `XSRF-TOKEN`; response is no-store. |
+| POST | `/api/system/Auth/interactive-login` | Anonymous + IP rate limit + CAPTCHA + antiforgery | Accepts `username`, `password`, `captchaId`, `captchaCode`, `loginContext` (`system` or `tenant`) and optional `tenant`; sets Identity Server cookie only; returns 204 on success and no OAuth token. |
+
+For `interactive-login`, send the antiforgery request token in `X-XSRF-TOKEN`. The server cookie is `__Host-Foundation.Antiforgery`; the Identity Server session cookie is `__Host-Foundation.Identity`. Both are Secure, HttpOnly (except the request-token cookie), host-only and Path=/; HTTPS is mandatory.
+
+The existing `POST /api/system/Auth/login` token endpoint continues to accept the legacy Password and Refresh Token grants. Its credential verification now shares the same authenticator as interactive sign-in. This is temporary migration compatibility, not the target browser flow.
+
+### Not yet available
+
+The following remain Planned: `/bff/auth/login`, `/signin-oidc`, `/bff/session`, `/bff/auth/csrf`, `/bff/auth/logout`, and `/bff/auth/logout-all`. Do not build Angular against these routes until their implementation and integration tests are merged.
