@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Application.Services;
@@ -90,26 +89,19 @@ public sealed class UserCredentialAuthenticatorTests
 
     private sealed class Fixture : IAsyncDisposable
     {
-        private readonly SqliteConnection _connection;
         public IdentityDbContext Db { get; }
         public PasswordHasher<User> PasswordHasher { get; } = new();
 
-        private Fixture(SqliteConnection connection, IdentityDbContext db)
-        {
-            _connection = connection;
-            Db = db;
-        }
+        private Fixture(IdentityDbContext db) => Db = db;
 
         public static async Task<Fixture> CreateAsync()
         {
-            var connection = new SqliteConnection("Data Source=:memory:");
-            await connection.OpenAsync();
             var options = new DbContextOptionsBuilder<IdentityDbContext>()
-                .UseSqlite(connection)
+                .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
                 .Options;
             var db = new IdentityDbContext(options, new TenantContext());
             await db.Database.EnsureCreatedAsync();
-            return new Fixture(connection, db);
+            return new Fixture(db);
         }
 
         public Tenant AddTenant(string slug)
@@ -138,10 +130,6 @@ public sealed class UserCredentialAuthenticatorTests
             return user;
         }
 
-        public async ValueTask DisposeAsync()
-        {
-            await Db.DisposeAsync();
-            await _connection.DisposeAsync();
-        }
+        public ValueTask DisposeAsync() => Db.DisposeAsync();
     }
 }
