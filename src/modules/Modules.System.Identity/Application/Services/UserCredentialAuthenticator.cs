@@ -1,21 +1,18 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Domain.Entities;
-using OpenIddict.Abstractions;
-using Microsoft.IdentityModel.Tokens;
 
 namespace Modules.System.Identity.Application.Services;
 
 /// <summary>
-/// Validates a user credential pair and builds the canonical Identity principal.
-/// OAuth grant handlers and interactive Identity sign-in share this service so
-/// password/lockout/tenant/permission rules cannot drift between login paths.
+/// Verifies credentials and delegates claim construction to the same scoped
+/// principal factory used when an existing Identity cookie is revalidated.
 /// </summary>
 public sealed class UserCredentialAuthenticator(
     IIdentityDbContext db,
-    IPasswordHasher<User> passwordHasher) : IUserCredentialAuthenticator
+    IPasswordHasher<User> passwordHasher,
+    IIdentityPrincipalFactory principalFactory) : IUserCredentialAuthenticator
 {
     public async Task<ClaimsPrincipal?> AuthenticateAsync(
         string username,
@@ -24,6 +21,9 @@ public sealed class UserCredentialAuthenticator(
         string? tenantSlug,
         CancellationToken cancellationToken = default)
     {
+        if (context is not (IdentityLoginContext.System or IdentityLoginContext.Tenant))
+            return null;
+
         var normalizedUserName = username?.Trim().ToUpperInvariant();
         if (string.IsNullOrWhiteSpace(normalizedUserName) ||
             string.IsNullOrWhiteSpace(password))
@@ -101,6 +101,12 @@ public sealed class UserCredentialAuthenticator(
             accountChanged = true;
         }
 
+        if (string.IsNullOrWhiteSpace(user.SecurityStamp))
+        {
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            accountChanged = true;
+        }
+
         if (user.AccessFailedCount > 0 || user.IsLockedOut ||
             user.LockoutEndUtc.HasValue)
         {
@@ -116,66 +122,11 @@ public sealed class UserCredentialAuthenticator(
             await db.SaveChangesAsync(cancellationToken);
         }
 
-        var userRoles = db.UserRoles.IgnoreQueryFilters(["tenant"])
-            .Where(x => x.UserId == user.Id);
-        var userGroups = db.UserGroups.IgnoreQueryFilters(["tenant"])
-            .Where(x => x.UserId == user.Id);
-        var userPermissions = db.UserPermissions.IgnoreQueryFilters(["tenant"])
-            .Where(x => x.UserId == user.Id && x.IsGranted);
-
-        if (tenant is not null)
-        {
-            userRoles = userRoles.Where(x => x.TenantId == tenant.Id);
-            userGroups = userGroups.Where(x => x.TenantId == tenant.Id);
-            userPermissions = userPermissions.Where(x => x.TenantId == tenant.Id);
-        }
-
-        var permissions = await userPermissions
-            .Select(x => x.Permission.Name)
-            .Union(userRoles.SelectMany(x =>
-                x.Role.RolePermissions.Select(rp => rp.Permission.Name)))
-            .Union(userGroups.SelectMany(x =>
-                x.Group.GroupRoles.SelectMany(gr =>
-                    gr.Role.RolePermissions.Select(rp => rp.Permission.Name))))
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
-        var roles = await userRoles.Select(x => x.Role.Name)
-            .Union(userGroups.SelectMany(x =>
-                x.Group.GroupRoles.Select(gr => gr.Role.Name)))
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
-        var claims = new List<Claim>
-        {
-            new(OpenIddictConstants.Claims.Subject, user.Id.ToString()),
-            new(OpenIddictConstants.Claims.Username, user.UserName),
-            new(OpenIddictConstants.Claims.Email, user.Email),
-            new(OpenIddictConstants.Claims.Picture, user.ImageId?.ToString() ?? string.Empty),
-            new(OpenIddictConstants.Claims.GivenName,
-                $"{user.FirstName} {user.LastName}".Trim()),
-            new("account_type",
-                context == IdentityLoginContext.System ? "system" : "tenant"),
-            new("security_stamp", user.SecurityStamp ?? string.Empty)
-        };
-
-        if (tenant is not null)
-        {
-            claims.Add(new Claim("tenant_id", tenant.Id.ToString()));
-            claims.Add(new Claim("tenant", tenant.Slug));
-        }
-
-        claims.AddRange(roles.Select(role =>
-            new Claim(OpenIddictConstants.Claims.Role, role)));
-        claims.AddRange(permissions.Select(permission =>
-            new Claim("permission", permission)));
-
-        var identity = new ClaimsIdentity(
-            claims,
-            TokenValidationParameters.DefaultAuthenticationType,
-            OpenIddictConstants.Claims.Name,
-            OpenIddictConstants.Claims.Role);
-
-        return new ClaimsPrincipal(identity);
+        return await principalFactory.CreateAsync(
+            user,
+            context,
+            tenant,
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            cancellationToken);
     }
 }
