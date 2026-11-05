@@ -49,6 +49,13 @@
 - `tests/Shinera.Identity.Tests/IdentitySessionAndScopeTests.cs` and `OpenIddictAuthorizationHttpTests.cs`: revoked user/stamp/tenant, cross-scope role isolation; TestServer Code+PKCE exchange, replay rejection, wrong verifier, unknown client, bad redirect, unknown scope, missing PKCE, account context and POST refusal.
 - `prompt=login`, `max_age` currently fail closed rather than loop; GET-only authorization endpoint. See [BFF-03 implementation record](development/BFF-03-IMPLEMENTATION.md) for limitations.
 
+## BFF-04 in progress — first isolated security slice
+
+- Branch: `feat/bff-04-return-url-security` (Draft PR pending). This first slice adds `Modules.System.Bff.Security.BffLocalReturnUrl` with unit tests; it validates same-origin relative return URLs for the future OIDC browser login challenge.
+- It does **not** yet introduce a browser login route, callback, BFF Cookie, OAuth token exchange or Angular runtime change. Do not mark BFF-04 completed.
+- The BFF challenge must carry the validated return URL in protected OIDC `AuthenticationProperties`; Identity login flow and tenant context must remain verifiable independently.
+- Next implementation work is the confidential OIDC challenge/callback and real browser session integration, tracked by [issue #12](https://github.com/sholehamed/foundation-backend/issues/12).
+
 ## Outstanding risks / next actions
 
 1. **Next: [BFF-04 Issue #12](https://github.com/sholehamed/foundation-backend/issues/12).** Implement opt-in BFF OIDC client challenge/callback and `ITicketStore` cookie; server-side token exchange only, no OAuth token browser exposure. Use a new feature branch and Draft PR.

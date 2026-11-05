@@ -48,9 +48,10 @@ Acceptance:
 - CI green and all docs/checkpoint updated.
 
 ### BFF-04 — confidential OIDC client, callback and BFF session
-**Next — not implemented** · [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)
+**In progress — return-URL validation primitive only; full login/session not implemented** · [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)
 
 Scope:
+- [First security slice] `Modules.System.Bff.Security.BffLocalReturnUrl`: conservative rooted same-origin return-path validator with tests. Must be used by future OIDC challenge; does not issue cookie or Token.
 - Register OIDC client middleware in `Modules.System.Bff` using a confidential client and Authorization Code + PKCE.
 - Challenge route with state/nonce and validated relative return URL.
 - Callback validates correlation/state/nonce/issuer and performs server-to-server code exchange.
