@@ -108,7 +108,7 @@ Acceptance:
 ## Test and documentation checkpoint for BFF-03
 
 - Scoped principal factory, cookie revalidation, configurable BFF client seeder and authorization endpoint are implemented on the branch.
-- Unit tests for identity session revalidation and scope filtering were added; CI and actual OpenIddict code + PKCE round-trip still require a green result.
+- Unit tests for identity session revalidation and scope filtering passed in CI before the protocol harness was added. A TestServer HTTP suite for authorization code, PKCE, replay, redirects and account-context isolation is now committed but not yet verified green.
 - The existing Angular password-grant login does **not** complete the Authorization Code return URL; this needs an explicit continuation design before browser E2E.
 - See [BFF-03 implementation notes](development/BFF-03-IMPLEMENTATION.md) and [project state](PROJECT-STATE.md).
 - Never mark a slice complete just because code was committed.

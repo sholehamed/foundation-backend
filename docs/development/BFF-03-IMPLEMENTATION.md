@@ -20,6 +20,7 @@ Provide the Authorization Server half of Full BFF without altering the installed
 - `Web/Endpoints/Connect.cs`: handler mapped to `/api/connect/authorize`, uses OpenIddict protocol request and explicit Identity cookie authentication, validates session/context, limits implicit-consent flow to configured confidential BFF client, sends accepted principal to OpenIddict for code issuance.
 - `DependencyInjections.cs`: register scoped services and configure OpenIddict endpoint.
 - `tests/Shinera.Identity.Tests/IdentitySessionAndScopeTests.cs`: checks scope/role isolation and revoked/disabled user and tenant scenarios.
+- `tests/Shinera.Identity.Tests/OpenIddictAuthorizationHttpTests.cs`: TestServer OpenIddict protocol harness, intended to verify code + PKCE, code replay, invalid redirect, missing cookie and cross-account context. The harness was just added to CI; **do not count these as passed until the latest run verifies them**.
 
 ## Configuration (do not commit real values)
 
@@ -49,7 +50,7 @@ When enabled, deploy `Identity__Bff__ClientSecret` via a secret manager or envir
 | Role and permission tenant isolation | In-memory Identity unit tests | SQL Server/HTTP verification; include nested Group roles |
 | Identity cookie security-stamp / disable / revoke | Session validator + unit tests | Real-cookie HTTP lifecycle integration |
 | Confidential client and PKCE | Client seeder + OpenIddict configuration | Real authorization redirect/token exchange |
-| `/api/connect/authorize` protocol validation | OpenIddict passthrough handler | Invalid client/URI/scope/PKCE/nonce and code replay E2E |
+| `/api/connect/authorize` protocol validation | OpenIddict passthrough handler plus isolated HTTP TestServer harness | Confirm tests pass in CI, then add negative client/scope/nonce and production SQL Server/browser coverage |
 | Consent | Only configured BFF implicit-consent client | Confirm integration and future additional client policies |
 | Interactive sign-in continuation | Existing Angular login (legacy Password Grant) | New Identity UI flow must preserve safe authorization returnUrl |
 | Production secrets / keyring / multitenancy | Documented only | Deploy-time secret and proxy trust verification |
@@ -65,8 +66,15 @@ When enabled, deploy `Identity__Bff__ClientSecret` via a secret manager or envir
 
 ## Next actions
 
-1. Obtain green Build and all BFF/Identity unit tests on PR #11.
+1. Obtain green Build and all BFF/Identity unit tests plus the new OpenIddict HTTP TestServer harness on PR #11.
 2. Add HTTP-level integration tests using a test host and controlled OpenIddict database/client configuration, then verify code round-trip and failure cases.
 3. Design and test an Identity UI OIDC continuation that cannot redirect off-origin or cross contexts.
 4. Close BFF-03 acceptance tests, update [PROJECT-STATE](../PROJECT-STATE.md), merge reviewed PR only then.
 5. Begin BFF-04 (opt-in BFF client middleware, callback, protected server-side tokens and opaque browser cookie); keep Angular Password Grant until BFF-05/06 completion.
+
+
+## Verification sequence / record
+
+- PR #11 run [42127975232](https://github.com/sholehamed/foundation-backend/actions/runs/42127975232): **passed** before HTTP harness was added; Restore, Build, 6 BFF tests and 32 Identity tests.
+- PR #11 commit `167246d4cd2c29ea9d2bd67ddf6382f337a45c9c`: added 5 HTTP protocol tests using `Microsoft.AspNetCore.TestHost`; compile/runtime results still to be verified.
+- If the new TestServer suite needs fixes, preserve its negative cases. Do not disable or skip failed tests to make the PR green.
