@@ -108,6 +108,7 @@ public class Auth : EndpointGroupBase
                 Path = "/",
                 IsEssential = true
             });
+        httpContext.Response.Headers.CacheControl = "no-store";
         return Results.NoContent();
     }
 

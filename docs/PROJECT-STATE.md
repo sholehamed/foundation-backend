@@ -32,6 +32,11 @@ This is the continuity checkpoint. Read this file first when resuming work in a 
 
 After PR #8 is merged, update this table with the merge commit and set the active branch back to `main`.
 
+## Next tracked slice
+
+- [Issue #9 — BFF-03 OpenIddict authorization endpoint and identity-context validation](https://github.com/sholehamed/foundation-backend/issues/9).
+- Its acceptance gate explicitly includes master-system-scope role/permission isolation, tenant-scoped assignments, security-stamp revalidation and PKCE/client/redirect validation.
+
 ## Implemented
 
 ### BFF-01 — protected distributed ticket-store primitive

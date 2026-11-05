@@ -30,7 +30,7 @@ A slice is complete only when code, tests, integration evidence and documentatio
 - Does not yet authenticate `/api/connect/authorize`, issue an authorization code or create a BFF cookie.
 
 ### BFF-03 — OpenIddict authorization endpoint and first-party client registration
-**Next implementation slice**
+[Tracking issue #9](https://github.com/sholehamed/foundation-backend/issues/9) · **Next implementation slice**
 
 Scope:
 - Define/register a confidential first-party BFF client with exact callback URI(s), authorization-code and refresh-token permissions, allowed scopes, and a secret/key sourced only from secure configuration.

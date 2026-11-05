@@ -92,6 +92,10 @@ Important: use ASP.NET Core's OIDC middleware/registration where possible; do no
 4. Test OIDC remote callback, third-party cookie and custom-domain behavior across browsers.
 
 
+## Next implementation issue
+
+[BFF-03 — OpenIddict authorization endpoint and identity-context validation](https://github.com/sholehamed/foundation-backend/issues/9). This must close the System master-scope claim isolation and security-stamp revalidation gates before the Identity cookie can authorize a code.
+
 ## Implemented Identity session slice (BFF-02)
 
 The Identity module currently exposes the following endpoints under the configured backend prefix and System/Auth endpoint group:
