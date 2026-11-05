@@ -98,10 +98,14 @@ public sealed class Connect : EndpointGroupBase
                 "Interactive consent is not available for this client.");
         }
 
-        if (prompt.Contains("login", StringComparer.Ordinal))
+        // prompt=login and max_age require a one-time reauthentication flow.
+        // Redirecting to the same authorization request would loop forever.
+        // Fail closed until the interactive UI supports explicit reauthentication.
+        if (prompt.Contains("login", StringComparer.Ordinal) ||
+            request.GetParameter("max_age")?.ToString() is not null)
         {
-            await httpContext.SignOutAsync(IdentityServerCookieDefaults.AuthenticationScheme);
-            return RedirectToLogin(httpContext, request, configuration, requestedContext);
+            return OAuthError(OpenIddictConstants.Errors.LoginRequired,
+                "Explicit reauthentication is not yet supported.");
         }
 
         var cookie = await httpContext.AuthenticateAsync(
