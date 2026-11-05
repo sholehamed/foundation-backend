@@ -11,6 +11,7 @@ using Modules.System.Identity.Application.Features.ApiResources.Services;
 using Modules.System.Identity.Application.Mapping;
 using Modules.System.Identity.Application.Services;
 using Modules.System.Identity.Domain.Entities;
+using Modules.System.Identity.Infrastructure;
 using Modules.System.Identity.Infrastructure.Persistence;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using Modules.System.Identity.Infrastructure.Persistence.Interceptors;
@@ -73,6 +74,9 @@ namespace Modules.System.Identity
             services.AddCustomCqrs<AppMappingProfile>(assembly); services.AddDataProtection();
             services.AddScoped<CaptchaService>();
             services.AddScoped<RefreshGrantValidator>();
+            services.AddSingleton<ISystemTenantScope, DefaultSystemTenantScope>();
+            services.AddScoped<IIdentityPrincipalFactory, IdentityPrincipalFactory>();
+            services.AddScoped<IIdentitySessionValidator, IdentitySessionValidator>();
             services.AddScoped<IUserCredentialAuthenticator, UserCredentialAuthenticator>();
             services.AddScoped<IAuthorizationHandler, ActiveSystemAdministratorHandler>();
             // Scoped append-only writer, independent of the rejected grant transaction.
