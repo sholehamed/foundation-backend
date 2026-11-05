@@ -108,7 +108,6 @@ public class Auth : EndpointGroupBase
                 Path = "/",
                 IsEssential = true
             });
-        httpContext.Response.Headers.CacheControl = "no-store";
         return Results.NoContent();
     }
 
@@ -124,6 +123,10 @@ public class Auth : EndpointGroupBase
         IUserCredentialAuthenticator authenticator,
         CancellationToken cancellationToken)
     {
+        httpContext.Response.Headers.CacheControl = "no-store";
+        if (input is null)
+            return Results.BadRequest(new { error = "invalid_request" });
+
         try
         {
             await antiforgery.ValidateRequestAsync(httpContext);

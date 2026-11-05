@@ -11,7 +11,7 @@ A slice is complete only when code, tests, integration evidence and documentatio
 ## Milestones
 
 ### BFF-01 — protected server-side ticket store
-<badge>Implemented / merged</badge>
+**Status: Implemented / merged**
 
 - PR #6 merged to main at `80f15d6c5bf59e6c557561fe97a2efbf1b5ee74a`.
 - `ITicketStore` adapter over `IDistributedCache`, Data Protection, opaque keys, expiry/removal and isolated BFF cookie registration.
@@ -19,7 +19,7 @@ A slice is complete only when code, tests, integration evidence and documentatio
 - The module remains out of Web composition until the complete login callback path is ready.
 
 ### BFF-02 — Identity interactive session
-<badge>Implemented / CI green; awaiting documentation commit and merge</badge>
+**Status: Implemented / CI green; documentation included, awaiting final CI and merge**
 
 - PR #8: [interactive Identity cookie and reusable credential authentication](https://github.com/sholehamed/foundation-backend/pull/8).
 - Dedicated `__Host-Foundation.Identity` cookie.
