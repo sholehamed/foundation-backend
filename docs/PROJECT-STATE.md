@@ -22,7 +22,7 @@
 | BFF-02 handoff docs | **Merged** | [PR #10](https://github.com/sholehamed/foundation-backend/pull/10), commit `02a29943c178d2e835577a329d01c69f68560cad` |
 | BFF-03: OpenIddict Authorization Code + PKCE and scoped validation | **Merged** | [PR #11](https://github.com/sholehamed/foundation-backend/pull/11), commit `c201e4c67d18c9d7896887a688eb31d3340d7930` |
 | BFF-03 final-head CI | **Green** | [GitHub Actions 42130167589](https://github.com/sholehamed/foundation-backend/actions/runs/42130167589): solution Restore+Build, **6 BFF tests** and **41 Identity tests** passed |
-| BFF-04: confidential client callback and BFF session | **Not implemented** | [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12) |
+| BFF-04: confidential client callback and BFF session | **Security primitive merged; callback/session not implemented** | [PR #14](https://github.com/sholehamed/foundation-backend/pull/14), [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12) |
 | BFF-05: session API/CSRF/revocation | **Not implemented** | [Roadmap](PROJECT-ROADMAP.md) |
 | BFF-06: Angular migration | **Not started** | [Frontend status](https://github.com/sholehamed/foundation-frontend/blob/main/docs/PROJECT-STATE.md) |
 
@@ -51,7 +51,7 @@
 
 ## BFF-04 in progress — first isolated security slice
 
-- Branch: `feat/bff-04-return-url-security` · [Draft PR #14](https://github.com/sholehamed/foundation-backend/pull/14). This first slice adds `Modules.System.Bff.Security.BffLocalReturnUrl` with unit tests; it validates same-origin relative return URLs for the future OIDC browser login challenge.
+- First security slice merged to `main`: [PR #14](https://github.com/sholehamed/foundation-backend/pull/14), commit `53732242450bd90c206e29738007372bbe2dde1b`, [CI 42131501508](https://github.com/sholehamed/foundation-backend/actions/runs/42131501508) (**35 BFF + 41 Identity tests passed**). This first slice adds `Modules.System.Bff.Security.BffLocalReturnUrl` with unit tests; it validates same-origin relative return URLs for the future OIDC browser login challenge.
 - It does **not** yet introduce a browser login route, callback, BFF Cookie, OAuth token exchange or Angular runtime change. Do not mark BFF-04 completed.
 - The BFF challenge must carry the validated return URL in protected OIDC `AuthenticationProperties`; Identity login flow and tenant context must remain verifiable independently.
 - Next implementation work is the confidential OIDC challenge/callback and real browser session integration, tracked by [issue #12](https://github.com/sholehamed/foundation-backend/issues/12).
