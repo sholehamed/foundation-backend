@@ -177,7 +177,8 @@ public sealed class IdentitySessionAndScopeTests
                 SecurityStamp = "current-stamp",
                 PasswordHash = "test-only",
                 RowVersion = [1],
-                NormalizedUserName = "OPERATOR"
+                NormalizedUserName = "OPERATOR",
+                NormalizedEmail = id.ToString("N").ToUpperInvariant() + "@EXAMPLE.TEST"
             };
             Db.Users.Add(user);
             return user;
