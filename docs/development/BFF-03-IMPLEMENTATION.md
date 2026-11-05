@@ -78,3 +78,9 @@ When enabled, deploy `Identity__Bff__ClientSecret` via a secret manager or envir
 - PR #11 run [42127975232](https://github.com/sholehamed/foundation-backend/actions/runs/42127975232): **passed** before HTTP harness was added; Restore, Build, 6 BFF tests and 32 Identity tests.
 - PR #11 commit `167246d4cd2c29ea9d2bd67ddf6382f337a45c9c`: added 5 HTTP protocol tests using `Microsoft.AspNetCore.TestHost`; compile/runtime results still to be verified.
 - If the new TestServer suite needs fixes, preserve its negative cases. Do not disable or skip failed tests to make the PR green.
+
+### OAuth reauthentication and current integration diagnostic
+
+- `prompt=login` and `max_age` are explicitly rejected with `login_required` until a secure one-time reauthentication continuation is implemented. The previous immediate sign-out/redirect approach would loop on the same authorization request.
+- The first TestServer HTTP suite built but did **not** pass: two successful-cookie cases returned HTTP 500 and a cross-context case returned an OAuth redirect error rather than a direct 403. The tests now expose response bodies for diagnosis and assert that no authorization code is issued on context mismatch. **Do not merge until this is resolved.**
+- Initial successful BFF-03 pre-HTTP-test CI: [run 42127975232](https://github.com/sholehamed/foundation-backend/actions/runs/42127975232). It does not verify HTTP protocol behavior.
