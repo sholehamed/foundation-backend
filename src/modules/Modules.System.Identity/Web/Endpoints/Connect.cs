@@ -222,7 +222,7 @@ public sealed class Connect : EndpointGroupBase
            !value.Contains('#');
 
     private static void SetClaimDestinations(
-        System.Security.Claims.ClaimsPrincipal principal,
+        global::System.Security.Claims.ClaimsPrincipal principal,
         IReadOnlyCollection<string> scopes)
     {
         var profileRequested = scopes.Contains(OpenIddictConstants.Scopes.Profile);
