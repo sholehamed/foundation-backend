@@ -48,7 +48,7 @@ Acceptance:
 - CI green and all docs/checkpoint updated.
 
 ### BFF-04 — confidential OIDC client, callback and BFF session
-**In progress — return-URL validation primitive only; full login/session not implemented** · [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)
+**In progress — first secure return-URL validator merged in PR #14; full login/session not implemented** · [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)
 
 Scope:
 - [First security slice] `Modules.System.Bff.Security.BffLocalReturnUrl`: conservative rooted same-origin return-path validator with tests. Must be used by future OIDC challenge; does not issue cookie or Token.
@@ -131,3 +131,10 @@ The authorization endpoint currently handles GET; POST is explicitly refused to 
 - PR #11 merged to main: `c201e4c67d18c9d7896887a688eb31d3340d7930`.
 - CI [42130167589](https://github.com/sholehamed/foundation-backend/actions/runs/42130167589) green, Restore/Build, 6 BFF tests, 41 Identity tests.
 - **Next**: [BFF-04 #12](https://github.com/sholehamed/foundation-backend/issues/12), confidential client challenge/callback, secure ticket-backed browser session; do not migrate Angular or claim full BFF yet.
+
+## BFF-04 first-slice CI checkpoint
+
+- [PR #14](https://github.com/sholehamed/foundation-backend/pull/14) merged at `53732242450bd90c206e29738007372bbe2dde1b`.
+- [CI 42131501508](https://github.com/sholehamed/foundation-backend/actions/runs/42131501508) passed full solution Build, **35 BFF tests** and **41 Identity tests** (0 failures).
+- What shipped: conservative relative same-origin return path validator and tests. **Not shipped**: browser login challenge, OIDC callback, server-held token exchange, BFF session cookie, Angular migration.
+- Next BFF-04 slice: integrate opt-in OIDC client/callback with secure AuthenticationProperties and ticket store, then full integration testing. Track with [issue #12](https://github.com/sholehamed/foundation-backend/issues/12).

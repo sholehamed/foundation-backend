@@ -1,6 +1,6 @@
 # BFF-04 — browser authentication integration (in progress)
 
-> Tracking: [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12).  
+> Tracking: [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12). First security slice [PR #14](https://github.com/sholehamed/foundation-backend/pull/14) merged at `53732242450bd90c206e29738007372bbe2dde1b` (35 BFF + 41 Identity tests passed in CI 42131501508).  
 > This module **does not yet issue a BFF browser cookie** or expose a login endpoint.
 
 ## First security slice
