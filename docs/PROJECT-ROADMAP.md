@@ -19,7 +19,7 @@ A slice is complete only when code, tests, integration evidence and documentatio
 - The module remains out of Web composition until the complete login callback path is ready.
 
 ### BFF-02 — Identity interactive session
-**Status: Implemented / CI green; documentation included, awaiting final CI and merge**
+**Status: Implemented / CI green; documentation complete, awaiting merge**
 
 - PR #8: [interactive Identity cookie and reusable credential authentication](https://github.com/sholehamed/foundation-backend/pull/8).
 - Dedicated `__Host-Foundation.Identity` cookie.
