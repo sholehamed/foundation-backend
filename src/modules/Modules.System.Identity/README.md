@@ -25,11 +25,11 @@ Identity, OpenIddict Authorization Server, user/role/permission and tenant conte
 - Current credential tests cover System/Tenant account selection, tenant binding, invalid passwords and five-attempt lockout.
 
 
-## BFF-03 — in progress (not merged)
+## BFF-03 — implemented / merged (PR #11)
 
 - [PR #11](https://github.com/sholehamed/foundation-backend/pull/11): `IdentityPrincipalFactory`, `IdentitySessionValidator`, `OpenIddictBffClientSeeder`, and `Connect` authorization endpoint.
 - New claims are scoped by the master System tenant or the user's owning tenant, including nested role/group/permission assignments.
 - Existing Identity Server cookie is revalidated against current user/tenant/security stamp state before a code can be issued.
 - Confidential client registration uses exact callback URLs and external secrets; the feature is disabled by default.
-- Integration tests and Android/Angular browser migration are not part of this merged Identity module yet. Do not mistake the presence of the route for a finished BFF.
+- TestServer Authorization Code + PKCE integration tests (including replay and negative client/redirect/context cases) passed in [CI 42130167589](https://github.com/sholehamed/foundation-backend/actions/runs/42130167589). Real Angular/BFF browser migration and BFF cookie callback are **not** implemented yet.
 - See [implementation notes](../../../docs/development/BFF-03-IMPLEMENTATION.md).

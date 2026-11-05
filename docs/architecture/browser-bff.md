@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | BFF-01 — server-side ticket store | Implemented, CI green | `Modules.System.Bff/DistributedBffTicketStore.cs`, PR #6 | The reusable store/cookie primitives exist; the BFF module is not composed into `Web`. |
 | BFF-02 — Identity interactive session | Implemented, CI green | `IdentityServerCookieDefaults`, `IUserCredentialAuthenticator`, `Auth.cs`, PR #8 | Issues only the separate Identity Server cookie. It does not yet complete OpenIddict authorization or create a BFF session. |
-| Authorization Code + PKCE | **In progress (PR #11)** | `Web/Endpoints/Connect.cs`, `IdentitySessionValidator`, BFF client seeder | Endpoint handler drafted; no fully green HTTP/OIDC integration evidence yet. |
+| Authorization Code + PKCE | **Merged (PR #11)** | `Web/Endpoints/Connect.cs`, `IdentitySessionValidator`, BFF client seeder | Code+PKCE exchange and rejection tests green in isolated TestServer CI; does not yet supply browser BFF session. |
 | BFF OIDC callback + session | Planned | Roadmap BFF-04 | Confidential client, callback validation, server-side token/ticket storage and BFF cookie are not wired. |
 | Browser endpoints + Angular migration | Planned | Roadmap BFF-05/06 | No production browser BFF endpoints or Angular migration yet. |
 
@@ -94,7 +94,7 @@ Important: use ASP.NET Core's OIDC middleware/registration where possible; do no
 
 ## Next implementation issue
 
-[BFF-03 — OpenIddict authorization endpoint and identity-context validation](https://github.com/sholehamed/foundation-backend/issues/9). This must close the System master-scope claim isolation and security-stamp revalidation gates before the Identity cookie can authorize a code.
+[BFF-04 — confidential OIDC callback and browser server-side session](https://github.com/sholehamed/foundation-backend/issues/12). BFF-03 Authorization Server flow merged in PR #11; full browser BFF remains unimplemented.
 
 ## Implemented Identity session slice (BFF-02)
 
@@ -119,7 +119,7 @@ Identity cookie settings: HttpOnly, Secure, host-only (`__Host-` prefix), Path=/
 Every implementation slice updates this page, [project state](../PROJECT-STATE.md), [roadmap](../PROJECT-ROADMAP.md), the relevant module README and HTTP contract. A design item is not marked implemented until code, automated tests, integration evidence and documentation agree.
 
 
-## BFF-03 in-progress architecture notes
+## BFF-03 completed Authorization Server architecture notes
 
 The Authorization Server remains `Modules.System.Identity`; a dedicated `Connect` endpoint maps `GET/POST /api/connect/authorize` and calls `AuthenticateAsync(IdentityServerCookieDefaults.AuthenticationScheme)` explicitly. The principal is reconstructed from current database grants by `IdentitySessionValidator` and `IdentityPrincipalFactory` using strict System vs Tenant assignment scopes. The OpenIddict middleware is responsible for cryptographic protocol validation and one-time authorization code issuance; handler code never creates its own code or token.
 
