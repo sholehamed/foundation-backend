@@ -242,8 +242,9 @@ public sealed class OpenIddictAuthorizationHttpTests
             }
 
             var server = app.GetTestServer();
-            server.ClientOptions.AllowAutoRedirect = false;
-            var client = server.CreateClient();
+            // A raw TestServer message handler does not follow redirects,
+            // allowing us to inspect OIDC Location headers directly.
+            var client = new HttpClient(server.CreateHandler());
             client.BaseAddress = new Uri("https://localhost");
             return new Harness(app, client, Guid.Empty);
         }
@@ -281,7 +282,7 @@ public sealed class OpenIddictAuthorizationHttpTests
                 ["login_context"] = "system"
             };
             using var request = new HttpRequestMessage(
-                HttpMethod.Get,
+                global::System.Net.Http.HttpMethod.Get,
                 QueryHelpers.AddQueryString("/api/connect/authorize", query));
             if (!string.IsNullOrWhiteSpace(cookie))
                 request.Headers.Add("Cookie", cookie);
