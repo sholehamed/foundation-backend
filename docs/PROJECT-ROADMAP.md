@@ -30,7 +30,7 @@ A slice is complete only when code, tests, integration evidence and documentatio
 - Does not yet authenticate `/api/connect/authorize`, issue an authorization code or create a BFF cookie.
 
 ### BFF-03 — OpenIddict authorization endpoint and first-party client registration
-[Tracking issue #9](https://github.com/sholehamed/foundation-backend/issues/9) · [Draft PR #11](https://github.com/sholehamed/foundation-backend/pull/11) · **In progress — not merged; code and integration tests are not fully verified**
+[Issue #9](https://github.com/sholehamed/foundation-backend/issues/9) · [Merged PR #11](https://github.com/sholehamed/foundation-backend/pull/11) · **Status: Implemented / merged; isolated HTTP protocol CI green**
 
 Scope:
 - Define/register a confidential first-party BFF client with exact callback URI(s), authorization-code and refresh-token permissions, allowed scopes, and a secret/key sourced only from secure configuration.
@@ -48,7 +48,7 @@ Acceptance:
 - CI green and all docs/checkpoint updated.
 
 ### BFF-04 — confidential OIDC client, callback and BFF session
-**Blocked on BFF-03**
+**Next — not implemented** · [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)
 
 Scope:
 - Register OIDC client middleware in `Modules.System.Bff` using a confidential client and Authorization Code + PKCE.
@@ -108,7 +108,7 @@ Acceptance:
 ## Test and documentation checkpoint for BFF-03
 
 - Scoped principal factory, cookie revalidation, configurable BFF client seeder and authorization endpoint are implemented on the branch.
-- Unit tests for identity session revalidation and scope filtering passed in CI before the protocol harness was added. A TestServer HTTP suite for authorization code, PKCE, replay, redirects and account-context isolation is now committed but not yet verified green.
+- Scoped identity-validation unit tests and the isolated HTTP Authorization Code + PKCE TestServer suite all passed in [final CI 42130167589](https://github.com/sholehamed/foundation-backend/actions/runs/42130167589).
 - The existing Angular password-grant login does **not** complete the Authorization Code return URL; this needs an explicit continuation design before browser E2E.
 - See [BFF-03 implementation notes](development/BFF-03-IMPLEMENTATION.md) and [project state](PROJECT-STATE.md).
 - Never mark a slice complete just because code was committed.
@@ -123,4 +123,10 @@ Acceptance:
 
 ### BFF-03 acceptance update
 
-The authorization endpoint currently handles GET; POST is explicitly refused to avoid losing form parameters on the login continuation path. Tests cover this behavior. Browser-based Identity login continuation and a full Angular BFF session are **not** part of BFF-03 and remain explicit blockers for subsequent slices.
+The authorization endpoint currently handles GET; POST is explicitly refused to avoid losing form parameters on the login continuation path. Tests cover this behavior. Browser-based Identity login continuation and a full Angular BFF session are **not** part of BFF-03 and remain explicit blockers for BFF-04/05/06.
+
+## BFF-03 completed checkpoint
+
+- PR #11 merged to main: `c201e4c67d18c9d7896887a688eb31d3340d7930`.
+- CI [42130167589](https://github.com/sholehamed/foundation-backend/actions/runs/42130167589) green, Restore/Build, 6 BFF tests, 41 Identity tests.
+- **Next**: [BFF-04 #12](https://github.com/sholehamed/foundation-backend/issues/12), confidential client challenge/callback, secure ticket-backed browser session; do not migrate Angular or claim full BFF yet.

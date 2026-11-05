@@ -1,94 +1,49 @@
-# BFF-03 — implementation notes and verification handoff
+# BFF-03 — OpenIddict Authorization Code + PKCE (implementation record)
 
-> Date: 2026-11-06  
-> Issue: [#9](https://github.com/sholehamed/foundation-backend/issues/9)  
-> Draft PR: [#11](https://github.com/sholehamed/foundation-backend/pull/11)  
-> Branch: `feat/bff-03-authorization-endpoint`  
-> **Status: Work in progress. Not merged. Not production-ready.**
+> Implemented: 2026-11-06 · **Merged, isolated HTTP tests passed; Full BFF not yet operational**  
+> [Issue #9](https://github.com/sholehamed/foundation-backend/issues/9) · [Merged PR #11](https://github.com/sholehamed/foundation-backend/pull/11) · merge commit `c201e4c67d18c9d7896887a688eb31d3340d7930`  
+> [Final-head CI 42130167589](https://github.com/sholehamed/foundation-backend/actions/runs/42130167589) — Build and **6 BFF + 41 Identity tests green**
 
-## Purpose
+## Purpose / boundaries
 
-Provide the Authorization Server half of Full BFF without altering the installed Angular token-based login or the existing bearer API authentication scheme.
+Provide the **Authorization Server** half of the Full BFF pattern without changing the current Angular Password Grant, API bearer defaults, or introducing a browser OAuth token.
 
-## Completed in branch
+## Shipped code
 
-- `Application/Abstractions/IIdentityPrincipalFactory.cs` and `Application/Services/IdentityPrincipalFactory.cs`: query current user Role, Group, direct permission and their nested assignments under the correct master-System or tenant scope. Build a principal with `sub`, `account_type`, optional `tenant_id`/`tenant`, `security_stamp` and `auth_time`.
-- `Application/Abstractions/IIdentitySessionValidator.cs` and `Application/Services/IdentitySessionValidator.cs`: re-read account and tenant state, require matching stamp, deny inactive or wrong-context account, rebuild current grants rather than trusting cookie snapshots.
-- `Application/Services/UserCredentialAuthenticator.cs`: share the principal factory with the original password-grant logic, preserving password verification and lockout.
-- `Infrastructure/DefaultSystemTenantScope.cs`: supplies canonical master System tenant scope without allowing tenant scope to bleed into System claims.
-- `Infrastructure/Persistence/OpenIddictBffClientSeeder.cs`: feature-flagged confidential OpenIddict client seeded from `Identity:Bff` with exact redirects, minimum 32-character external secret, PKCE and limited scopes. Existing-client configuration is validated; no silent overwriting of secrets or redirects.
-- `Web/Endpoints/Connect.cs`: GET-only protocol handler mapped to `/api/connect/authorize` (POST is explicitly rejected until a protected form-body continuation exists), uses OpenIddict protocol request and explicit Identity cookie authentication, validates session/context, limits implicit-consent flow to configured confidential BFF client, sends accepted principal to OpenIddict for code issuance.
-- `DependencyInjections.cs`: register scoped services and configure OpenIddict endpoint.
-- `tests/Shinera.Identity.Tests/IdentitySessionAndScopeTests.cs`: checks scope/role isolation and revoked/disabled user and tenant scenarios.
-- `tests/Shinera.Identity.Tests/OpenIddictAuthorizationHttpTests.cs`: TestServer OpenIddict protocol harness, intended to verify code + PKCE, code replay, invalid redirect, missing cookie and cross-account context. The harness was just added to CI; **do not count these as passed until the latest run verifies them**.
-
-## Configuration (do not commit real values)
-
-```json
-{
-  "Identity": {
-    "Bff": {
-      "Enabled": false,
-      "ClientId": "foundation-browser-bff",
-      "RedirectUris": [],
-      "PostLogoutRedirectUris": []
-    },
-    "LoginUrls": {
-      "System": "/system/auth/login",
-      "Tenant": "/auth/login"
-    }
-  }
-}
-```
-
-When enabled, deploy `Identity__Bff__ClientSecret` via a secret manager or environment variable, not Git. Redirect URIs must be exact HTTPS URLs (development HTTP loopback exception). Configuration changes to existing OpenIddict client registrations require an explicit reviewed migration.
-
-## Verification and acceptance matrix
-
-| Concern | Tests/implementation present | Remaining gate |
+| Component | Source | Behavior |
 | --- | --- | --- |
-| Role and permission tenant isolation | In-memory Identity unit tests | SQL Server/HTTP verification; include nested Group roles |
-| Identity cookie security-stamp / disable / revoke | Session validator + unit tests | Real-cookie HTTP lifecycle integration |
-| Confidential client and PKCE | Client seeder + OpenIddict configuration | Real authorization redirect/token exchange |
-| `/api/connect/authorize` protocol validation | OpenIddict passthrough handler plus isolated HTTP TestServer harness | Confirm tests pass in CI, then add negative client/scope/nonce and production SQL Server/browser coverage |
-| Consent | Only configured BFF implicit-consent client | Confirm integration and future additional client policies |
-| Interactive sign-in continuation | Existing Angular login (legacy Password Grant) | New Identity UI flow must preserve safe authorization returnUrl |
-| Production secrets / keyring / multitenancy | Documented only | Deploy-time secret and proxy trust verification |
+| Scoped claims factory | `src/modules/Modules.System.Identity/Application/Services/IdentityPrincipalFactory.cs` | Master-System vs owning-Tenant scopes; nested role, group and permission relationships constrained |
+| Identity cookie validator | `src/modules/Modules.System.Identity/Application/Services/IdentitySessionValidator.cs` | Live revalidation of user, security stamp, account context and tenant; grants rehydrated from DB |
+| Shared password authenticator | `src/modules/Modules.System.Identity/Application/Services/UserCredentialAuthenticator.cs` | Uses same scoped principal factory, preserves legacy password verification/lockout |
+| Master System scope | `src/modules/Modules.System.Identity/Infrastructure/DefaultSystemTenantScope.cs` | Fixed canonical System scope, independent of request tenant |
+| BFF client provisioner | `src/modules/Modules.System.Identity/Infrastructure/Persistence/OpenIddictBffClientSeeder.cs` | Feature-flagged confidential client, exact callback URLs, PKCE, external client secret; fails on unexpected configuration drift |
+| Authorization endpoint | `src/modules/Modules.System.Identity/Web/Endpoints/Connect.cs` | GET `/api/connect/authorize`; explicit Identity cookie and session validation, client/context checks; code issued by OpenIddict |
+| Protocol tests | `tests/Shinera.Identity.Tests/OpenIddictAuthorizationHttpTests.cs` | Full TestServer Authorization Code + PKCE code exchange, replay, wrong verifier, invalid redirect/client/scope, absent PKCE, anonymous redirect, tenant context, unsupported POST |
+| Scope tests | `tests/Shinera.Identity.Tests/IdentitySessionAndScopeTests.cs` | Tenant role isolation, disabled user/tenant, security-stamp changes, revoked roles |
 
-## Known blockers and risks
+`Identity:Bff:Enabled` defaults to **false**; `ClientSecret` is **not** stored in source control. Supply `Identity__Bff__ClientSecret` through a secret manager/secure environment configuration and exact allowed HTTPS callback URLs. Existing client registration changes require reviewed migrations.
 
-1. Angular `SignInComponent.getRedirectUrl()` currently rejects an `/api/connect/authorize` returnUrl. Do **not** weaken general returnUrl validation to get past this; implement a dedicated validated OIDC continuation with the Identity login UI / BFF.
-2. Existing Angular stores tokens in localStorage; it must not be modified until BFF browser session endpoints are tested and ready for an atomic migration.
-3. The BFF session cookie `__Host-Foundation.Bff` is not issued by BFF-03; BFF-04 handles callback and ticket creation.
-4. No protocol E2E test has yet proven consent, code issuance, token exchange, PKCE, replay and cross-host behavior. The draft PR should **remain Draft** until these gates are satisfied.
-5. The repo CI unit-test workflow is not equivalent to a SQL Server or real-browser integration test. Do not conflate a green unit-test job with protocol readiness.
-6. Multi-host tenant login must verify trusted request host and callback registration; never infer Tenant identity solely from URL parameters.
+## Verification evidence
 
-## Next actions
+CI run [42130167589](https://github.com/sholehamed/foundation-backend/actions/runs/42130167589) for PR head `4d496631f6f1a9f77577b905e89cc3df152bf641`:
 
-1. Obtain green Build and all BFF/Identity unit tests plus the new OpenIddict HTTP TestServer harness on PR #11.
-2. Add HTTP-level integration tests using a test host and controlled OpenIddict database/client configuration, then verify code round-trip and failure cases.
-3. Design and test an Identity UI OIDC continuation that cannot redirect off-origin or cross contexts.
-4. Close BFF-03 acceptance tests, update [PROJECT-STATE](../PROJECT-STATE.md), merge reviewed PR only then.
-5. Begin BFF-04 (opt-in BFF client middleware, callback, protected server-side tokens and opaque browser cookie); keep Angular Password Grant until BFF-05/06 completion.
+- Solution restore/build: passed.
+- `tests/Foundation.Bff.Tests`: **6 passed**, 0 failed.
+- `tests/Shinera.Identity.Tests`: **41 passed**, 0 failed; includes isolated real middleware TestServer code/PKCE and negative authorization cases.
 
+Earlier failing builds/tests were corrected, not disabled: missing namespace imports; test fixture NormalizedEmail; OIDC `auth_time` numeric ClaimValueType (Integer64); Login prompt infinite-redirect prevention; TestServer response/redirect assertions. Green end result does not imply live deployed browser or SQL Server integration.
 
-## Verification sequence / record
+## Deliberate limitations
 
-- PR #11 run [42127975232](https://github.com/sholehamed/foundation-backend/actions/runs/42127975232): **passed** before HTTP harness was added; Restore, Build, 6 BFF tests and 32 Identity tests.
-- PR #11 commit `167246d4cd2c29ea9d2bd67ddf6382f337a45c9c`: added 5 HTTP protocol tests using `Microsoft.AspNetCore.TestHost`; compile/runtime results still to be verified.
-- If the new TestServer suite needs fixes, preserve its negative cases. Do not disable or skip failed tests to make the PR green.
+- Authorization endpoint supports **GET only**. POST is explicitly rejected to avoid accidental loss of authorization body through redirect continuation.
+- `prompt=login` and `max_age` fail closed with `login_required` until a properly tested one-time reauthentication UX exists; no redirect loop.
+- Current Angular sign-in logic rejects `/api/connect/authorize` returnUrl. A dedicated secure OIDC continuation is needed; do not weaken arbitrary returnUrl validation.
+- BFF challenge/callback and `__Host-Foundation.Bff` ticket-backed browser session have **not** been implemented. No `/bff/*` browser endpoints are ready. Password Grant remains active for existing clients.
+- Host/tenant binding behind trusted proxies, real SQL Server, multi-instance cache/keys, signing-key ops, secure client secrets and full browser E2E remain future gates.
+- The configured BFF client uses first-party implicit consent only when feature enabled; unknown/unregistered clients are not auto-consented.
 
-### OAuth reauthentication and current integration diagnostic
+## Next milestone
 
-- `prompt=login` and `max_age` are explicitly rejected with `login_required` until a secure one-time reauthentication continuation is implemented. The previous immediate sign-out/redirect approach would loop on the same authorization request.
-- The first TestServer HTTP suite built but did **not** pass: two successful-cookie cases returned HTTP 500 and a cross-context case returned an OAuth redirect error rather than a direct 403. The tests now expose response bodies for diagnosis and assert that no authorization code is issued on context mismatch. **Do not merge until this is resolved.**
-- Initial successful BFF-03 pre-HTTP-test CI: [run 42127975232](https://github.com/sholehamed/foundation-backend/actions/runs/42127975232). It does not verify HTTP protocol behavior.
+[BFF-04 Issue #12](https://github.com/sholehamed/foundation-backend/issues/12): implement the optional confidential BFF OIDC challenge/callback middleware and protected server-side session, plus a **safe** Identity UI continuation preserving validated OIDC request. Before changing Angular, ensure BFF-05 session CSRF/revocation endpoints and real cross-repo E2E tests are in place.
 
-
-## Extended protocol regression (2026-11-06)
-
-- The branch now includes an isolated HTTP OpenIddict TestServer suite covering a successful one-time authorization-code + PKCE exchange, incorrect verifier, callback mismatch, missing session login redirect, tenant-vs-system rejection, GET-only authorization behavior, and additional negative cases for unknown client, missing PKCE and unregistered scope.
-- Last green protocol CI before the three newest negative tests: [run 42129834641](https://github.com/sholehamed/foundation-backend/actions/runs/42129834641) — Build, 6 BFF tests and 38 Identity tests passed. The newest tests require a separate latest-head CI run before the PR is ready.
-- The new code rejects `prompt=login` and `max_age` instead of looping indefinitely until an explicit reauthentication UI is implemented. This remains a conscious limitation, tracked for future BFF/Identity UI integration.
-- A real SQL Server/deployed-browser verification remains a later production gate. Passing TestServer HTTP tests is not equivalent to an end-to-end Angular/BFF browser flow.
+See [PROJECT-STATE](../PROJECT-STATE.md), [ROADMAP](../PROJECT-ROADMAP.md) and [ADR-0001](../decisions/ADR-0001-browser-bff.md). Update this record only to correct an error or refer to a new ADR/implementation; use new BFF-04 notes for subsequent work.
