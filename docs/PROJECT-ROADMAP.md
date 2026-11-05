@@ -19,9 +19,9 @@ A slice is complete only when code, tests, integration evidence and documentatio
 - The module remains out of Web composition until the complete login callback path is ready.
 
 ### BFF-02 — Identity interactive session
-**Status: Implemented / CI green; documentation complete, awaiting merge**
+**Status: Implemented / merged; CI green**
 
-- PR #8: [interactive Identity cookie and reusable credential authentication](https://github.com/sholehamed/foundation-backend/pull/8).
+- PR #8: [interactive Identity cookie and reusable credential authentication](https://github.com/sholehamed/foundation-backend/pull/8) — merged at `4a798da96c735be0bc0823c82c02a495f4a9c4a8`.
 - Dedicated `__Host-Foundation.Identity` cookie.
 - Shared authenticator for existing Password Grant and interactive sign-in.
 - CAPTCHA, antiforgery bootstrap/validation, login IP rate limit.

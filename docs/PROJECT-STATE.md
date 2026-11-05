@@ -26,11 +26,11 @@ This is the continuity checkpoint. Read this file first when resuming work in a 
 | --- | --- |
 | PR #6 — BFF-01 protected ticket store | Merged to `main` |
 | Merge commit | `80f15d6c5bf59e6c557561fe97a2efbf1b5ee74a` |
-| PR #8 — BFF-02 Identity cookie + credential authenticator | Implemented on `feat/bff-02-identity-cookie-login`; latest head `3c84976aa3786a06361e5c0a0ed20aace7d71f71`; final CI run [42122672676](https://github.com/sholehamed/foundation-backend/actions/runs/42122672676) passed after documentation and no-store hardening; PR is ready to merge |
+| PR #8 — BFF-02 Identity cookie + credential authenticator | Merged to `main` at `4a798da96c735be0bc0823c82c02a495f4a9c4a8` |
 | PR #8 CI | Run [42119993097](https://github.com/sholehamed/foundation-backend/actions/runs/42119993097): Restore, Build, 6 BFF tests and 25 Identity tests all passed |
 | Angular | Not modified; existing token-based flow remains active |
 
-After PR #8 is merged, update this table with the merge commit and set the active branch back to `main`.
+PR #8 is merged; active implementation is now tracked by [BFF-03 issue #9](https://github.com/sholehamed/foundation-backend/issues/9).
 
 ## Next tracked slice
 
