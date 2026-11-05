@@ -3,6 +3,7 @@
 ## Project continuity
 
 - [Current project state and handoff](PROJECT-STATE.md)
+- [BFF-03 implementation and verification notes](development/BFF-03-IMPLEMENTATION.md)
 - [Implementation roadmap and acceptance gates](PROJECT-ROADMAP.md)
 
 این پوشه مرجع فنی کد فعلی و تصمیم‌های معماری Foundation است. هر تغییر رفتار مهم باید همراه کد و تست در همان PR مستند شود.

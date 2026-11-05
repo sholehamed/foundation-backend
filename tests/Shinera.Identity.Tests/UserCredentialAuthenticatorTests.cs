@@ -1,3 +1,4 @@
+using Modules.System.Identity.Infrastructure;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Application.Abstractions;
@@ -16,7 +17,8 @@ public sealed class UserCredentialAuthenticatorTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var user = fixture.AddUser(null, UserType.System, "root");
-        var service = new UserCredentialAuthenticator(fixture.Db, fixture.PasswordHasher);
+        var service = new UserCredentialAuthenticator(fixture.Db, fixture.PasswordHasher,
+            new IdentityPrincipalFactory(fixture.Db, new DefaultSystemTenantScope()));
 
         var principal = await service.AuthenticateAsync(
             "root", Password, IdentityLoginContext.System, null);
@@ -35,7 +37,8 @@ public sealed class UserCredentialAuthenticatorTests
         await using var fixture = await Fixture.CreateAsync();
         var tenant = fixture.AddTenant("tenant-a");
         var user = fixture.AddUser(tenant.Id, UserType.Tenant, "operator");
-        var service = new UserCredentialAuthenticator(fixture.Db, fixture.PasswordHasher);
+        var service = new UserCredentialAuthenticator(fixture.Db, fixture.PasswordHasher,
+            new IdentityPrincipalFactory(fixture.Db, new DefaultSystemTenantScope()));
 
         var principal = await service.AuthenticateAsync(
             "operator", Password, IdentityLoginContext.Tenant, tenant.Slug);
@@ -56,7 +59,8 @@ public sealed class UserCredentialAuthenticatorTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var user = fixture.AddUser(null, UserType.System, "root");
-        var service = new UserCredentialAuthenticator(fixture.Db, fixture.PasswordHasher);
+        var service = new UserCredentialAuthenticator(fixture.Db, fixture.PasswordHasher,
+            new IdentityPrincipalFactory(fixture.Db, new DefaultSystemTenantScope()));
 
         var principal = await service.AuthenticateAsync(
             "root", "wrong-password", IdentityLoginContext.System, null);
@@ -71,7 +75,8 @@ public sealed class UserCredentialAuthenticatorTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var user = fixture.AddUser(null, UserType.System, "root");
-        var service = new UserCredentialAuthenticator(fixture.Db, fixture.PasswordHasher);
+        var service = new UserCredentialAuthenticator(fixture.Db, fixture.PasswordHasher,
+            new IdentityPrincipalFactory(fixture.Db, new DefaultSystemTenantScope()));
 
         for (var attempt = 0; attempt < 5; attempt++)
         {

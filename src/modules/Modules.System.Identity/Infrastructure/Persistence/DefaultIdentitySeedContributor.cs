@@ -18,13 +18,15 @@ public sealed class DefaultIdentitySeedContributor : ISeedContributor
         var passwordHasher = serviceProvider.GetRequiredService<IPasswordHasher<User>>();
         var applicationManager = serviceProvider.GetRequiredService<IOpenIddictApplicationManager>();
         var configuration = serviceProvider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+        var environment = serviceProvider.GetRequiredService<IHostEnvironment>();
         await SeedOpenIddictAsync(applicationManager);
+        await OpenIddictBffClientSeeder.SeedAsync(applicationManager, configuration, environment);
         var masterTenant = await EnsureTenantAsync(db, DefaultSeedData.MasterTenant);
         // Additive, idempotent definitions. No privileges are granted in Production.
         await PlatformPermissionCatalogSeeder.SeedDefinitionsAsync(db);
 
         // Never create an account with a known development password in production.
-        if (serviceProvider.GetRequiredService<IHostEnvironment>().IsDevelopment())
+        if (environment.IsDevelopment())
         {
             var developmentPassword = Environment.GetEnvironmentVariable("SHINERA_DEVELOPMENT_ADMIN_PASSWORD")
                 ?? "123456"; // Legacy local-only default; override via environment variable.

@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | BFF-01 — server-side ticket store | Implemented, CI green | `Modules.System.Bff/DistributedBffTicketStore.cs`, PR #6 | The reusable store/cookie primitives exist; the BFF module is not composed into `Web`. |
 | BFF-02 — Identity interactive session | Implemented, CI green | `IdentityServerCookieDefaults`, `IUserCredentialAuthenticator`, `Auth.cs`, PR #8 | Issues only the separate Identity Server cookie. It does not yet complete OpenIddict authorization or create a BFF session. |
-| Authorization Code + PKCE | Planned | Roadmap BFF-03 | Authorization endpoint must authenticate the Identity cookie and issue a one-time code. |
+| Authorization Code + PKCE | **In progress (PR #11)** | `Web/Endpoints/Connect.cs`, `IdentitySessionValidator`, BFF client seeder | Endpoint handler drafted; no fully green HTTP/OIDC integration evidence yet. |
 | BFF OIDC callback + session | Planned | Roadmap BFF-04 | Confidential client, callback validation, server-side token/ticket storage and BFF cookie are not wired. |
 | Browser endpoints + Angular migration | Planned | Roadmap BFF-05/06 | No production browser BFF endpoints or Angular migration yet. |
 
@@ -117,3 +117,14 @@ Identity cookie settings: HttpOnly, Secure, host-only (`__Host-` prefix), Path=/
 ## Implementation rule
 
 Every implementation slice updates this page, [project state](../PROJECT-STATE.md), [roadmap](../PROJECT-ROADMAP.md), the relevant module README and HTTP contract. A design item is not marked implemented until code, automated tests, integration evidence and documentation agree.
+
+
+## BFF-03 in-progress architecture notes
+
+The Authorization Server remains `Modules.System.Identity`; a dedicated `Connect` endpoint maps `GET/POST /api/connect/authorize` and calls `AuthenticateAsync(IdentityServerCookieDefaults.AuthenticationScheme)` explicitly. The principal is reconstructed from current database grants by `IdentitySessionValidator` and `IdentityPrincipalFactory` using strict System vs Tenant assignment scopes. The OpenIddict middleware is responsible for cryptographic protocol validation and one-time authorization code issuance; handler code never creates its own code or token.
+
+The first-party BFF client is an optional confidential app, configured under `Identity:Bff:*`, with exact callback URLs. Any existing registered client is validated rather than silently reconfigured. `Identity:Bff:Enabled` is false by default. The authorization endpoint restricts implicit-consent issuance to the configured BFF client.
+
+This **does not yet complete browser login**: the current Angular sign-in component expects the legacy token response and does not preserve an `/api/connect/authorize` returnUrl. Treat this as a named integration blocker, not as a reason to relax returnUrl checks or deliver tokens to JavaScript.
+
+See [BFF-03 implementation notes](../development/BFF-03-IMPLEMENTATION.md) for exact code map, outstanding verification and next steps.

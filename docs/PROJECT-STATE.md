@@ -67,6 +67,39 @@ PR #8 is merged; active implementation is now tracked by [BFF-03 issue #9](https
 - BFF session storage requires shared durable cache and shared Data Protection keys in multi-instance production. Store outage must fail closed.
 - Do not trust forwarded host/IP unless proxy networks are explicitly configured.
 
+
+## In-flight work — BFF-03
+
+- Branch: `feat/bff-03-authorization-endpoint` (based on merged BFF-02).
+- Draft PR: [#11](https://github.com/sholehamed/foundation-backend/pull/11); [tracking issue #9](https://github.com/sholehamed/foundation-backend/issues/9).
+- **Status: in development, not merged, not verified end-to-end.** Do not treat an opened PR or compiled code as a usable BFF.
+
+### Changes implemented on the branch
+
+- `Application/Services/IdentityPrincipalFactory.cs`: reconstructs principal claims using master System scope or the **owning** tenant; constrains role/group/role-permission relationships to that scope.
+- `Application/Services/IdentitySessionValidator.cs`: verifies signed-in principal, account type, active user/tenant, matching security stamp and cookie identity; rebuilds claims from the database to avoid stale permissions.
+- `Application/Services/UserCredentialAuthenticator.cs`: shares the scoped principal factory between password-grant compatibility and interactive login; keeps password hash verification and lockout.
+- `Infrastructure/Persistence/OpenIddictBffClientSeeder.cs`: optional confidential first-party BFF client, strict exact redirects, PKCE, secrets from private configuration. Do not silently mutate an existing client's secret/redirects on application restart.
+- `Web/Endpoints/Connect.cs`: handles `/api/connect/authorize` with explicit `Foundation.IdentityServer` cookie authentication; only configured first-party BFF client with implicit consent may proceed; validates account context and tenant slug; delegates code issuance to OpenIddict. Errors use the OpenIddict authentication scheme.
+- `tests/Shinera.Identity.Tests/IdentitySessionAndScopeTests.cs`: adds tests for cross-tenant claims, inactive user/tenant, security stamp, role revocation and context mismatch.
+- `tests/Shinera.Identity.Tests/OpenIddictAuthorizationHttpTests.cs`: isolated TestServer HTTP protocol coverage including successful authorization-code/PKCE exchange, replay, invalid redirect, wrong tenant context and POST rejection; three additional negative cases added for unknown client, missing PKCE and unsupported scope, pending latest-head CI.
+- `tests/Shinera.Identity.Tests/UserCredentialAuthenticatorTests.cs` adapted to the new principal factory constructor.
+- `src/Web/appsettings.json`: BFF client feature disabled by default; callback arrays empty; never commit `ClientSecret`.
+
+### Validation gates (not yet satisfied)
+
+- Latest PR CI run must have Restore, Build, 6 BFF store tests, all Identity tests and all HTTP OpenIddict TestServer tests green. The pre-harness run [42127975232](https://github.com/sholehamed/foundation-backend/actions/runs/42127975232) was green (6+32 tests); it does not prove the newly added tests. The new BFF-03 tests may require corrections before this condition is met.
+- An HTTP/OIDC integration test must demonstrate authorization requests with proper client/redirect, code + PKCE and rejection of code replay, bad PKCE, disallowed scopes, and cross-context auth.
+- The current Angular sign-in component filters a returnUrl to app routes and **does not** continue `/api/connect/authorize` after cookie login. An integration login UI / post-login continuation must be implemented before end-to-end BFF is declared usable; do not alter existing browser grant flow prematurely.
+- `Modules.System.Bff` is still not wired into the Web host; no BFF session cookie or BFF session endpoints are emitted.
+- Consider sign-in endpoint integration: a browser-initiated OIDC login must be compatible with CSRF bootstrap and validated return URL on a trusted identity origin.
+- Review all OpenIddict client registration settings and consent rules against the exact deployment and production secret provisioning.
+- Reassess System-master privilege semantics and authorization endpoint interaction with current tenant resolution middleware in a real SQL Server/integration run.
+
+### After successful PR merge
+
+Update this section with actual PR number, head/merge SHA and CI run; move BFF-03 to merged in the roadmap. Start BFF-04 (BFF OIDC callback + server-side BFF cookie) only after the HTTP protocol tests prove the Authorization Code handler works.
+
 ## How to resume
 
 1. Read [ADR-0001](decisions/ADR-0001-browser-bff.md), [architecture](architecture/browser-bff.md), and [HTTP contract](reference/browser-auth-contract.md).
@@ -74,3 +107,9 @@ PR #8 is merged; active implementation is now tracked by [BFF-03 issue #9](https
 3. Check live GitHub PR/CI state before assuming the checkpoint above is still current.
 4. Work as vertical slices: branch → implementation → automated tests → docs update → CI → review → merge.
 5. Update this file and the roadmap in every PR that changes implementation status or the next planned work.
+
+## BFF-03 verification checkpoint
+
+- [Run 42129834641](https://github.com/sholehamed/foundation-backend/actions/runs/42129834641): passed 6 BFF + 38 Identity tests on the POST-rejection implementation.
+- Additional unknown-client/missing-PKCE/unknown-scope regression tests were committed subsequently; full latest-head verification must pass before merge.
+- Once BFF-03 is merged, update this table and the roadmap with merge SHA and explicitly retain the Angular authorization-returnUrl blocker for BFF-04/06.

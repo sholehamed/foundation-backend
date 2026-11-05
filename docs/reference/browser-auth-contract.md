@@ -69,3 +69,16 @@ The existing `POST /api/system/Auth/login` token endpoint continues to accept th
 ### Not yet available
 
 The following remain Planned: `/bff/auth/login`, `/signin-oidc`, `/bff/session`, `/bff/auth/csrf`, `/bff/auth/logout`, and `/bff/auth/logout-all`. Do not build Angular against these routes until their implementation and integration tests are merged.
+
+
+## Authorization Server endpoint — BFF-03 (in-progress)
+
+| Method | Path | Requirement |
+| --- | --- | --- |
+| GET/POST | `/api/connect/authorize` | OpenIddict must validate client, exact redirect URI, response type, scopes and PKCE. Handler explicitly checks Identity Server cookie and a live database-scoped principal, then signs into the OpenIddict server scheme. |
+| GET | `/api/system/Auth/csrf` | Existing CSRF bootstrap before interactive Identity login; no token issued. |
+| POST | `/api/system/Auth/interactive-login` | Existing anti-forgery- and CAPTCHA-guarded Identity cookie issuance; frontend OAuth continuation not implemented yet. |
+
+The following protocol parameters are needed on authorization: `client_id`, `response_type=code`, `scope` including `openid`, `redirect_uri` (exact), `state`, `nonce`, `code_challenge`, `code_challenge_method=S256`, and `login_context=system|tenant`; Tenant flows also carry the exact `tenant` slug. The client and URI must have been explicitly registered and PKCE enforced by OpenIddict. Never accept `returnUrl` as an absolute arbitrary redirect; only allow safe local paths and review login-UI continuation.
+
+**Current status:** only the handler and registration scaffold exist on PR #11. Protocol E2E must verify code issuance, token exchange, invalid client/redirect, replay and consent behavior before the endpoint can be called production-ready. No OAuth tokens are intended for browser JSON responses.
