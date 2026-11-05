@@ -28,7 +28,7 @@ app.Use(async (context, next) =>
         return Task.CompletedTask;
     });
 
-    await next(context);
+    await next();
 });
 
 if (app.Environment.IsDevelopment())
@@ -48,4 +48,4 @@ app.Run();
 public sealed record PingResponse(string Status);
 
 // Required for WebApplicationFactory integration tests.
-public partial class Program;
+public partial class Program { }
