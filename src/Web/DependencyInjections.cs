@@ -51,8 +51,7 @@ namespace Server
                                  slug.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-'));
                         })
                         .AllowAnyHeader()
-                        .AllowAnyMethod()
-                        .AllowCredentials();
+                        .AllowAnyMethod();
                 });
             });
         }
