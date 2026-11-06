@@ -141,8 +141,9 @@ public sealed class SqlServerBffAtomicStoreTests
 
             var first = await store.RetrieveAsync(key);
             Assert.NotNull(first);
-            Assert.Equal(issued.AddHours(24).UtcDateTime,
-                first.Properties.ExpiresUtc!.Value.UtcDateTime);
+            // AuthenticationProperties persists expiry as Unix seconds, not ticks.
+            Assert.Equal(issued.AddHours(24).ToUnixTimeSeconds(),
+                first.Properties.ExpiresUtc!.Value.ToUnixTimeSeconds());
 
             var renewal = Renewal(initial, "bob");
             renewal.Properties.ExpiresUtc = DateTimeOffset.UtcNow.AddHours(40);
