@@ -4,7 +4,15 @@
 > Parent decision: [ADR-0001 — Full BFF](decisions/ADR-0001-browser-bff.md)  
 > Current state: [PROJECT-STATE.md](PROJECT-STATE.md)
 
-## Latest merged checkpoint — BFF-04.2 (2026-11-06)
+## Latest verified merged checkpoint — BFF-05.1 (2026-11-06)
+
+- **Merged:** [BFF-04.3 PR #18](https://github.com/sholehamed/foundation-backend/pull/18) at `3f90363227ed5497c82a378c9f73093c46adcad4`; [CI 42143363623](https://github.com/sholehamed/foundation-backend/actions/runs/42143363623) passed signed fake-issuer OIDC callback tests.
+- **Merged:** [BFF-05.1 PR #19](https://github.com/sholehamed/foundation-backend/pull/19) at `bcfc109488be75981dee7f3aead91e1bca38d976`; [latest PR-head CI 42194597675](https://github.com/sholehamed/foundation-backend/actions/runs/42194597675): full solution Build (0 errors; 263 pre-existing warnings), **58/58 BFF** and **42/42 Identity** tests passed.
+- **What now exists (opt-in):** GET `/bff/session`, explicitly cookie-scheme authenticated (bearer alone is 401); safe no-store System/Tenant JSON; current-host/callback/tenant binding checked on every session read. 401 anonymous/invalid, 403 host mismatch. Fake test cookie issuance is not a real Identity↔BFF E2E.
+- **Still blocked:** real two-host OpenIddict Identity↔BFF E2E ([Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)); CSRF/logout/revocation/live user and tenant DB checks and durable infrastructure ([Issue #20](https://github.com/sholehamed/foundation-backend/issues/20)). `Identity:Bff:Enabled=false` by default. Frontend BFF-06 ([Issue #10](https://github.com/sholehamed/foundation-frontend/issues/10)) is not started; Angular Password Grant/localStorage are unchanged.
+- **Two F00 baseline PRs remain open by explicit decision.** All later slices require independent PR, tests and documentation. This section supersedes older snapshots that call PR #16 or #18 Draft.
+
+## Earlier merged checkpoint — BFF-04.2 (2026-11-06)
 
 - [PR #16](https://github.com/sholehamed/foundation-backend/pull/16) merged at `c4f6a81c302f3524bed3e58931221874be16928f`; [CI 42140557977](https://github.com/sholehamed/foundation-backend/actions/runs/42140557977) green: 46 BFF + 42 Identity tests.
 - The opt-in client/challenge/callback registration and protected ticket infrastructure now exist on `main`, **disabled by default**. The code-grant token exchange is now handled in the actual Identity passthrough endpoint.
@@ -72,7 +80,7 @@ Acceptance:
 - Ticket store survives app restart when backed by shared durable cache and Data Protection key ring.
 
 ### BFF-05 — session API, CSRF, logout, revocation and tenant/host binding
-**Blocked on BFF-04**
+**In progress: BFF-05.1 read-only endpoint merged; full lifecycle blocked on BFF-04 two-host E2E and further security gates**
 
 Scope:
 - `GET /bff/session` returns minimal safe user/context data, 401 when missing/expired/revoked, no-store always.
@@ -176,8 +184,8 @@ The authorization endpoint currently handles GET; POST is explicitly refused to 
 - Tests are isolated from real DNS/production credentials. No production middleware options or cookie restrictions were relaxed. Latest-head CI must pass before any merge.
 - **Still required after PR #18:** End-to-end tests with two real Foundation TestServer hosts (OpenIddict Identity + BFF), including actual token endpoint passthrough, current user/tenant revalidation, identity cookies, and final browser session flows; then BFF-05 APIs, CSRF, logout, revocation and Angular migration.
 
-## BFF-05.1 — isolated read-only session endpoint (active feature branch)
+## BFF-05.1 — isolated read-only session endpoint (merged PR #19)
 
 - Foundation's signed fake-issuer callback PR #18 is merged (`3f90363227ed5497c82a378c9f73093c46adcad4`, [CI 42143363623](https://github.com/sholehamed/foundation-backend/actions/runs/42143363623)). This does **not** replace the pending two-real-host OpenIddict integration gate.
-- `feat/bff-05-session-readonly-host-binding` introduces an opt-in, cookie-scheme-only `GET /bff/session` plus per-read registered-host/account/tenant context validation and no-store safe JSON. Isolated HTTP tests do not claim full auth E2E.
+- [PR #19](https://github.com/sholehamed/foundation-backend/pull/19) introduced an opt-in, cookie-scheme-only `GET /bff/session` plus per-read registered-host/account/tenant context validation and no-store safe JSON. Isolated HTTP tests do not claim full auth E2E.
 - BFF-05 remains incomplete until CSRF, logout/revoke-all, expiration, current DB-grant revalidation and distributed-store checks. BFF-06 Angular migration remains blocked.

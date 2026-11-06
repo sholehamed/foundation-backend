@@ -4,7 +4,15 @@
 > Repo: `sholehamed/foundation-backend` · integration branch: `main`  
 > **Read this first in a new chat.** Always verify current GitHub head/CI before writing.
 
-## Current merged BFF checkpoint — 2026-11-06
+## Latest verified merged checkpoint — BFF-05.1 (2026-11-06)
+
+- **Merged:** [BFF-04.3 PR #18](https://github.com/sholehamed/foundation-backend/pull/18) at `3f90363227ed5497c82a378c9f73093c46adcad4`; [CI 42143363623](https://github.com/sholehamed/foundation-backend/actions/runs/42143363623) passed signed fake-issuer OIDC callback tests.
+- **Merged:** [BFF-05.1 PR #19](https://github.com/sholehamed/foundation-backend/pull/19) at `bcfc109488be75981dee7f3aead91e1bca38d976`; [latest PR-head CI 42194597675](https://github.com/sholehamed/foundation-backend/actions/runs/42194597675): full solution Build (0 errors; 263 pre-existing warnings), **58/58 BFF** and **42/42 Identity** tests passed.
+- **What now exists (opt-in):** GET `/bff/session`, explicitly cookie-scheme authenticated (bearer alone is 401); safe no-store System/Tenant JSON; current-host/callback/tenant binding checked on every session read. 401 anonymous/invalid, 403 host mismatch. Fake test cookie issuance is not a real Identity↔BFF E2E.
+- **Still blocked:** real two-host OpenIddict Identity↔BFF E2E ([Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)); CSRF/logout/revocation/live user and tenant DB checks and durable infrastructure ([Issue #20](https://github.com/sholehamed/foundation-backend/issues/20)). `Identity:Bff:Enabled=false` by default. Frontend BFF-06 ([Issue #10](https://github.com/sholehamed/foundation-frontend/issues/10)) is not started; Angular Password Grant/localStorage are unchanged.
+- **Two F00 baseline PRs remain open by explicit decision.** All later slices require independent PR, tests and documentation. This section supersedes older snapshots that call PR #16 or #18 Draft.
+
+## Earlier merged checkpoint — BFF-04.2
 
 - **Merged to `main`:** [PR #16](https://github.com/sholehamed/foundation-backend/pull/16) at `c4f6a81c302f3524bed3e58931221874be16928f`. Last verified PR-head [CI 42140557977](https://github.com/sholehamed/foundation-backend/actions/runs/42140557977): **46/46 BFF** and **42/42 Identity** tests plus full solution build passed. This supersedes historical draft statuses lower in this file.
 - **Included:** opt-in BFF OIDC Authorization Code + PKCE challenge, configured callback middleware, protected server-side ticket store and isolated Secure/HttpOnly host-only cookie scheme; Identity code-grant token endpoint passthrough and current-user revalidation; strict host-derived System/Tenant login context and validated return paths. Broad CORS credentials were not enabled.
@@ -114,9 +122,9 @@
 - Tests are isolated from real DNS/production credentials. No production middleware options or cookie restrictions were relaxed. Latest-head CI must pass before any merge.
 - **Still required after PR #18:** End-to-end tests with two real Foundation TestServer hosts (OpenIddict Identity + BFF), including actual token endpoint passthrough, current user/tenant revalidation, identity cookies, and final browser session flows; then BFF-05 APIs, CSRF, logout, revocation and Angular migration.
 
-## BFF-05.1 read-only session slice — active PR (not merged)
+## BFF-05.1 read-only session slice — merged as PR #19
 
 - After [BFF-04.3 PR #18](https://github.com/sholehamed/foundation-backend/pull/18) passed [CI 42143363623](https://github.com/sholehamed/foundation-backend/actions/runs/42143363623), it was merged to `main` at `3f90363227ed5497c82a378c9f73093c46adcad4`. It proves ASP.NET Core OIDC callback with a **fake signed issuer**, not the real Foundation Identity/BFF two-host flow.
-- Branch `feat/bff-05-session-readonly-host-binding` adds opt-in `GET /bff/session`, explicitly authenticating **only** `Foundation.Bff` cookie. A valid ticket is checked again against the current registered host, System/Tenant account context, callback origin and tenant claims. Responses are no-store and contain only minimal identity/context JSON; no OAuth tokens. Unauthenticated returns 401; mismatched host/account returns 403.
+- [Merged PR #19](https://github.com/sholehamed/foundation-backend/pull/19) adds opt-in `GET /bff/session`, explicitly authenticating **only** `Foundation.Bff` cookie. A valid ticket is checked again against the current registered host, System/Tenant account context, callback origin and tenant claims. Responses are no-store and contain only minimal identity/context JSON; no OAuth tokens. Unauthenticated returns 401; mismatched host/account returns 403.
 - Tests exercise anonymous/bearer-only requests, valid Tenant and System cookies, wrong-host replay, corrupt cookies and disabled feature. Cookie issuance in these tests is test-only, not proof of a production Identity Server login.
-- **Gates remaining:** real OpenIddict Identity↔BFF two-host E2E, independent current-user/tenant DB revalidation, session expiration/revocation, CSRF-protected logout and write APIs, distributed cache/keyring failure modes. BFF remains `Enabled=false`; Angular Password Grant and localStorage are unchanged. Do not merge until latest-head CI passes.
+- **Gates remaining:** real OpenIddict Identity↔BFF two-host E2E, independent current-user/tenant DB revalidation, session expiration/revocation, CSRF-protected logout and write APIs, distributed cache/keyring failure modes. BFF remains `Enabled=false`; Angular Password Grant and localStorage are unchanged. PR-head CI 42194597675 passed: 58/58 BFF and 42/42 Identity tests.
