@@ -46,7 +46,7 @@ public sealed class BffAtomicStoreStartupGuardTests
     public void Production_bff_uses_the_registered_atomic_provider_not_the_default_store()
     {
         var services = new ServiceCollection();
-        services.AddDistributedMemoryCache();
+        // SQL-backed implementations do not need IDistributedCache.
         services.AddLogging();
         services.AddSingleton<IBffAtomicTicketStore, StubAtomicStore>();
 
