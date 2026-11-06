@@ -222,20 +222,20 @@ public static class BffServiceCollectionExtensions
     }
 
     private static void AddArrayClaims(
-        System.Text.Json.JsonElement user,
+        global::System.Text.Json.JsonElement user,
         string property,
         string claimType,
         ClaimsIdentity identity)
     {
         if (!user.TryGetProperty(property, out var values) ||
-            values.ValueKind != System.Text.Json.JsonValueKind.Array)
+            values.ValueKind != global::System.Text.Json.JsonValueKind.Array)
         {
             return;
         }
 
         foreach (var value in values.EnumerateArray())
         {
-            if (value.ValueKind != System.Text.Json.JsonValueKind.String)
+            if (value.ValueKind != global::System.Text.Json.JsonValueKind.String)
                 continue;
 
             var claim = value.GetString();
