@@ -1,4 +1,5 @@
 using System.Net;
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
@@ -55,7 +56,7 @@ public sealed class FoundationIdentityBffTwoHostTests
         using var callback = await h.CallbackAsync(authorize.Headers.Location!, challenge.BrowserCookies);
         Assert.True(callback.StatusCode == HttpStatusCode.Redirect,
             "Real issuer callback failed: " + (int)callback.StatusCode + " " +
-            await callback.Content.ReadAsStringAsync());
+            await callback.Content.ReadAsStringAsync() + " Backchannel: " + h.BackchannelSummary);
         Assert.Equal("/dashboard", callback.Headers.Location?.OriginalString);
 
         var bffCookie = Assert.Single(GetCookies(callback),
@@ -168,6 +169,25 @@ public sealed class FoundationIdentityBffTwoHostTests
             ? cookies.ToArray()
             : [];
 
+    private sealed class IssuerHttpProbe(HttpMessageHandler identityHandler)
+        : DelegatingHandler(identityHandler)
+    {
+        private readonly ConcurrentQueue<string> _diagnostics = new();
+        public string Summary => string.Join(" | ", _diagnostics);
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var result = await base.SendAsync(request, cancellationToken);
+            // HTTP status + media type only. Never log access tokens, secrets,
+            // query contents, Authorization headers or response bodies.
+            _diagnostics.Enqueue(request.Method.Method + " " +
+                request.RequestUri?.AbsolutePath + " -> " + (int)result.StatusCode +
+                " [" + result.Content.Headers.ContentType?.MediaType + "]");
+            return result;
+        }
+    }
+
     private sealed record BffChallenge(Uri Authorize, string BrowserCookies);
 
     private sealed class Harness : IAsyncDisposable
@@ -181,12 +201,13 @@ public sealed class FoundationIdentityBffTwoHostTests
         private readonly WebApplication _bff;
         private readonly HttpClient _identityClient;
         private readonly HttpClient _bffClient;
-        private readonly HttpMessageHandler _identityBackchannel;
+        private readonly IssuerHttpProbe _identityBackchannel;
+        public string BackchannelSummary => _identityBackchannel.Summary;
 
         private Harness(
             WebApplication identity, WebApplication bff,
             HttpClient identityClient, HttpClient bffClient,
-            HttpMessageHandler identityBackchannel)
+            IssuerHttpProbe identityBackchannel)
         {
             _identity = identity;
             _bff = bff;
@@ -335,7 +356,7 @@ public sealed class FoundationIdentityBffTwoHostTests
                 BaseAddress = new Uri("https://" + IdentityHost)
             };
 
-            var backchannel = identityApp.GetTestServer().CreateHandler();
+            var backchannel = new IssuerHttpProbe(identityApp.GetTestServer().CreateHandler());
             var bffBuilder = WebApplication.CreateBuilder(
                 new WebApplicationOptions { EnvironmentName = Environments.Development });
             bffBuilder.WebHost.UseTestServer();
