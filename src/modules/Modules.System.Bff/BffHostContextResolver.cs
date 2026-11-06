@@ -29,6 +29,12 @@ public static class BffHostContextResolver
         if (host.Contains(':') || Uri.CheckHostName(host) == UriHostNameType.Unknown)
             return false;
 
+        // Identity-only subdomains may host the same Angular assets, but may
+        // NEVER issue BFF cookies, even if accidentally listed as SystemHosts.
+        if (host == "identity." + settings.WorkspaceBaseDomain ||
+            host == "auth." + settings.WorkspaceBaseDomain)
+            return false;
+
         if (settings.SystemHosts.Contains(host))
         {
             context = new BffHostContext("system", null, host);
