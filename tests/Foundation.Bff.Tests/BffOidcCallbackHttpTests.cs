@@ -371,6 +371,10 @@ public sealed class BffOidcCallbackHttpTests
                         claims:
                         [
                             new Claim("sub", _subject),
+                            new Claim("iat",
+                                new DateTimeOffset(now).ToUnixTimeSeconds().ToString(
+                                    global::System.Globalization.CultureInfo.InvariantCulture),
+                                ClaimValueTypes.Integer64),
                             new Claim("nonce", UseWrongNonce ? "wrong-nonce" : _nonce!)
                         ],
                         notBefore: now.AddSeconds(-10),
