@@ -167,6 +167,7 @@ public sealed class BffOidcCallbackHttpTests
                 options => options.BackchannelHttpHandler = issuer);
 
             var app = builder.Build();
+            app.UseDeveloperExceptionPage();
             app.UseAuthentication();
             app.MapBffEndpoints(builder.Configuration);
             app.MapGet("/__test/bff-ticket", async (HttpContext context) =>
@@ -192,7 +193,8 @@ public sealed class BffOidcCallbackHttpTests
         public async Task<LoginChallenge> BeginAsync()
         {
             using var response = await _client.GetAsync("/bff/auth/login?returnUrl=%2Fdashboard");
-            Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+            Assert.True(response.StatusCode == HttpStatusCode.Redirect,
+                $"Expected OIDC challenge 302 but got {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
             var authorize = response.Headers.Location;
             Assert.NotNull(authorize);
 
