@@ -143,6 +143,7 @@ public static class BffServiceCollectionExtensions
                                 context.Properties,
                                 context.HttpContext.Request,
                                 settings,
+                                context.ReturnUri,
                                 out _))
                         {
                             context.Fail("The authenticated account or tenant does not match the BFF host.");

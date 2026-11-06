@@ -31,6 +31,25 @@ public sealed class BffSessionContextValidatorTests
     }
 
     [Fact]
+    public void Validated_return_uri_is_read_from_ticket_received_context_not_cleared_properties()
+    {
+        var (settings, callback) = CreateSettings();
+        var principal = TenantPrincipal("tenant-a");
+        var properties = Properties("tenant", "tenant-a", callback);
+        properties.RedirectUri = null; // ASP.NET Core RemoteAuthenticationHandler clears this first.
+        var request = new DefaultHttpContext().Request;
+        request.Scheme = "https";
+        request.Host = new HostString("tenant-a.shinera.localhost");
+
+        Assert.True(BffSessionContextValidator.TryValidate(
+            principal, properties, request, settings, "/dashboard", out _));
+        Assert.False(BffSessionContextValidator.TryValidate(
+            principal, properties, request, settings, "//evil.example/path", out _));
+        Assert.False(BffSessionContextValidator.TryValidate(
+            principal, properties, request, settings, out _));
+    }
+
+    [Fact]
     public void System_principal_cannot_be_used_for_a_tenant_callback()
     {
         var (settings, callback) = CreateSettings();
