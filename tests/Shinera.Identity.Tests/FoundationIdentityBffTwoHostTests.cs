@@ -1,4 +1,5 @@
 using System.Net;
+using HttpMethod = System.Net.Http.HttpMethod;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
