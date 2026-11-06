@@ -21,3 +21,25 @@ jobs:
         run: dotnet test tests/Foundation.Bff.Tests/Foundation.Bff.Tests.csproj --no-build -c Release --logger "trx;LogFileName=bff-results.trx"
       - name: Existing Identity unit tests
         run: dotnet test tests/Shinera.Identity.Tests/Shinera.Identity.Tests.csproj --no-build -c Release
+
+  bff-atomic-sqlserver:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: 'CiOnly_BffSql2026!_NotProduction'
+        ports:
+          - 1433:1433
+    env:
+      SHINERA_SQLSERVER_TEST_CONNECTION: 'Server=127.0.0.1,1433;Database=master;User Id=sa;Password=CiOnly_BffSql2026!_NotProduction;Encrypt=True;TrustServerCertificate=True;Connect Timeout=5'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Restore BFF SQL integration tests
+        run: dotnet restore tests/Foundation.Bff.SqlServerTests/Foundation.Bff.SqlServerTests.csproj
+      - name: Run disposable SQL Server BFF atomicity tests
+        run: dotnet test tests/Foundation.Bff.SqlServerTests/Foundation.Bff.SqlServerTests.csproj --no-restore -c Release --logger "trx;LogFileName=bff-sql-results.trx"
