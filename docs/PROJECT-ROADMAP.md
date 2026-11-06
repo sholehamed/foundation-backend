@@ -175,3 +175,9 @@ The authorization endpoint currently handles GET; POST is explicitly refused to 
 - Acceptance assertions: OIDC callback redirects to the validated return path, protected `__Host-Foundation.Bff` host-only Secure/HttpOnly cookie contains no OAuth credentials, server ticket retains access/ID tokens, invalid state/nonce, tenant mismatch and reused code fail closed.
 - Tests are isolated from real DNS/production credentials. No production middleware options or cookie restrictions were relaxed. Latest-head CI must pass before any merge.
 - **Still required after PR #18:** End-to-end tests with two real Foundation TestServer hosts (OpenIddict Identity + BFF), including actual token endpoint passthrough, current user/tenant revalidation, identity cookies, and final browser session flows; then BFF-05 APIs, CSRF, logout, revocation and Angular migration.
+
+## BFF-05.1 — isolated read-only session endpoint (active feature branch)
+
+- Foundation's signed fake-issuer callback PR #18 is merged (`3f90363227ed5497c82a378c9f73093c46adcad4`, [CI 42143363623](https://github.com/sholehamed/foundation-backend/actions/runs/42143363623)). This does **not** replace the pending two-real-host OpenIddict integration gate.
+- `feat/bff-05-session-readonly-host-binding` introduces an opt-in, cookie-scheme-only `GET /bff/session` plus per-read registered-host/account/tenant context validation and no-store safe JSON. Isolated HTTP tests do not claim full auth E2E.
+- BFF-05 remains incomplete until CSRF, logout/revoke-all, expiration, current DB-grant revalidation and distributed-store checks. BFF-06 Angular migration remains blocked.

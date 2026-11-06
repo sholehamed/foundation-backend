@@ -20,6 +20,12 @@ public static class BffEndpointRouteBuilderExtensions
             .AllowAnonymous()
             .WithTags("BFF");
 
+        // Authenticate explicitly with the BFF scheme: existing bearer
+        // credentials must not grant a browser session.
+        endpoints.MapGet("/bff/session", GetSession)
+            .AllowAnonymous()
+            .WithTags("BFF");
+
         return endpoints;
     }
 
@@ -27,8 +33,7 @@ public static class BffEndpointRouteBuilderExtensions
         HttpContext httpContext,
         BffOidcSettings settings)
     {
-        httpContext.Response.Headers.CacheControl = "no-store";
-        httpContext.Response.Headers.Pragma = "no-cache";
+        SetNoStore(httpContext);
 
         var returnUrl = httpContext.Request.Query["returnUrl"].ToString();
         if (!Security.BffLocalReturnUrl.TryValidate(returnUrl, out var validatedReturnUrl))
@@ -77,5 +82,56 @@ public static class BffEndpointRouteBuilderExtensions
             properties.Items[BffDefaults.TenantProperty] = hostContext.TenantSlug;
 
         return Results.Challenge(properties, [BffDefaults.OidcScheme]);
+    }
+
+    private static async Task<IResult> GetSession(
+        HttpContext httpContext,
+        BffOidcSettings settings)
+    {
+        SetNoStore(httpContext);
+
+        // Do not use HttpContext.User: the host's default scheme is intended
+        // for legacy/native bearer clients, not a BFF cookie.
+        var authentication = await httpContext.AuthenticateAsync(BffDefaults.CookieScheme);
+        if (!authentication.Succeeded || authentication.Principal is null)
+            return Results.Unauthorized();
+
+        if (!BffSessionContextValidator.TryValidateActiveSession(
+                authentication.Principal,
+                authentication.Properties,
+                httpContext.Request,
+                settings,
+                out _))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var user = authentication.Principal;
+        var accountType = user.FindFirst("account_type")!.Value;
+        var username = user.FindFirst("username")?.Value;
+        var displayName = user.FindFirst("given_name")?.Value ?? username;
+
+        return Results.Ok(new
+        {
+            authenticated = true,
+            user = new
+            {
+                id = user.FindFirst("sub")!.Value,
+                username,
+                displayName
+            },
+            context = new
+            {
+                type = accountType,
+                tenantId = accountType == "tenant" ? user.FindFirst("tenant_id")?.Value : null,
+                tenantSlug = accountType == "tenant" ? user.FindFirst("tenant")?.Value : null
+            }
+        });
+    }
+
+    private static void SetNoStore(HttpContext context)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers.Pragma = "no-cache";
     }
 }

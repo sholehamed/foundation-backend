@@ -115,3 +115,10 @@ The following protocol parameters are needed on authorization: `client_id`, `res
 - **Security review adjustment:** removed `.AllowCredentials()` from the broad pre-existing CORS origin allowlist. Interactive Identity UI and `/api/connect/authorize` must be served on the **same origin**; no credentialed cross-origin workaround for CSRF/XSRF cookies.
 - **Not complete:** no proof of a real browser callback/token exchange and cookie issuance; no `/bff/session`, CSRF-protected BFF write APIs, logout/revocation, distributed refresh coordination or full Angular migration.
 - **Required next PR:** TestServer integration of full Authorization Code callback and server-held tokens (positive + failure/replay/cross-tenant tests), then implement BFF-05 session lifecycle and full-stack E2E. A CI-green challenge-only slice must not be described as production-ready.
+
+## BFF-05.1 read-only session contract — active branch, pending CI/merge
+
+- With `Identity:Bff:Enabled=true` **in an isolated test environment only**, `GET /bff/session` authenticates the explicit `Foundation.Bff` cookie scheme; a bearer token alone is not a BFF session. When disabled, the endpoint is not mapped (404).
+- `200` example: `{ "authenticated": true, "user": { "id": "<subject>", "username": "operator", "displayName": "Operator" }, "context": { "type": "tenant", "tenantId": "<uuid>", "tenantSlug": "tenant-a" } }`. System context returns `tenantId: null`, `tenantSlug: null`.
+- `401` for no/invalid cookie, `403` for a cookie whose stored System/Tenant context does not match the current registered host and callback origin. All responses use `Cache-Control: no-store`; none include OAuth credentials. API auth never redirects to an HTML login page.
+- This endpoint does **not** yet validate current Identity database security stamp or revoked sessions, or implement CSRF/Logout. Do not enable the BFF or switch Angular while those gates and real Identity↔BFF E2E are pending.
