@@ -111,3 +111,8 @@ This first slice does not alter any runtime authorization, seeding, migrations, 
 5. Build one System Users vertical slice (read/create/update/delete) end-to-end after security and data gates pass.
 
 All slices update `docs/PROJECT-STATE.md`, this architecture record, the relevant module notes and API contracts in the same PR. A passing build alone is not evidence of production tenant/security correctness.
+
+
+## FR-01A implementation handoff (2026-11-07)
+
+This slice adds a read-only SQL catalog inventory and consistent **read** Menu JSON fields with transitional aliases. It does not change permission policy evaluation, grant storage, deployed database state or Sidebar behavior. See [FR-01A catalog and Menu contract](../development/FR-01A-IDENTITY-CATALOG-AND-MENU-CONTRACT.md) for the actual seeder evidence, SQL procedure and remaining gaps. FR-01B covers normalizing permission claim contracts and validating menu tree integrity only after a compatibility and persisted-data review.

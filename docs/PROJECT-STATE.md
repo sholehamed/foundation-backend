@@ -1,5 +1,12 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-01A — Menu read contract and read-only SQL catalog inventory (2026-11-07)
+
+- **Implementation in progress / PR CI gate:** [FR-01A handoff](development/FR-01A-IDENTITY-CATALOG-AND-MENU-CONTRACT.md), [read-only SQL inventory](sql/fr-01-identity-catalog-inventory.sql). Canonical Menu GetById/PagedList responses now include `parentId`, `route`, `externalUrl` (plus `parentTitle` in paged list); old response `pMenuId` / `url` / `pMenu` fields remain as read-only deprecated aliases. Category menu rows now include `externalUrl`. No grants, migrations, current-user navigation, BFF or System permission enforcement changes.
+- **Source verification:** Historical `DefaultSeedData` module/resource/menu records are *not* seeded on normal startup; these calls are commented in `DefaultIdentitySeedContributor`. Production Permission.Code uniqueness migration requires explicit reviewed opt-in; script reports its status. Script has not run against a live deployment; do not treat its checks as verified DB facts.
+- **Security next:** audit the Permission.Code/Name claim discrepancy, menu parent cycles, persisted key collisions, and role/group/tenant effective-grant resolution before introducing automatic catalog reconciliation.
+
+
 ## Feature Registry FR-00 — draft implementation (2026-11-07)
 
 - **Proposed architecture and phased handoff:** [Feature Registry & Authorization](architecture/feature-registry-authorization.md). Existing Modules/Resources/API+UI Resources/Permissions/Menus, scoped System/Tenant authorization and Angular Sidebar are inventoried. This is not a completed registry or automatic grant system.

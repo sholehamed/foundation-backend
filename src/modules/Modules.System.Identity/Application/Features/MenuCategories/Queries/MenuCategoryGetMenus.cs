@@ -19,6 +19,7 @@ namespace Modules.System.Identity.Application.Features.MenuCategories.Queries
         public string? Icon { get; set; }
         public short Order { get; set; }
         public string? Route { get; set; }
+        public string? ExternalUrl { get; set; }
         public Guid? PermissionId { get; set; }
         public string? Permission { get; set; }
         public static IQueryable<Menu> Apply(IQueryable<Menu> query, string? text)
