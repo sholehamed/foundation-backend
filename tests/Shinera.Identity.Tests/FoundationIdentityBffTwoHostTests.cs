@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -27,6 +28,7 @@ using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using Modules.System.Identity.Web.Endpoints;
 using Modules.System.Identity.Web.Util;
 using OpenIddict.Abstractions;
+using Server.Bff;
 using Xunit;
 
 namespace Shinera.Identity.Tests;
@@ -98,6 +100,47 @@ public sealed class FoundationIdentityBffTwoHostTests
         using var wrongHost = await h.ReadSessionAsync(
             tenant ? Harness.SystemHost : Harness.TenantHost, cookiePair);
         Assert.Equal(HttpStatusCode.Forbidden, wrongHost.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Real_openiddict_callback_with_Web_validator_revokes_changed_identity_stamp(
+        bool tenant)
+    {
+        await using var h = await Harness.StartAsync(withLiveWebValidator: true);
+        var host = tenant ? Harness.TenantHost : Harness.SystemHost;
+        var identityCookie = await h.IdentitySignInAsync(tenant);
+        var challenge = await h.BeginBffAsync(host);
+        using var authorization = await h.AuthorizeAsync(challenge.Authorize, identityCookie);
+        Assert.Equal(HttpStatusCode.Redirect, authorization.StatusCode);
+        Assert.Contains("code=", authorization.Headers.Location!.Query);
+
+        using var callback = await h.CallbackAsync(
+            authorization.Headers.Location!, challenge.BrowserCookies);
+        Assert.True(callback.StatusCode == HttpStatusCode.Redirect,
+            "Real OIDC+Web validation callback failed: " +
+            (int)callback.StatusCode + " " + await callback.Content.ReadAsStringAsync() +
+            " Backchannel: " + h.BackchannelSummary);
+
+        var browserCookie = Assert.Single(GetCookies(callback),
+            x => x.StartsWith(BffDefaults.CookieName + "=", StringComparison.Ordinal));
+        Assert.DoesNotContain("identity_stamp", browserCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("security_stamp", browserCookie, StringComparison.OrdinalIgnoreCase);
+        var cookie = browserCookie.Split(';')[0];
+
+        using var initiallyValid = await h.ReadSessionAsync(host, cookie);
+        Assert.Equal(HttpStatusCode.OK, initiallyValid.StatusCode);
+
+        // Check the actual OIDC-produced ticket, not a test-only seeded one.
+        await h.ChangeSecurityStampAsync(tenant, "rotated-stamp");
+        using var invalidated = await h.ReadSessionAsync(host, cookie);
+        Assert.Equal(HttpStatusCode.Unauthorized, invalidated.StatusCode);
+
+        // Reverting DB state cannot resurrect a server-revoked ticket.
+        await h.ChangeSecurityStampAsync(tenant, tenant ? "tenant-stamp" : "system-stamp");
+        using var replay = await h.ReadSessionAsync(host, cookie);
+        Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
     }
 
     [Fact]
@@ -273,7 +316,7 @@ public sealed class FoundationIdentityBffTwoHostTests
             _identityBackchannel = identityBackchannel;
         }
 
-        public static async Task<Harness> StartAsync()
+        public static async Task<Harness> StartAsync(bool withLiveWebValidator = false)
         {
             var identityBuilder = WebApplication.CreateBuilder(
                 new WebApplicationOptions { EnvironmentName = Environments.Development });
@@ -294,8 +337,12 @@ public sealed class FoundationIdentityBffTwoHostTests
             // request scopes. Generating it inside AddDbContext's options
             // callback would create a different database for every scope.
             var databaseName = Guid.NewGuid().ToString("N");
+            // One explicitly shared InMemory root across two independent DI
+            // containers: the real issuer owns writes, the BFF host reads
+            // current user/tenant/stamp state through the Web composition bridge.
+            var databaseRoot = new InMemoryDatabaseRoot();
             identityBuilder.Services.AddDbContext<IdentityDbContext>(options =>
-                options.UseInMemoryDatabase(databaseName).UseOpenIddict());
+                options.UseInMemoryDatabase(databaseName, databaseRoot).UseOpenIddict());
             identityBuilder.Services.AddScoped<ITenantContext, TenantContext>();
             identityBuilder.Services.AddScoped<IIdentityDbContext>(sp =>
                 sp.GetRequiredService<IdentityDbContext>());
@@ -434,6 +481,19 @@ public sealed class FoundationIdentityBffTwoHostTests
             });
             bffBuilder.Services.AddBffAuthentication(
                 bffBuilder.Configuration, bffBuilder.Environment);
+            if (withLiveWebValidator)
+            {
+                bffBuilder.Services.AddDbContext<IdentityDbContext>(options =>
+                    options.UseInMemoryDatabase(databaseName, databaseRoot).UseOpenIddict());
+                bffBuilder.Services.AddScoped<ITenantContext, TenantContext>();
+                bffBuilder.Services.AddScoped<IIdentityDbContext>(sp =>
+                    sp.GetRequiredService<IdentityDbContext>());
+                bffBuilder.Services.AddSingleton<ISystemTenantScope, DefaultSystemTenantScope>();
+                bffBuilder.Services.AddScoped<IIdentityPrincipalFactory, IdentityPrincipalFactory>();
+                // Register the actual production Web host bridge, including
+                // OIDC ticket snapshot capture and BFF cookie revalidation.
+                bffBuilder.Services.AddBffIdentitySessionValidation();
+            }
             // Only the test HTTP transport is overridden. Metadata discovery,
             // certificate/JWKS signature validation, PKCE, token exchange and
             // UserInfo are handled by the real production middleware.
@@ -532,11 +592,16 @@ public sealed class FoundationIdentityBffTwoHostTests
         }
 
         public async Task RevokeTenantSecurityStampAsync()
+            => await ChangeSecurityStampAsync(tenant: true,
+                "revoked-" + Guid.NewGuid().ToString("N"));
+
+        public async Task ChangeSecurityStampAsync(bool tenant, string stamp)
         {
             using var scope = _identity.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            var user = await db.Users.FirstAsync(x => x.UserType == UserType.Tenant);
-            user.SecurityStamp = "revoked-" + Guid.NewGuid().ToString("N");
+            var user = await db.Users.IgnoreQueryFilters(["tenant"]).FirstAsync(x =>
+                x.UserType == (tenant ? UserType.Tenant : UserType.System));
+            user.SecurityStamp = stamp;
             await db.SaveChangesAsync();
         }
 
