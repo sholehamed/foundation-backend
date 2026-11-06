@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -29,7 +30,24 @@ public static class BffServiceCollectionExtensions
 
         var settings = BffOidcSettings.FromConfiguration(configuration, environment);
 
-        if (!services.Any(descriptor => descriptor.ServiceType == typeof(IDistributedCache)))
+        // IDistributedCache alone has no CAS / conditional renewal operation.
+        // Fail startup in staging/production until the host explicitly installs
+        // a reviewed provider with atomic renew-if-active/revoke semantics.
+        var atomic = services.LastOrDefault(descriptor =>
+            descriptor.ServiceType == typeof(IBffAtomicTicketStore));
+        if (!environment.IsDevelopment() &&
+            (atomic is null || atomic.Lifetime != ServiceLifetime.Singleton))
+        {
+            throw new InvalidOperationException(
+                "BFF requires a singleton IBffAtomicTicketStore with a validated " +
+                "atomic renewal/revocation backend outside Development. " +
+                "IDistributedCache alone is not sufficient.");
+        }
+
+        // An atomic SQL provider does not need a separate IDistributedCache;
+        // only the Development tombstone-backed implementation does.
+        if (atomic is null &&
+            !services.Any(descriptor => descriptor.ServiceType == typeof(IDistributedCache)))
         {
             if (!environment.IsDevelopment())
             {
@@ -42,6 +60,19 @@ public static class BffServiceCollectionExtensions
 
         services.AddSingleton(settings);
         services.AddBffSessionInfrastructure();
+
+        // In test/dev the standard tombstone-backed store remains available.
+        // A deployed host with an explicitly registered atomic provider MUST
+        // use that very same provider for CookieAuthentication ITicketStore.
+        if (atomic is not null)
+        {
+            if (atomic.Lifetime != ServiceLifetime.Singleton)
+                throw new InvalidOperationException(
+                    "IBffAtomicTicketStore must have singleton lifetime.");
+
+            services.Replace(ServiceDescriptor.Singleton<ITicketStore>(
+                provider => provider.GetRequiredService<IBffAtomicTicketStore>()));
+        }
 
         services.AddAuthentication()
             .AddOpenIdConnect(BffDefaults.OidcScheme, options =>
