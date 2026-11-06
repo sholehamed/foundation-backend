@@ -181,7 +181,7 @@ public sealed class BffLiveCookieHttpTests
         public async Task<HttpResponseMessage> GetSessionAsync(string cookie)
         {
             using var request = new HttpRequestMessage(
-                HttpMethod.Get, "https://" + Host + "/bff/session");
+                global::System.Net.Http.HttpMethod.Get, "https://" + Host + "/bff/session");
             request.Headers.TryAddWithoutValidation("Cookie", cookie);
             return await _client.SendAsync(request);
         }
