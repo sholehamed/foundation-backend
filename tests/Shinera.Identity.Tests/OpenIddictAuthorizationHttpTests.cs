@@ -61,6 +61,24 @@ public sealed class OpenIddictAuthorizationHttpTests
     }
 
     [Fact]
+    public async Task Authorization_code_exchange_revalidates_security_stamp()
+    {
+        await using var harness = await Harness.StartAsync();
+        var cookie = await harness.SignInAsSystemAsync();
+        var response = await harness.AuthorizeAsync(cookie);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        var code = QueryHelpers.ParseQuery(response.Headers.Location!.Query)["code"].ToString();
+        Assert.False(string.IsNullOrWhiteSpace(code));
+
+        await harness.ChangeSystemSecurityStampAsync();
+
+        var token = await harness.ExchangeAsync(code, harness.Verifier);
+        Assert.Equal(HttpStatusCode.BadRequest, token.StatusCode);
+        Assert.Contains("invalid_grant", await token.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Wrong_pkce_verifier_rejects_token_exchange()
     {
         await using var harness = await Harness.StartAsync();
@@ -224,7 +242,8 @@ public sealed class OpenIddictAuthorizationHttpTests
                     options.AddDevelopmentEncryptionCertificate()
                         .AddDevelopmentSigningCertificate();
                     options.UseAspNetCore()
-                        .EnableAuthorizationEndpointPassthrough();
+                        .EnableAuthorizationEndpointPassthrough()
+                        .EnableTokenEndpointPassthrough();
                 });
 
             builder.Services.AddAuthentication(
@@ -256,6 +275,8 @@ public sealed class OpenIddictAuthorizationHttpTests
             app.UseAuthorization();
 
             new Connect().Map(app);
+            app.MapPost("/api/connect/token",
+                new Auth().ExchangeAuthorizationCodeAsync).AllowAnonymous();
             app.MapGet("/__test/sign-in", async (
                 HttpContext context, IdentityDbContext db,
                 IIdentityPrincipalFactory principalFactory) =>
@@ -336,6 +357,15 @@ public sealed class OpenIddictAuthorizationHttpTests
             return response.Headers.GetValues("Set-Cookie")
                 .First(x => x.StartsWith("__Host-Foundation.Identity=", StringComparison.Ordinal))
                 .Split(';')[0];
+        }
+
+        public async Task ChangeSystemSecurityStampAsync()
+        {
+            using var scope = _app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            var user = await db.Users.FirstAsync(x => x.UserType == UserType.System);
+            user.SecurityStamp = "revoked-" + Guid.NewGuid().ToString("N");
+            await db.SaveChangesAsync();
         }
 
         public async Task<HttpResponseMessage> AuthorizeAsync(

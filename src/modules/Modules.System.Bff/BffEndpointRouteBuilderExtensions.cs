@@ -46,7 +46,7 @@ public static class BffEndpointRouteBuilderExtensions
         if (!string.IsNullOrEmpty(suppliedContext) &&
             !string.Equals(suppliedContext, hostContext.LoginContext, StringComparison.Ordinal))
         {
-            return Results.Forbid();
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
 
         var suppliedTenant = httpContext.Request.Query["tenant"].ToString();
