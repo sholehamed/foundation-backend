@@ -24,7 +24,7 @@ public sealed class BffOidcChallengeHttpTests
         var response = await harness.Client.GetAsync(
             "https://tenant-a.shinera.localhost/bff/auth/login?returnUrl=%2Fdashboard");
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        await AssertResponseStatusAsync(response, HttpStatusCode.Redirect);
         Assert.NotNull(response.Headers.Location);
 
         var location = response.Headers.Location!;
@@ -57,7 +57,7 @@ public sealed class BffOidcChallengeHttpTests
         var response = await harness.Client.GetAsync(
             "https://localhost/bff/auth/login?returnUrl=%2Fsystem%2Fdashboard");
 
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        await AssertResponseStatusAsync(response, HttpStatusCode.Redirect);
         var query = QueryHelpers.ParseQuery(response.Headers.Location!.Query);
 
         Assert.Equal("system", query["login_context"].ToString());
@@ -91,7 +91,7 @@ public sealed class BffOidcChallengeHttpTests
         var response = await harness.Client.GetAsync(
             "https://tenant-a.shinera.localhost/bff/auth/login?returnUrl=%2Fdashboard&tenant=tenant-b");
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        await AssertResponseStatusAsync(response, HttpStatusCode.Forbidden);
     }
 
     [Fact]
@@ -103,6 +103,15 @@ public sealed class BffOidcChallengeHttpTests
             "https://unrelated.example/bff/auth/login?returnUrl=%2Fdashboard");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    private static async Task AssertResponseStatusAsync(HttpResponseMessage response, HttpStatusCode expected)
+    {
+        if (response.StatusCode != expected)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.Fail($"Expected {(int)expected}, got {(int)response.StatusCode}. TestServer diagnostic: {body}");
+        }
     }
 
     private sealed class Harness : IAsyncDisposable
@@ -149,6 +158,7 @@ public sealed class BffOidcChallengeHttpTests
                 });
 
             var app = builder.Build();
+            app.UseDeveloperExceptionPage();
             app.UseAuthentication();
             app.MapBffEndpoints(builder.Configuration);
             await app.StartAsync();

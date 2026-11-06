@@ -53,7 +53,7 @@ public static class BffEndpointRouteBuilderExtensions
         if (!string.IsNullOrEmpty(suppliedTenant) &&
             !string.Equals(suppliedTenant, hostContext.TenantSlug, StringComparison.OrdinalIgnoreCase))
         {
-            return Results.Forbid();
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
 
         var callbackUri = UriHelper.BuildAbsolute(
