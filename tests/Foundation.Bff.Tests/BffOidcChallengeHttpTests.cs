@@ -106,6 +106,37 @@ public sealed class BffOidcChallengeHttpTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("identity")]
+    [InlineData("auth")]
+    [InlineData("api")]
+    [InlineData("www")]
+    [InlineData("admin")]
+    public async Task Identity_and_infrastructure_hosts_cannot_become_tenant_Bff_hosts(
+        string infrastructureSlug)
+    {
+        await using var harness = await Harness.StartAsync();
+        using var response = await harness.Client.GetAsync(
+            "https://" + infrastructureSlug +
+            ".shinera.localhost/bff/auth/login?returnUrl=%2Fdashboard");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("unrecognized_bff_host",
+            await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Misconfigured_Identity_host_in_SystemHosts_still_cannot_issue_Bff_cookie()
+    {
+        await using var harness = await Harness.StartAsync(registerIdentityAsSystem: true);
+        using var response = await harness.Client.GetAsync(
+            "https://identity.shinera.localhost/bff/auth/login?returnUrl=%2Fsystem%2Fdashboard");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("unrecognized_bff_host",
+            await response.Content.ReadAsStringAsync());
+    }
+
     private static async Task AssertResponseStatusAsync(HttpResponseMessage response, HttpStatusCode expected)
     {
         if (response.StatusCode != expected)
@@ -126,7 +157,7 @@ public sealed class BffOidcChallengeHttpTests
             Client = client;
         }
 
-        public static async Task<Harness> StartAsync()
+        public static async Task<Harness> StartAsync(bool registerIdentityAsSystem = false)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions { EnvironmentName = Environments.Development });
@@ -141,7 +172,9 @@ public sealed class BffOidcChallengeHttpTests
                 ["Identity:Bff:ClientSecret"] = "test-secret-with-more-than-thirty-two-characters",
                 ["Identity:Bff:RedirectUris:0"] = "https://tenant-a.shinera.localhost/signin-oidc",
                 ["Identity:Bff:RedirectUris:1"] = "https://localhost/signin-oidc",
-                ["Identity:Bff:SystemHosts:0"] = "localhost"
+                ["Identity:Bff:SystemHosts:0"] = "localhost",
+                ["Identity:Bff:SystemHosts:1"] = registerIdentityAsSystem
+                    ? "identity.shinera.localhost" : "localhost"
             });
 
             builder.Services.AddBffAuthentication(builder.Configuration, builder.Environment);

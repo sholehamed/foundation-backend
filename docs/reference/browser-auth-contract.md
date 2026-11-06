@@ -1,5 +1,12 @@
 # Browser authentication HTTP contract — v1 proposal
 
+## Identity UI ↔ BFF login contract v1 — 2026-11-06
+
+- **Contract frozen:** [Identity UI ↔ BFF login](../architecture/identity-ui-bff-login-contract.md): use the **existing Angular SignInComponent** on an Identity-only origin with same-origin `/api/system/Auth/interactive-login` (CAPTCHA, XSRF, Identity cookie), resume Code+PKCE, then BFF host-scoped opaque Cookie and future Angular `/bff/session`. No second Angular project or Razor login required.
+- **Defense in depth:** Backend BFF rejects reserved Identity/auth/infrastructure hosts as tenant workspaces, and Angular will not bootstrap TenantContext on the Identity origin. Automated host-boundary tests added.
+- **Scope:** contract and host hardening only; legacy Angular Password Grant/localStorage/interceptors remain unchanged, BFF disabled by default. Full browser/SQL HA/proxy/keyring/upstream token revocation and BFF-06/07 release gates remain open.
+
+
 ## BFF-05.4a account-scoped SQL logout-all — draft PR #35 (2026-11-06)
 
 - [PR #35](https://github.com/sholehamed/foundation-backend/pull/35) introduces `POST /bff/auth/logout-all`, requiring a live host-bound cookie, same-origin/CSRF and using the **authenticated OIDC `sub` only**. Web SQL adapter revokes all existing subject-owned sessions in atomic SQL UPDATE, clears encrypted ticket ciphertext, and denies late renewals. `IBffAccountSessionRevoker` keeps BFF module independent of SQL implementation.
