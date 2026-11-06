@@ -1,5 +1,12 @@
 # Foundation Backend — BFF implementation roadmap
 
+## Identity UI ↔ BFF login contract v1 — 2026-11-06
+
+- **Contract frozen:** [Identity UI ↔ BFF login](architecture/identity-ui-bff-login-contract.md): use the **existing Angular SignInComponent** on an Identity-only origin with same-origin `/api/system/Auth/interactive-login` (CAPTCHA, XSRF, Identity cookie), resume Code+PKCE, then BFF host-scoped opaque Cookie and future Angular `/bff/session`. No second Angular project or Razor login required.
+- **Defense in depth:** Backend BFF rejects reserved Identity/auth/infrastructure hosts as tenant workspaces, and Angular will not bootstrap TenantContext on the Identity origin. Automated host-boundary tests added.
+- **Scope:** contract and host hardening only; legacy Angular Password Grant/localStorage/interceptors remain unchanged, BFF disabled by default. Full browser/SQL HA/proxy/keyring/upstream token revocation and BFF-06/07 release gates remain open.
+
+
 ## Verified merged BFF-05.4a local logout-all and BFF-05.5b.3 SQL cleanup — 2026-11-06
 
 - **Merged SQL cleanup:** [PR #34](https://github.com/sholehamed/foundation-backend/pull/34) at `576b7941fada322fc32def221836ff211f469574`, [final CI #42218028623](https://github.com/sholehamed/foundation-backend/actions/runs/42218028623) full build, **94 BFF + 60 Identity + 12 real SQL Server** tests. Bounded maintenance-only DELETE retains every ticket row for 48 hours after original absolute expiry and preserves fresh active/revoked rows. Must schedule externally with separate maintenance principal.
