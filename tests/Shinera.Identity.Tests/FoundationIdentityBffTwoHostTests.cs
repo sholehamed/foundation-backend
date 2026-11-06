@@ -164,6 +164,62 @@ public sealed class FoundationIdentityBffTwoHostTests
             x => x.StartsWith(BffDefaults.CookieName + "=", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Real_identity_session_supports_csrf_logout_without_revoking_other_bff_tickets(bool tenant)
+    {
+        await using var h = await Harness.StartAsync();
+        var host = tenant ? Harness.TenantHost : Harness.SystemHost;
+        var identityCookie = await h.IdentitySignInAsync(tenant);
+
+        async Task<string> SignInBffAsync()
+        {
+            var challenge = await h.BeginBffAsync(host);
+            using var authorize = await h.AuthorizeAsync(challenge.Authorize, identityCookie);
+            Assert.Equal(HttpStatusCode.Redirect, authorize.StatusCode);
+            Assert.Contains("code=", authorize.Headers.Location!.Query);
+            using var callback = await h.CallbackAsync(authorize.Headers.Location!, challenge.BrowserCookies);
+            Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
+            return Assert.Single(GetCookies(callback),
+                x => x.StartsWith(BffDefaults.CookieName + "=", StringComparison.Ordinal)).Split(';')[0];
+        }
+
+        var first = await SignInBffAsync();
+        var second = await SignInBffAsync();
+        Assert.NotEqual(first, second);
+        using var csrf = await h.SendBffAsync(host, "/bff/auth/csrf", HttpMethod.Get, first);
+        Assert.Equal(HttpStatusCode.NoContent, csrf.StatusCode);
+        var tokenCookie = Assert.Single(GetCookies(csrf),
+            x => x.StartsWith("XSRF-TOKEN=", StringComparison.Ordinal)).Split(';')[0];
+        var token = Uri.UnescapeDataString(tokenCookie["XSRF-TOKEN=".Length..]);
+        var antiCookie = Assert.Single(GetCookies(csrf),
+            x => x.StartsWith("__Host-Foundation.Antiforgery=", StringComparison.Ordinal)).Split(';')[0];
+        var cookies = first + "; " + antiCookie;
+
+        using var rejected = await h.SendBffAsync(host, "/bff/auth/logout", HttpMethod.Post, cookies);
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        using var stillActive = await h.ReadSessionAsync(host, first);
+        Assert.Equal(HttpStatusCode.OK, stillActive.StatusCode);
+
+        using var logout = await h.SendBffAsync(host, "/bff/auth/logout", HttpMethod.Post, cookies, token);
+        Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+        Assert.Contains("no-store", logout.Headers.CacheControl?.ToString());
+        using var revoked = await h.ReadSessionAsync(host, first);
+        Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        using var replay = await h.SendBffAsync(host, "/bff/auth/logout", HttpMethod.Post, cookies, token);
+        Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
+        using var other = await h.ReadSessionAsync(host, second);
+        Assert.Equal(HttpStatusCode.OK, other.StatusCode);
+
+        // Local BFF logout deliberately preserves the Identity session:
+        // a fresh code flow can still create a NEW ticket, never revive first.
+        var third = await SignInBffAsync();
+        Assert.NotEqual(first, third);
+        using var original = await h.ReadSessionAsync(host, first);
+        Assert.Equal(HttpStatusCode.Unauthorized, original.StatusCode);
+    }
+
     private static string[] GetCookies(HttpResponseMessage response)
         => response.Headers.TryGetValues("Set-Cookie", out var cookies)
             ? cookies.ToArray()
@@ -459,6 +515,18 @@ public sealed class FoundationIdentityBffTwoHostTests
             using var request = new HttpRequestMessage(
                 global::System.Net.Http.HttpMethod.Get, "https://" + host + "/bff/session");
             request.Headers.TryAddWithoutValidation("Cookie", cookie);
+            return await _bffClient.SendAsync(request);
+        }
+
+        public async Task<HttpResponseMessage> SendBffAsync(
+            string host, string path, HttpMethod method, string cookies, string? token = null)
+        {
+            using var request = new HttpRequestMessage(method, "https://" + host + path);
+            request.Headers.TryAddWithoutValidation("Cookie", cookies);
+            request.Headers.TryAddWithoutValidation("Origin", "https://" + host);
+            request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
+            if (token is not null)
+                request.Headers.TryAddWithoutValidation("X-XSRF-TOKEN", token);
             return await _bffClient.SendAsync(request);
         }
 
