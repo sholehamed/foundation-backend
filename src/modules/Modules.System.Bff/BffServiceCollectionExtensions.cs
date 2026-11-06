@@ -136,20 +136,26 @@ public static class BffServiceCollectionExtensions
                         AddArrayClaims(context.User.RootElement, "permissions", "permission", identity);
                         return Task.CompletedTask;
                     },
-                    OnTicketReceived = context =>
+                    OnTicketReceived = async context =>
                     {
+                        context.HttpContext.Response.Headers.CacheControl = "no-store";
+
                         if (!BffSessionContextValidator.TryValidate(
                                 context.Principal,
                                 context.Properties,
                                 context.HttpContext.Request,
                                 settings,
+                                context.ReturnUri,
                                 out _))
                         {
-                            context.Fail("The authenticated account or tenant does not match the BFF host.");
+                            // RemoteAuthenticationHandler only checks Handled/Skipped
+                            // at TicketReceived; Fail() does not stop SignInAsync here.
+                            // HandleResponse() prevents any BFF cookie issuance.
+                            context.HandleResponse();
+                            context.HttpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                            await context.HttpContext.Response.WriteAsJsonAsync(
+                                new { error = "bff_session_context_mismatch" });
                         }
-
-                        context.HttpContext.Response.Headers.CacheControl = "no-store";
-                        return Task.CompletedTask;
                     },
                     OnRemoteFailure = async context =>
                     {

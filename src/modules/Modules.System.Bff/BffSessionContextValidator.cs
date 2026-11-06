@@ -11,11 +11,27 @@ namespace Modules.System.Bff;
 /// </summary>
 public static class BffSessionContextValidator
 {
+    /// <summary>
+    /// Compatibility overload for callers that still hold a RedirectUri in
+    /// AuthenticationProperties. The OIDC TicketReceived event must use the
+    /// overload taking TicketReceivedContext.ReturnUri instead, because the
+    /// framework clears AuthenticationProperties.RedirectUri first.
+    /// </summary>
     public static bool TryValidate(
         ClaimsPrincipal? principal,
         AuthenticationProperties? properties,
         HttpRequest request,
         BffOidcSettings settings,
+        out string error)
+        => TryValidate(
+            principal, properties, request, settings, properties?.RedirectUri, out error);
+
+    public static bool TryValidate(
+        ClaimsPrincipal? principal,
+        AuthenticationProperties? properties,
+        HttpRequest request,
+        BffOidcSettings settings,
+        string? returnUri,
         out string error)
     {
         error = "The OIDC identity does not match the initiating browser context.";
@@ -67,7 +83,7 @@ public static class BffSessionContextValidator
             }
         }
 
-        if (!Security.BffLocalReturnUrl.TryValidate(properties.RedirectUri, out _))
+        if (!Security.BffLocalReturnUrl.TryValidate(returnUri, out _))
             return false;
 
         error = string.Empty;

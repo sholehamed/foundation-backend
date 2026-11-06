@@ -56,3 +56,10 @@
 ## How to resume safely
 
 Inspect current GitHub `main`, the open PRs and the latest CI first. Start a new focused branch from current `main` for BFF-04 callback integration E2E, keep `Identity:Bff:Enabled=false` by default, and update this file plus the project state/roadmap on each functional change. Do not merge failing CI, silently loosen cookie/CORS rules or remove legacy Password Grant without explicit migration evidence.
+
+## Active BFF-04.3 callback HTTP integration tests — PR #18 (Draft, not merged)
+
+- [PR #18](https://github.com/sholehamed/foundation-backend/pull/18), branch `test/bff-04-real-oidc-callback`, extends `tests/Foundation.Bff.Tests/BffOidcCallbackHttpTests.cs` with an in-process **fake OIDC issuer** that exposes discovery/JWKS, signs RS256 ID tokens and handles code+PKCE token exchange and UserInfo. The **actual ASP.NET Core BFF OIDC middleware** processes the callback; the fake issuer does not represent the real Foundation Identity module.
+- Acceptance assertions: OIDC callback redirects to the validated return path, protected `__Host-Foundation.Bff` host-only Secure/HttpOnly cookie contains no OAuth credentials, server ticket retains access/ID tokens, invalid state/nonce, tenant mismatch and reused code fail closed.
+- Tests are isolated from real DNS/production credentials. No production middleware options or cookie restrictions were relaxed. Latest-head CI must pass before any merge.
+- **Still required after PR #18:** End-to-end tests with two real Foundation TestServer hosts (OpenIddict Identity + BFF), including actual token endpoint passthrough, current user/tenant revalidation, identity cookies, and final browser session flows; then BFF-05 APIs, CSRF, logout, revocation and Angular migration.
