@@ -1,5 +1,12 @@
 # Foundation browser BFF — phased implementation (not production-ready)
 
+## BFF-05.5b.3 — SQL cleanup implementation checkpoint (2026-11-06)
+
+- [Draft PR #34](https://github.com/sholehamed/foundation-backend/pull/34) implements `SqlServerBffSessionCleanup.DeleteExpiredBatchAsync`: parameterized maximum 1,000 rows, 48-hour post-absolute-expiry retention using SQL Server UTC, bounded SQL DELETE; no automatic web-host job and no additional runtime database privileges. An operator-managed maintenance SQL principal requires separate DELETE rights.
+- Real SQL Server integration tests exercise old revoked/expired rows versus young active/revoked rows, batch limits/idempotence, inside-retention protection and no stale renewal resurrection. Latest PR-head CI remains the acceptance gate; document detailed [operations handoff](../../../docs/development/BFF-05-5C-SQL-CLEANUP.md).
+- This is NOT the BFF-05.4 logout-all/Identity token revocation or production SQL HA/keyring/browser certification; BFF opt-in stays off and Angular unchanged.
+
+
 ## Verified BFF-05.5b.2 — merged SQL Server transactional atomic store (2026-11-06)
 
 - **Merged:** [PR #32](https://github.com/sholehamed/foundation-backend/pull/32) at `c2ebf86053c17fb87309ec630f932ac32701a127`. [Final latest-head CI #42215944644](https://github.com/sholehamed/foundation-backend/actions/runs/42215944644) passed solution build, **94/94 BFF + 60/60 Identity + 9/9 real SQL Server integration tests** (163 total, zero failures).
