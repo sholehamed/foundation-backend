@@ -209,7 +209,7 @@ public sealed class BffSessionHttpTests
                 c => c.StartsWith(BffDefaults.CookieName + "=", StringComparison.Ordinal));
         }
 
-        public Task<HttpResponseMessage> ReadSessionAsync(
+        public async Task<HttpResponseMessage> ReadSessionAsync(
             string? cookie,
             string host,
             bool bearer = false)
@@ -220,7 +220,7 @@ public sealed class BffSessionHttpTests
                 request.Headers.TryAddWithoutValidation("Cookie", cookie);
             if (bearer)
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "some-legacy-token");
-            return _client.SendAsync(request);
+            return await _client.SendAsync(request);
         }
 
         public async ValueTask DisposeAsync()
