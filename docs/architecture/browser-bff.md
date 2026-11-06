@@ -6,10 +6,10 @@
 
 | Slice | Status | Evidence | Boundary |
 | --- | --- | --- | --- |
-| BFF-01 — server-side ticket store | Implemented, CI green | `Modules.System.Bff/DistributedBffTicketStore.cs`, PR #6 | The reusable store/cookie primitives exist; the BFF module is not composed into `Web`. |
+| BFF-01 — server-side ticket store | Implemented, CI green | `Modules.System.Bff/DistributedBffTicketStore.cs`, PR #6 | The store/cookie primitives exist; PR #16 composes the module into Web but keeps it disabled by default. |
 | BFF-02 — Identity interactive session | Implemented, CI green | `IdentityServerCookieDefaults`, `IUserCredentialAuthenticator`, `Auth.cs`, PR #8 | Issues only the separate Identity Server cookie. It does not yet complete OpenIddict authorization or create a BFF session. |
 | Authorization Code + PKCE | **Merged (PR #11)** | `Web/Endpoints/Connect.cs`, `IdentitySessionValidator`, BFF client seeder | Code+PKCE exchange and rejection tests green in isolated TestServer CI; does not yet supply browser BFF session. |
-| BFF OIDC callback + session | Planned | Roadmap BFF-04 | Confidential client, callback validation, server-side token/ticket storage and BFF cookie are not wired. |
+| BFF OIDC callback + session | **In PR #16, opt-in; not end-to-end proven** | BFF challenge tests / code | ASP.NET OIDC challenge + callback middleware and ticket store registered. Actual callback/code exchange and issuance not yet integration-tested. |
 | Browser endpoints + Angular migration | Planned | Roadmap BFF-05/06 | No production browser BFF endpoints or Angular migration yet. |
 
 The current implementation is deliberately split across two independent cookies:
@@ -134,3 +134,11 @@ See [BFF-03 implementation notes](../development/BFF-03-IMPLEMENTATION.md) for e
 Branch `feat/bff-04-oidc-callback-session` adds the optional confidential OIDC ASP.NET Core client, `/signin-oidc` callback scheme, PKCE, token saving in the server-side authentication ticket, isolated `__Host-Foundation.Bff` cookie configuration, and a host-derived `GET /bff/auth/login` challenge. `Identity:Bff:Enabled` remains off by default. Routes are restricted to registered callback URLs; the query string cannot choose an arbitrary tenant. This is in development only; **end-to-end callback, actual BFF cookie issuance and security conformance have not been proven**.
 
 In isolated HTTP tests, production-style metadata discovery is replaced with static OpenID Connect metadata; the fake `identity.example.com` is not a real network endpoint. This override must remain limited to TestServer, not production. A failed CI run must block merge.
+
+## Latest BFF-04.2 review — 2026-11-06
+
+- **Current branch under review:** [Draft PR #16](https://github.com/sholehamed/foundation-backend/pull/16) adds opt-in `/bff/auth/login`, confidential OIDC challenge/callback registration, validated host/System/Tenant context, and a protected distributed ticket-backed `__Host-Foundation.Bff` cookie scheme. `Identity:Bff:Enabled` remains **false** by default. The login challenge is verified with TestServer; the actual cross-origin OIDC callback/browser-cookie round trip is **not yet integration-tested**.
+- **Latest CI evidence before docs update:** [run 42140046994](https://github.com/sholehamed/foundation-backend/actions/runs/42140046994), full solution build, **46/46 BFF** and **42/42 Identity** tests passed. Recheck latest-head CI after each commit.
+- **Security review adjustment:** removed `.AllowCredentials()` from the broad pre-existing CORS origin allowlist. Interactive Identity UI and `/api/connect/authorize` must be served on the **same origin**; no credentialed cross-origin workaround for CSRF/XSRF cookies.
+- **Not complete:** no proof of a real browser callback/token exchange and cookie issuance; no `/bff/session`, CSRF-protected BFF write APIs, logout/revocation, distributed refresh coordination or full Angular migration.
+- **Required next PR:** TestServer integration of full Authorization Code callback and server-held tokens (positive + failure/replay/cross-tenant tests), then implement BFF-05 session lifecycle and full-stack E2E. A CI-green challenge-only slice must not be described as production-ready.
