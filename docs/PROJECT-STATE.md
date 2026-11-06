@@ -1,5 +1,12 @@
 # Foundation Backend — Project State & Handoff
 
+## Feature Registry FR-00 — draft implementation (2026-11-07)
+
+- **Proposed architecture and phased handoff:** [Feature Registry & Authorization](architecture/feature-registry-authorization.md). Existing Modules/Resources/API+UI Resources/Permissions/Menus, scoped System/Tenant authorization and Angular Sidebar are inventoried. This is not a completed registry or automatic grant system.
+- **Draft code slice:** Menu update now targets the Menu entity rather than Users, accepts current frontend `parentId`/`route`/`externalUrl` names, and has handler regression tests. No database migration, menu query/Sidebar behavior, grant enforcement, auth cookie or BFF runtime changes.
+- **Next gates:** CI verification; inspect actual DB catalog/seeding and read DTO compatibility; Permission.Code vs Name consolidation; user-scoped navigation evaluator; idempotent endpoint/UI discovery and frontend manifest, with deny-by-default and no auto grants.
+
+
 ## Identity UI ↔ BFF login contract v1 — 2026-11-06
 
 - **Contract frozen:** [Identity UI ↔ BFF login](architecture/identity-ui-bff-login-contract.md): use the **existing Angular SignInComponent** on an Identity-only origin with same-origin `/api/system/Auth/interactive-login` (CAPTCHA, XSRF, Identity cookie), resume Code+PKCE, then BFF host-scoped opaque Cookie and future Angular `/bff/session`. No second Angular project or Razor login required.

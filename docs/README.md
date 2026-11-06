@@ -10,6 +10,7 @@
 
 - [ADR-0001 — Full BFF for browser clients](decisions/ADR-0001-browser-bff.md)
 - [BFF implementation design](architecture/browser-bff.md)
+- [Feature Registry & Authorization — proposed design and FR-00 handoff](architecture/feature-registry-authorization.md)
 - [Browser authentication HTTP contracts](reference/browser-auth-contract.md)
 
 ## Documentation policy
