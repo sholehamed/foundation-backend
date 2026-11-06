@@ -174,7 +174,7 @@ public sealed class BffOidcChallengeHttpTests
                 ["Identity:Bff:RedirectUris:1"] = "https://localhost/signin-oidc",
                 ["Identity:Bff:SystemHosts:0"] = "localhost",
                 ["Identity:Bff:SystemHosts:1"] = registerIdentityAsSystem
-                    ? "identity.shinera.localhost" : null
+                    ? "identity.shinera.localhost" : "localhost"
             });
 
             builder.Services.AddBffAuthentication(builder.Configuration, builder.Environment);
