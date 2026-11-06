@@ -162,7 +162,9 @@ public sealed class BffOidcCallbackHttpTests
 
             // Only a TestServer override: the real middleware runs its ordinary
             // discovery, signature/issuer/audience and callback validation.
-            builder.Services.PostConfigure<OpenIdConnectOptions>(
+            // Configure BEFORE the framework's PostConfigure builds the
+            // backchannel HttpClient and discovery ConfigurationManager.
+            builder.Services.Configure<OpenIdConnectOptions>(
                 BffDefaults.OidcScheme,
                 options => options.BackchannelHttpHandler = issuer);
 
