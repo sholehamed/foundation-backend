@@ -23,7 +23,8 @@ public sealed class SqlServerBffSessionCleanupTests
             using var provider = CreateProvider();
             var store = new SqlServerBffAtomicTicketStore(connectionString,
                 provider.GetRequiredService<IDataProtectionProvider>());
-            var agedActive = await store.StoreAsync(NewTicket("aged-active"));
+            var agedOriginal = NewTicket("aged-active");
+            var agedActive = await store.StoreAsync(agedOriginal);
             var agedRevoked = await store.StoreAsync(NewTicket("aged-revoked"));
             var youngActive = await store.StoreAsync(NewTicket("young-active"));
             var youngRevoked = await store.StoreAsync(NewTicket("young-revoked"));
@@ -73,7 +74,7 @@ public sealed class SqlServerBffSessionCleanupTests
             Assert.Null(await store.RetrieveAsync(youngRevoked));
 
             // Stale renewal never INSERTs deleted keys.
-            await store.RenewAsync(agedActive, RenewedTicket("old", NewTicket("old")));
+            await store.RenewAsync(agedActive, RenewedTicket("old", agedOriginal));
             Assert.Null(await store.RetrieveAsync(agedActive));
         });
 
