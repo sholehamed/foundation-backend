@@ -121,7 +121,7 @@ public sealed class SqlServerBffAtomicTicketStore(
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = new SqlCommand("""
-            SELECT TicketCiphertext, ExpiresUtc, AbsoluteExpiresUtc
+            SELECT TicketCiphertext, ExpiresUtc, AbsoluteExpiresUtc, SubjectId
             FROM dbo.FoundationBffSessions WITH (READCOMMITTEDLOCK)
             WHERE SessionKey = @key
                 AND RevokedUtc IS NULL
@@ -138,6 +138,9 @@ public sealed class SqlServerBffAtomicTicketStore(
         var bytes = (byte[])reader[0];
         var dbExpiry = reader.GetDateTime(1);
         var dbAbsolute = reader.GetDateTime(2);
+        if (reader.IsDBNull(3))
+            return null;
+        var dbSubject = reader.GetGuid(3);
         try
         {
             var ticket = TicketSerializer.Default.Deserialize(_protector.Unprotect(bytes));
@@ -146,6 +149,8 @@ public sealed class SqlServerBffAtomicTicketStore(
                 ticket.Properties.ExpiresUtc is not { } ticketExpiry ||
                 ticketExpiry.UtcDateTime != dbExpiry ||
                 ticketAbsolute.UtcDateTime != dbAbsolute ||
+                !Guid.TryParse(ticket.Principal.FindFirst("sub")?.Value,
+                    out var ticketSubject) || ticketSubject != dbSubject ||
                 ticketExpiry <= DateTimeOffset.UtcNow ||
                 ticketAbsolute <= DateTimeOffset.UtcNow ||
                 ticketExpiry > ticketAbsolute)
