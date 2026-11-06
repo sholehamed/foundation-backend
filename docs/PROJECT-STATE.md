@@ -81,3 +81,11 @@
 - **Fix under verification:** test harness now explicitly injects `StaticConfigurationManager<OpenIdConnectConfiguration>` instead of attempting network discovery; invalid tenant-query context returns an explicit HTTP `403` without relying on default Forbid authentication scheme. A new [CI run](https://github.com/sholehamed/foundation-backend/actions/runs/42138452399) validates the changes. Do not mark complete or merge until it passes.
 - **Open gates:** callback/token exchange not proven with real Identity Server or SQL Server; tenant-host session boundary and cookie issuance need real integration tests; live Angular continuation, CSRF, logout and revocation remain unimplemented. Existing Angular Password Grant remains unchanged.
 - **Next:** inspect green CI or failure logs, fix underlying code/tests without weakening assertions, document actual test counts and then prepare final review. Never merge draft or failed CI.
+
+
+### 2026-11-06 — BFF-04.2 challenge test recovery
+
+- The three unexpected HTTP 500 failures were traced to isolated OIDC TestServer metadata lookup against a fake Identity hostname and an unqualified Forbid response on a tenant mismatch. Production discovery has **not** been replaced with static metadata.
+- Fixes: explicit HTTP 403 for host/tenant mismatch, `StaticConfigurationManager<OpenIdConnectConfiguration>` in the test harness only, diagnostics on unexpected TestServer 500.
+- [CI #42138452399](https://github.com/sholehamed/foundation-backend/actions/runs/42138452399) **passed** (solution Build; 46/46 BFF tests and 42/42 Identity tests). This confirms the isolated HTTP challenge test fix, **not** full deployed Identity/BFF callback integration.
+- BFF-04 remains **Draft PR #16**, not merged. Callback/token-exchange E2E, browser cookie issuance, live session lifecycle and multi-host verification are still required before acceptance.

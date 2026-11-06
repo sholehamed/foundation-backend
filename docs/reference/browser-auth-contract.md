@@ -90,3 +90,11 @@ The following protocol parameters are needed on authorization: `client_id`, `res
 - Valid request: `302` OIDC Authorization Code redirect with PKCE S256, state, nonce, confidential registered client and exact callback `/signin-oidc`; client and server must carry System vs Tenant identity context.
 - Session cookie and OAuth tokens are not provided by the challenge response. Callback/CSRF/revocation remain outside this tested contract until integration passes.
 - This version is **Draft**, with failing challenge tests and diagnostic investigation tracked in [PR #16](https://github.com/sholehamed/foundation-backend/pull/16).
+
+
+### 2026-11-06 — BFF-04.2 challenge test recovery
+
+- The three unexpected HTTP 500 failures were traced to isolated OIDC TestServer metadata lookup against a fake Identity hostname and an unqualified Forbid response on a tenant mismatch. Production discovery has **not** been replaced with static metadata.
+- Fixes: explicit HTTP 403 for host/tenant mismatch, `StaticConfigurationManager<OpenIdConnectConfiguration>` in the test harness only, diagnostics on unexpected TestServer 500.
+- [CI #42138452399](https://github.com/sholehamed/foundation-backend/actions/runs/42138452399) **passed** (solution Build; 46/46 BFF tests and 42/42 Identity tests). This confirms the isolated HTTP challenge test fix, **not** full deployed Identity/BFF callback integration.
+- BFF-04 remains **Draft PR #16**, not merged. Callback/token-exchange E2E, browser cookie issuance, live session lifecycle and multi-host verification are still required before acceptance.

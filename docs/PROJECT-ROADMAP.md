@@ -143,5 +143,13 @@ The authorization endpoint currently handles GET; POST is explicitly refused to 
 
 - Branch: `feat/bff-04-oidc-callback-session`; [Draft PR #16](https://github.com/sholehamed/foundation-backend/pull/16).
 - Implemented in branch, **not merged**: opt-in OIDC handler and `GET /bff/auth/login` challenge, PKCE, callback path, host-bound login context, ticket store and validation hooks.
-- Verification: Build passed at [42135641269](https://github.com/sholehamed/foundation-backend/actions/runs/42135641269), but three BFF HTTP challenge tests returned `500`. [42138226481](https://github.com/sholehamed/foundation-backend/actions/runs/42138226481) identified unintended OIDC metadata fetch from fake test IdP. Test-only fixed configuration manager and explicit 403 change are awaiting [42138452399](https://github.com/sholehamed/foundation-backend/actions/runs/42138452399).
+- Verification: Build passed at [42135641269](https://github.com/sholehamed/foundation-backend/actions/runs/42135641269), but three BFF HTTP challenge tests returned `500`. [42138226481](https://github.com/sholehamed/foundation-backend/actions/runs/42138226481) identified unintended OIDC metadata fetch from fake test IdP. Test-only fixed configuration manager and explicit 403 change are verified at [42138452399](https://github.com/sholehamed/foundation-backend/actions/runs/42138452399).
 - Acceptance still requires real callback/code exchange, token containment in server-side ticket, tenant-host validation, negative state/nonce/correlation tests, persistence behavior, and careful OIDC return-flow proof. Do not advance Angular until these gates pass.
+
+
+### 2026-11-06 — BFF-04.2 challenge test recovery
+
+- The three unexpected HTTP 500 failures were traced to isolated OIDC TestServer metadata lookup against a fake Identity hostname and an unqualified Forbid response on a tenant mismatch. Production discovery has **not** been replaced with static metadata.
+- Fixes: explicit HTTP 403 for host/tenant mismatch, `StaticConfigurationManager<OpenIdConnectConfiguration>` in the test harness only, diagnostics on unexpected TestServer 500.
+- [CI #42138452399](https://github.com/sholehamed/foundation-backend/actions/runs/42138452399) **passed** (solution Build; 46/46 BFF tests and 42/42 Identity tests). This confirms the isolated HTTP challenge test fix, **not** full deployed Identity/BFF callback integration.
+- BFF-04 remains **Draft PR #16**, not merged. Callback/token-exchange E2E, browser cookie issuance, live session lifecycle and multi-host verification are still required before acceptance.
