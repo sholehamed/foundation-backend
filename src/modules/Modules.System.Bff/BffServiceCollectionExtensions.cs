@@ -44,7 +44,10 @@ public static class BffServiceCollectionExtensions
                 "IDistributedCache alone is not sufficient.");
         }
 
-        if (!services.Any(descriptor => descriptor.ServiceType == typeof(IDistributedCache)))
+        // An atomic SQL provider does not need a separate IDistributedCache;
+        // only the Development tombstone-backed implementation does.
+        if (atomic is null &&
+            !services.Any(descriptor => descriptor.ServiceType == typeof(IDistributedCache)))
         {
             if (!environment.IsDevelopment())
             {
