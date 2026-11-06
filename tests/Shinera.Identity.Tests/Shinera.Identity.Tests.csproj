@@ -21,5 +21,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/modules/Modules.System.Identity/Modules.System.Identity.csproj" />
     <ProjectReference Include="../../src/modules/Modules.System.Bff/Modules.System.Bff.csproj" />
+    <ProjectReference Include="../../src/Web/Web.csproj" />
   </ItemGroup>
 </Project>

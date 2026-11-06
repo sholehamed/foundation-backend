@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.HttpOverrides;
 using Modules.System.FileStorage;
 using Modules.System.Bff;
+using Server.Bff;
 using Modules.System.Identity;
 using Scalar.AspNetCore;
 using Scalar.ClientGeneration;
@@ -16,6 +17,8 @@ namespace Server
             builder.Services.AddMediaStorage(builder.Configuration);
             builder.Services.AddIdentityModule(builder.Configuration, builder.Environment);
             builder.Services.AddBffAuthentication(builder.Configuration, builder.Environment);
+            if (builder.Configuration.GetValue<bool>("Identity:Bff:Enabled"))
+                builder.Services.AddBffIdentitySessionValidation();
             builder.Services.AddScalarClientGeneration();
 
             // Salon Modules
