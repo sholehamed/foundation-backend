@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\modules\Modules.System.FileStorage\Modules.System.FileStorage.csproj" />
     <ProjectReference Include="..\modules\Modules.System.Identity\Modules.System.Identity.csproj" />
+    <ProjectReference Include="..\modules\Modules.System.Bff\Modules.System.Bff.csproj" />
     <ProjectReference Include="..\modules\Modules.System.Scalar.ClientGeneration\Modules.System.Scalar.ClientGeneration.csproj" />
   </ItemGroup>
 

@@ -102,6 +102,28 @@ namespace Modules.System.Identity
                     options.SetEndSessionEndpointUris("api/system/Auth/logout");
                     options.SetRevocationEndpointUris("api/system/Auth/revoke");
                     options.SetUserInfoEndpointUris("api/system/Auth/userinfo");
+                    options.SetConfigurationEndpointUris(".well-known/openid-configuration");
+                    options.SetJsonWebKeySetEndpointUris(".well-known/jwks");
+
+                    if (configuration.GetValue<bool>("Identity:Bff:Enabled"))
+                    {
+                        var authority = configuration["Identity:Bff:Authority"];
+                        if (!Uri.TryCreate(authority, UriKind.Absolute, out var issuer) ||
+                            !string.IsNullOrEmpty(issuer.UserInfo) ||
+                            !string.IsNullOrEmpty(issuer.Query) ||
+                            !string.IsNullOrEmpty(issuer.Fragment) ||
+                            issuer.AbsolutePath != "/" ||
+                            (issuer.Scheme != Uri.UriSchemeHttps &&
+                             !(environment.IsDevelopment() && issuer.Scheme == Uri.UriSchemeHttp && issuer.IsLoopback)))
+                        {
+                            throw new InvalidOperationException(
+                                "Identity:Bff:Authority must be an absolute HTTPS authority (HTTP loopback is allowed only in Development).");
+                        }
+
+                        // A stable configured issuer is mandatory when the BFF OIDC
+                        // client validates discovery metadata and ID-token issuer.
+                        options.SetIssuer(new Uri(issuer.GetLeftPart(UriPartial.Authority) + "/", UriKind.Absolute));
+                    }
 
                     options.AllowPasswordFlow();
                     options.AllowRefreshTokenFlow();

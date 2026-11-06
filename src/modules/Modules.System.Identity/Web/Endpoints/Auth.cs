@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.IdentityModel.Tokens;
 using Modules.System.Identity.Application.Abstractions;
+using Modules.System.Identity.Application.Services;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Web.Util;
 using OpenIddict.Abstractions;
@@ -53,7 +54,13 @@ public class Auth : EndpointGroupBase
             picture = user.GetClaim(OpenIddictConstants.Claims.Picture),
             tenant = user.GetClaim("tenant"),
             tenant_id = user.GetClaim("tenant_id"),
-            account_type = user.GetClaim("account_type")
+            account_type = user.GetClaim("account_type"),
+            roles = user.GetScopes().Contains("roles")
+                ? user.FindAll(OpenIddictConstants.Claims.Role).Select(claim => claim.Value).Distinct().ToArray()
+                : [],
+            permissions = user.GetScopes().Contains("permissions")
+                ? user.FindAll("permission").Select(claim => claim.Value).Distinct().ToArray()
+                : []
         });
     }
 
@@ -203,6 +210,7 @@ public class Auth : EndpointGroupBase
         CaptchaService captchaService,
         RefreshGrantValidator refreshValidator,
         IUserCredentialAuthenticator authenticator,
+        IIdentitySessionValidator sessionValidator,
         CancellationToken cancellationToken)
     {
         var request = httpContext.GetOpenIddictServerRequest();
@@ -213,6 +221,12 @@ public class Auth : EndpointGroupBase
                 error = OpenIddictConstants.Errors.InvalidRequest,
                 error_description = "OpenIddict request is missing."
             });
+        }
+
+        if (request.IsAuthorizationCodeGrantType())
+        {
+            return await ExchangeAuthorizationCodeAsync(
+                httpContext, sessionValidator, cancellationToken);
         }
 
         if (request.IsRefreshTokenGrantType())
@@ -321,4 +335,48 @@ public class Auth : EndpointGroupBase
             principal,
             authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
     }
+    /// <summary>
+    /// Handles authorization-code exchanges after OpenIddict has validated the
+    /// client secret, one-time code, redirect URI and PKCE verifier.
+    /// Revalidates current user/tenant/security-stamp state before issuing tokens.
+    /// </summary>
+    public async Task<IResult> ExchangeAuthorizationCodeAsync(
+        HttpContext httpContext,
+        IIdentitySessionValidator sessionValidator,
+        CancellationToken cancellationToken)
+    {
+        var result = await httpContext.AuthenticateAsync(
+            OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+
+        if (!result.Succeeded || result.Principal is null)
+            return InvalidGrant();
+
+        var scopes = result.Principal.GetScopes();
+        var resources = result.Principal.GetResources();
+
+        var principal = await sessionValidator.ValidateAsync(
+            result.Principal, cancellationToken);
+
+        if (principal is null)
+            return InvalidGrant();
+
+        principal.SetScopes(scopes);
+        principal.SetResources(resources);
+        IdentityPrincipalDestinations.Apply(principal, scopes);
+
+        httpContext.Response.Headers.CacheControl = "no-store";
+        return Results.SignIn(
+            principal,
+            authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+    }
+
+    private static IResult InvalidGrant()
+        => Results.Forbid(
+            authenticationSchemes: [OpenIddictServerAspNetCoreDefaults.AuthenticationScheme],
+            properties: new AuthenticationProperties(new Dictionary<string, string?>
+            {
+                [OpenIddictServerAspNetCoreConstants.Properties.Error] = OpenIddictConstants.Errors.InvalidGrant,
+                [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "The authorization session is no longer valid."
+            }));
+
 }
