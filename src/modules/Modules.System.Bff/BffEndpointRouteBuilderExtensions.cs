@@ -26,6 +26,8 @@ public static class BffEndpointRouteBuilderExtensions
             .AllowAnonymous()
             .WithTags("BFF");
 
+        endpoints.MapBffSessionLifecycleEndpoints();
+
         return endpoints;
     }
 
