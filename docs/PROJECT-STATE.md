@@ -1,5 +1,12 @@
 # Foundation Backend — Project State & Handoff
 
+## BFF-05.4a account-scoped SQL logout-all — draft PR #35 (2026-11-06)
+
+- [PR #35](https://github.com/sholehamed/foundation-backend/pull/35) introduces `POST /bff/auth/logout-all`, requiring a live host-bound cookie, same-origin/CSRF and using the **authenticated OIDC `sub` only**. Web SQL adapter revokes all existing subject-owned sessions in atomic SQL UPDATE, clears encrypted ticket ciphertext, and denies late renewals. `IBffAccountSessionRevoker` keeps BFF module independent of SQL implementation.
+- SQL migration adds `SubjectId` ownership/index/trusted CHECK and **intentionally revokes legacy active tickets missing a trustworthy owner**, requiring re-login on upgrade. Existing SQL store checks protected ticket subject against DB owner. Unit HTTP + real disposable SQL Server tests added; **latest PR-head CI pending**. [Detailed security and migration note](development/BFF-05-4A-LOGOUT-ALL.md).
+- This is browser BFF **local logout-all of existing sessions**, not upstream OpenIddict refresh-token/SSO revocation, not prevention of future logins. BFF still disabled by default; Angular Password Grant/localStorage unchanged; real browser, proxy, production HA and keyring gates remain.
+
+
 ## BFF-05.5b.3 — SQL cleanup implementation checkpoint (2026-11-06)
 
 - [Draft PR #34](https://github.com/sholehamed/foundation-backend/pull/34) implements `SqlServerBffSessionCleanup.DeleteExpiredBatchAsync`: parameterized maximum 1,000 rows, 48-hour post-absolute-expiry retention using SQL Server UTC, bounded SQL DELETE; no automatic web-host job and no additional runtime database privileges. An operator-managed maintenance SQL principal requires separate DELETE rights.
