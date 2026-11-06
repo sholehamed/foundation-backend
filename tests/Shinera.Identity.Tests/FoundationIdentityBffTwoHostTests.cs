@@ -289,8 +289,12 @@ public sealed class FoundationIdentityBffTwoHostTests
             new Connect().Map(identityApp);
             identityApp.MapPost("/api/system/Auth/login",
                 new Auth().ExchangeAuthorizationCodeAsync).AllowAnonymous();
+            // Explicit Delegate overload is essential: passing Task<IResult>
+            // directly as a RequestDelegate would silently discard Results.Ok
+            // and emit 200 with an empty body / no Content-Type.
             identityApp.MapGet("/api/system/Auth/userinfo",
-                new Auth().GetUserInfo).AllowAnonymous();
+                (Delegate)new Func<HttpContext, Task<IResult>>(
+                    new Auth().GetUserInfo)).AllowAnonymous();
 
             // Test-only Identity cookie issuance via the real scoped principal
             // factory. This deliberately excludes the CAPTCHA/password UI.
