@@ -1,5 +1,12 @@
 # Browser authentication HTTP contract — v1 proposal
 
+## BFF-05.4a account-scoped SQL logout-all — draft PR #35 (2026-11-06)
+
+- [PR #35](https://github.com/sholehamed/foundation-backend/pull/35) introduces `POST /bff/auth/logout-all`, requiring a live host-bound cookie, same-origin/CSRF and using the **authenticated OIDC `sub` only**. Web SQL adapter revokes all existing subject-owned sessions in atomic SQL UPDATE, clears encrypted ticket ciphertext, and denies late renewals. `IBffAccountSessionRevoker` keeps BFF module independent of SQL implementation.
+- SQL migration adds `SubjectId` ownership/index/trusted CHECK and **intentionally revokes legacy active tickets missing a trustworthy owner**, requiring re-login on upgrade. Existing SQL store checks protected ticket subject against DB owner. Unit HTTP + real disposable SQL Server tests added; **latest PR-head CI pending**. [Detailed security and migration note](../development/BFF-05-4A-LOGOUT-ALL.md).
+- This is browser BFF **local logout-all of existing sessions**, not upstream OpenIddict refresh-token/SSO revocation, not prevention of future logins. BFF still disabled by default; Angular Password Grant/localStorage unchanged; real browser, proxy, production HA and keyring gates remain.
+
+
 ## Verified BFF-05.5b.2 — merged SQL Server transactional atomic store (2026-11-06)
 
 - **Merged:** [PR #32](https://github.com/sholehamed/foundation-backend/pull/32) at `c2ebf86053c17fb87309ec630f932ac32701a127`. [Final latest-head CI #42215944644](https://github.com/sholehamed/foundation-backend/actions/runs/42215944644) passed solution build, **94/94 BFF + 60/60 Identity + 9/9 real SQL Server integration tests** (163 total, zero failures).

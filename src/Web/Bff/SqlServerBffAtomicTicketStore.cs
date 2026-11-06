@@ -22,7 +22,7 @@ namespace Server.Bff;
 /// </summary>
 public sealed class SqlServerBffAtomicTicketStore(
     string connectionString,
-    IDataProtectionProvider dataProtectionProvider) : IBffAtomicTicketStore
+    IDataProtectionProvider dataProtectionProvider) : IBffAtomicTicketStore, IBffAccountSessionRevoker
 {
     private const string AbsoluteExpiryProperty = ".bff.absolute_expires_utc";
     private static readonly TimeSpan MaximumLifetime = TimeSpan.FromHours(24);
@@ -36,6 +36,7 @@ public sealed class SqlServerBffAtomicTicketStore(
         AuthenticationTicket ticket, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(ticket);
+        var subject = ReadSubject(ticket);
         var now = DateTimeOffset.UtcNow;
         var issued = ticket.Properties.IssuedUtc ?? now;
         if (issued > now.AddMinutes(5))
@@ -55,10 +56,11 @@ public sealed class SqlServerBffAtomicTicketStore(
         await connection.OpenAsync(cancellationToken);
         await using var command = new SqlCommand("""
             INSERT INTO dbo.FoundationBffSessions
-                (SessionKey, TicketCiphertext, CreatedUtc, ExpiresUtc, AbsoluteExpiresUtc)
-            VALUES (@key, @ticket, @created, @expires, @absolute);
+                (SessionKey, SubjectId, TicketCiphertext, CreatedUtc, ExpiresUtc, AbsoluteExpiresUtc)
+            VALUES (@key, @subject, @ticket, @created, @expires, @absolute);
             """, connection);
         command.Parameters.Add("@key", SqlDbType.VarChar, 80).Value = key;
+        command.Parameters.Add("@subject", SqlDbType.UniqueIdentifier).Value = subject;
         command.Parameters.Add("@ticket", SqlDbType.VarBinary, -1).Value = bytes;
         command.Parameters.Add("@created", SqlDbType.DateTime2).Value = issued.UtcDateTime;
         command.Parameters.Add("@expires", SqlDbType.DateTime2).Value = expiry.UtcDateTime;
@@ -75,6 +77,7 @@ public sealed class SqlServerBffAtomicTicketStore(
     {
         ValidateKey(key);
         ArgumentNullException.ThrowIfNull(ticket);
+        var subject = ReadSubject(ticket);
         if (!TryGetAbsoluteExpiry(ticket, out var absolute))
             throw new InvalidOperationException(
                 "BFF renewal requires the original protected absolute expiry.");
@@ -95,12 +98,14 @@ public sealed class SqlServerBffAtomicTicketStore(
                 AND TicketCiphertext IS NOT NULL
                 AND ExpiresUtc > SYSUTCDATETIME()
                 AND AbsoluteExpiresUtc > SYSUTCDATETIME()
-                AND AbsoluteExpiresUtc = @absolute;
+                AND AbsoluteExpiresUtc = @absolute
+                AND SubjectId = @subject;
             """, connection);
         command.Parameters.Add("@key", SqlDbType.VarChar, 80).Value = key;
         command.Parameters.Add("@ticket", SqlDbType.VarBinary, -1).Value = bytes;
         command.Parameters.Add("@expires", SqlDbType.DateTime2).Value = expiry.UtcDateTime;
         command.Parameters.Add("@absolute", SqlDbType.DateTime2).Value = absolute.UtcDateTime;
+        command.Parameters.Add("@subject", SqlDbType.UniqueIdentifier).Value = subject;
         // No matching row is a normal stale renewal: NEVER insert it again.
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -116,7 +121,7 @@ public sealed class SqlServerBffAtomicTicketStore(
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = new SqlCommand("""
-            SELECT TicketCiphertext, ExpiresUtc, AbsoluteExpiresUtc
+            SELECT TicketCiphertext, ExpiresUtc, AbsoluteExpiresUtc, SubjectId
             FROM dbo.FoundationBffSessions WITH (READCOMMITTEDLOCK)
             WHERE SessionKey = @key
                 AND RevokedUtc IS NULL
@@ -133,6 +138,9 @@ public sealed class SqlServerBffAtomicTicketStore(
         var bytes = (byte[])reader[0];
         var dbExpiry = reader.GetDateTime(1);
         var dbAbsolute = reader.GetDateTime(2);
+        if (reader.IsDBNull(3))
+            return null;
+        var dbSubject = reader.GetGuid(3);
         try
         {
             var ticket = TicketSerializer.Default.Deserialize(_protector.Unprotect(bytes));
@@ -141,6 +149,8 @@ public sealed class SqlServerBffAtomicTicketStore(
                 ticket.Properties.ExpiresUtc is not { } ticketExpiry ||
                 ticketExpiry.UtcDateTime != dbExpiry ||
                 ticketAbsolute.UtcDateTime != dbAbsolute ||
+                !Guid.TryParse(ticket.Principal.FindFirst("sub")?.Value,
+                    out var ticketSubject) || ticketSubject != dbSubject ||
                 ticketExpiry <= DateTimeOffset.UtcNow ||
                 ticketAbsolute <= DateTimeOffset.UtcNow ||
                 ticketExpiry > ticketAbsolute)
@@ -175,6 +185,41 @@ public sealed class SqlServerBffAtomicTicketStore(
         // Successful ExecuteNonQuery is a committed revocation. On DB outage
         // this throws and cannot falsely report successful logout.
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Revokes all currently committed browser tickets belonging to the
+    /// authenticated OIDC subject. No subject ID comes from a client payload.
+    /// This does NOT prevent a later new OIDC sign-in, rotate refresh tokens,
+    /// or terminate the upstream OpenIddict login session.
+    /// </summary>
+    public async Task<int> RevokeAllAsync(
+        Guid subjectId, CancellationToken cancellationToken = default)
+    {
+        if (subjectId == Guid.Empty)
+            throw new ArgumentException("A valid authenticated subject is required.",
+                nameof(subjectId));
+
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand("""
+            UPDATE dbo.FoundationBffSessions WITH (ROWLOCK)
+            SET RevokedUtc = SYSUTCDATETIME(),
+                TicketCiphertext = NULL,
+                Revision = Revision + 1
+            WHERE SubjectId = @subject AND RevokedUtc IS NULL;
+            """, connection);
+        command.Parameters.Add("@subject", SqlDbType.UniqueIdentifier).Value = subjectId;
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static Guid ReadSubject(AuthenticationTicket ticket)
+    {
+        if (!Guid.TryParse(ticket.Principal.FindFirst("sub")?.Value, out var subject) ||
+            subject == Guid.Empty)
+            throw new InvalidOperationException(
+                "A BFF SQL ticket requires an authenticated OIDC GUID subject.");
+        return subject;
     }
 
     private static DateTimeOffset ClampAndValidateExpiry(
@@ -230,9 +275,13 @@ public static class BffSqlServerRegistration
             throw new InvalidOperationException(
                 "ConnectionStrings:BffSessions is required for SQL-backed BFF sessions.");
 
-        services.AddSingleton<IBffAtomicTicketStore>(provider =>
+        services.AddSingleton<SqlServerBffAtomicTicketStore>(provider =>
             new SqlServerBffAtomicTicketStore(connectionString,
                 provider.GetRequiredService<IDataProtectionProvider>()));
+        services.AddSingleton<IBffAtomicTicketStore>(provider =>
+            provider.GetRequiredService<SqlServerBffAtomicTicketStore>());
+        services.AddSingleton<IBffAccountSessionRevoker>(provider =>
+            provider.GetRequiredService<SqlServerBffAtomicTicketStore>());
         // Verify an approved DDL migration, including trusted CHECK constraints,
         // before accepting any BFF browser traffic. Never auto-migrate the DB.
         services.AddHostedService(_ => new SqlServerBffSchemaStartupGuard(connectionString));
@@ -261,6 +310,7 @@ public sealed class SqlServerBffSchemaStartupGuard(string connectionString) : IH
                 AND COL_LENGTH(N'dbo.FoundationBffSessions', N'AbsoluteExpiresUtc') IS NOT NULL
                 AND COL_LENGTH(N'dbo.FoundationBffSessions', N'RevokedUtc') IS NOT NULL
                 AND COL_LENGTH(N'dbo.FoundationBffSessions', N'Revision') IS NOT NULL
+                AND COL_LENGTH(N'dbo.FoundationBffSessions', N'SubjectId') IS NOT NULL
                 AND EXISTS (
                     SELECT 1 FROM sys.key_constraints
                     WHERE parent_object_id = OBJECT_ID(N'dbo.FoundationBffSessions')
@@ -275,6 +325,16 @@ public sealed class SqlServerBffSchemaStartupGuard(string connectionString) : IH
                     WHERE parent_object_id = OBJECT_ID(N'dbo.FoundationBffSessions')
                         AND name = N'CK_FoundationBffSessions_Revocation'
                         AND is_disabled = 0 AND is_not_trusted = 0)
+                AND EXISTS (
+                    SELECT 1 FROM sys.check_constraints
+                    WHERE parent_object_id = OBJECT_ID(N'dbo.FoundationBffSessions')
+                        AND name = N'CK_FoundationBffSessions_Subject'
+                        AND is_disabled = 0 AND is_not_trusted = 0)
+                AND EXISTS (
+                    SELECT 1 FROM sys.indexes
+                    WHERE object_id = OBJECT_ID(N'dbo.FoundationBffSessions')
+                        AND name = N'IX_FoundationBffSessions_Subject_Active'
+                        AND is_disabled = 0)
                 THEN 1 ELSE 0 END;
             """, connection);
         var result = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));

@@ -251,7 +251,8 @@ public sealed class SqlServerBffAtomicStoreTests
 
     private static AuthenticationTicket NewTicket(string name)
         => new(new ClaimsPrincipal(new ClaimsIdentity(
-                [new Claim(ClaimTypes.NameIdentifier, name)], BffDefaults.CookieScheme)),
+                [new Claim(ClaimTypes.NameIdentifier, name),
+                 new Claim("sub", Guid.NewGuid().ToString("D"))], BffDefaults.CookieScheme)),
             new AuthenticationProperties
             {
                 IssuedUtc = DateTimeOffset.UtcNow,
@@ -263,6 +264,13 @@ public sealed class SqlServerBffAtomicStoreTests
         var replacement = NewTicket(name);
         foreach (var property in original.Properties.Items)
             replacement.Properties.Items[property.Key] = property.Value;
+        var sourceSub = original.Principal.FindFirst("sub")?.Value;
+        if (sourceSub is not null && replacement.Principal.Identity is ClaimsIdentity identity)
+        {
+            foreach (var claim in identity.FindAll("sub").ToArray())
+                identity.RemoveClaim(claim);
+            identity.AddClaim(new Claim("sub", sourceSub));
+        }
         return replacement;
     }
 
