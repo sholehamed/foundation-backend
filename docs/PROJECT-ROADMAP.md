@@ -138,3 +138,10 @@ The authorization endpoint currently handles GET; POST is explicitly refused to 
 - [CI 42131501508](https://github.com/sholehamed/foundation-backend/actions/runs/42131501508) passed full solution Build, **35 BFF tests** and **41 Identity tests** (0 failures).
 - What shipped: conservative relative same-origin return path validator and tests. **Not shipped**: browser login challenge, OIDC callback, server-held token exchange, BFF session cookie, Angular migration.
 - Next BFF-04 slice: integrate opt-in OIDC client/callback with secure AuthenticationProperties and ticket store, then full integration testing. Track with [issue #12](https://github.com/sholehamed/foundation-backend/issues/12).
+
+## Active BFF-04.2 PR #16 — continuation checkpoint (2026-11-06)
+
+- Branch: `feat/bff-04-oidc-callback-session`; [Draft PR #16](https://github.com/sholehamed/foundation-backend/pull/16).
+- Implemented in branch, **not merged**: opt-in OIDC handler and `GET /bff/auth/login` challenge, PKCE, callback path, host-bound login context, ticket store and validation hooks.
+- Verification: Build passed at [42135641269](https://github.com/sholehamed/foundation-backend/actions/runs/42135641269), but three BFF HTTP challenge tests returned `500`. [42138226481](https://github.com/sholehamed/foundation-backend/actions/runs/42138226481) identified unintended OIDC metadata fetch from fake test IdP. Test-only fixed configuration manager and explicit 403 change are awaiting [42138452399](https://github.com/sholehamed/foundation-backend/actions/runs/42138452399).
+- Acceptance still requires real callback/code exchange, token containment in server-side ticket, tenant-host validation, negative state/nonce/correlation tests, persistence behavior, and careful OIDC return-flow proof. Do not advance Angular until these gates pass.

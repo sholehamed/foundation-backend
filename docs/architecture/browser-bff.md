@@ -128,3 +128,9 @@ The first-party BFF client is an optional confidential app, configured under `Id
 This **does not yet complete browser login**: the current Angular sign-in component expects the legacy token response and does not preserve an `/api/connect/authorize` returnUrl. Treat this as a named integration blocker, not as a reason to relax returnUrl checks or deliver tokens to JavaScript.
 
 See [BFF-03 implementation notes](../development/BFF-03-IMPLEMENTATION.md) for exact code map, outstanding verification and next steps.
+
+## BFF-04.2 integration snapshot (Draft PR #16)
+
+Branch `feat/bff-04-oidc-callback-session` adds the optional confidential OIDC ASP.NET Core client, `/signin-oidc` callback scheme, PKCE, token saving in the server-side authentication ticket, isolated `__Host-Foundation.Bff` cookie configuration, and a host-derived `GET /bff/auth/login` challenge. `Identity:Bff:Enabled` remains off by default. Routes are restricted to registered callback URLs; the query string cannot choose an arbitrary tenant. This is in development only; **end-to-end callback, actual BFF cookie issuance and security conformance have not been proven**.
+
+In isolated HTTP tests, production-style metadata discovery is replaced with static OpenID Connect metadata; the fake `identity.example.com` is not a real network endpoint. This override must remain limited to TestServer, not production. A failed CI run must block merge.

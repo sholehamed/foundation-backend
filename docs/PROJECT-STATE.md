@@ -72,3 +72,12 @@
 2. Query actual GitHub `main`, open PRs and current CI — docs are a *snapshot*, not a substitute for live evidence.
 3. Work on a new feature branch. Implement a small vertical slice, add tests, update docs in the same PR, and verify CI before merge.
 4. Maintain existing browser Password Grant until new BFF consumer has working integration; never expose OAuth tokens to browser as a workaround.
+
+## BFF-04 current Draft PR checkpoint — 2026-11-06
+
+- **PR:** [#16 — BFF-04.2 OIDC callback and ticket-backed session](https://github.com/sholehamed/foundation-backend/pull/16), branch `feat/bff-04-oidc-callback-session`. **Draft; not merged; BFF login NOT production-ready.**
+- **Current code:** opt-in `AddBffAuthentication` registers the confidential ASP.NET Core OIDC handler (`Authorization Code`, PKCE, callback `/signin-oidc`), isolated `BffCookie` scheme, server-side ticket store; `MapBffEndpoints` adds `GET /bff/auth/login`. Context comes from a validated host, not untrusted query parameter. OIDC middleware is responsible for state/nonce handling.
+- **Test failures (actual evidence):** [CI #42135641269](https://github.com/sholehamed/foundation-backend/actions/runs/42135641269) built successfully; 3 of 46 BFF tests failed with HTTP `500` rather than expected redirect/403. With test-only developer diagnostics, [CI #42138226481](https://github.com/sholehamed/foundation-backend/actions/runs/42138226481) exposed `IDX20803/IDX20804`: isolated TestServer attempted DNS metadata discovery against the fake `https://identity.example.com/.well-known/openid-configuration`.
+- **Fix under verification:** test harness now explicitly injects `StaticConfigurationManager<OpenIdConnectConfiguration>` instead of attempting network discovery; invalid tenant-query context returns an explicit HTTP `403` without relying on default Forbid authentication scheme. A new [CI run](https://github.com/sholehamed/foundation-backend/actions/runs/42138452399) validates the changes. Do not mark complete or merge until it passes.
+- **Open gates:** callback/token exchange not proven with real Identity Server or SQL Server; tenant-host session boundary and cookie issuance need real integration tests; live Angular continuation, CSRF, logout and revocation remain unimplemented. Existing Angular Password Grant remains unchanged.
+- **Next:** inspect green CI or failure logs, fix underlying code/tests without weakening assertions, document actual test counts and then prepare final review. Never merge draft or failed CI.

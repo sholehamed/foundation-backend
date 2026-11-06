@@ -82,3 +82,11 @@ The following remain Planned: `/bff/auth/login`, `/signin-oidc`, `/bff/session`,
 The following protocol parameters are needed on authorization: `client_id`, `response_type=code`, `scope` including `openid`, `redirect_uri` (exact), `state`, `nonce`, `code_challenge`, `code_challenge_method=S256`, and `login_context=system|tenant`; Tenant flows also carry the exact `tenant` slug. The client and URI must have been explicitly registered and PKCE enforced by OpenIddict. Never accept `returnUrl` as an absolute arbitrary redirect; only allow safe local paths and review login-UI continuation.
 
 **Current status:** only the handler and registration scaffold exist on PR #11. Protocol E2E must verify code issuance, token exchange, invalid client/redirect, replay and consent behavior before the endpoint can be called production-ready. No OAuth tokens are intended for browser JSON responses.
+
+## BFF-04.2 login challenge draft contract (PR #16; not shipped)
+
+- `GET /bff/auth/login?returnUrl=<localPath>` is an anonymous navigation endpoint, opt-in by `Identity:Bff:Enabled`.
+- Invalid return URL or unknown browser host: `400`. Tenant or context supplied by query that conflicts with host-derived identity: `403`.
+- Valid request: `302` OIDC Authorization Code redirect with PKCE S256, state, nonce, confidential registered client and exact callback `/signin-oidc`; client and server must carry System vs Tenant identity context.
+- Session cookie and OAuth tokens are not provided by the challenge response. Callback/CSRF/revocation remain outside this tested contract until integration passes.
+- This version is **Draft**, with failing challenge tests and diagnostic investigation tracked in [PR #16](https://github.com/sholehamed/foundation-backend/pull/16).
