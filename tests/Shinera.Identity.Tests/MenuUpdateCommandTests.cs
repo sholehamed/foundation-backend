@@ -16,12 +16,12 @@ public sealed class MenuUpdateCommandTests
         var categoryId = Guid.NewGuid();
         var parent = new Menu(Guid.NewGuid())
         {
-            CategoryId = categoryId, Title = "Parent", Icon = "folder",
+            RowVersion = new byte[8], CategoryId = categoryId, Title = "Parent", Icon = "folder",
             IsActive = true, Order = 0
         };
         var menu = new Menu(Guid.NewGuid())
         {
-            CategoryId = categoryId, Title = "Old", Icon = "home",
+            RowVersion = new byte[8], CategoryId = categoryId, Title = "Old", Icon = "home",
             Route = "/system/old", IsActive = true, Order = 1
         };
         db.Menus.AddRange(parent, menu);
@@ -74,7 +74,7 @@ public sealed class MenuUpdateCommandTests
         await using var db = new IdentityDbContext(options, new TenantContext());
         var existing = new Menu(Guid.NewGuid())
         {
-            CategoryId = Guid.NewGuid(), Title = "Untouched",
+            RowVersion = new byte[8], CategoryId = Guid.NewGuid(), Title = "Untouched",
             Icon = "menu", IsActive = true
         };
         db.Menus.Add(existing);
