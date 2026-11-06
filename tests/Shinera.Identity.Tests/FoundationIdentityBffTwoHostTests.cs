@@ -258,6 +258,7 @@ public sealed class FoundationIdentityBffTwoHostTests
             identityBuilder.Services.AddAuthorization();
 
             var identityApp = identityBuilder.Build();
+            identityApp.UseDeveloperExceptionPage();
             identityApp.UseAuthentication();
             identityApp.UseAuthorization();
             new Connect().Map(identityApp);
@@ -369,7 +370,9 @@ public sealed class FoundationIdentityBffTwoHostTests
         {
             using var response = await _identityClient.GetAsync(
                 "/__test/sign-in" + (tenant ? "?tenant=1" : ""));
-            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            Assert.True(response.StatusCode == HttpStatusCode.NoContent,
+                "Test-only Identity sign-in returned " + (int)response.StatusCode +
+                ": " + await response.Content.ReadAsStringAsync());
             return Assert.Single(GetCookies(response),
                 x => x.StartsWith(IdentityServerCookieDefaults.CookieName + "=",
                     StringComparison.Ordinal)).Split(';')[0];
