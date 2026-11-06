@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Modules.System.Bff;
 
 namespace Server.Bff;
@@ -232,6 +233,56 @@ public static class BffSqlServerRegistration
         services.AddSingleton<IBffAtomicTicketStore>(provider =>
             new SqlServerBffAtomicTicketStore(connectionString,
                 provider.GetRequiredService<IDataProtectionProvider>()));
+        // Verify an approved DDL migration, including trusted CHECK constraints,
+        // before accepting any BFF browser traffic. Never auto-migrate the DB.
+        services.AddHostedService(_ => new SqlServerBffSchemaStartupGuard(connectionString));
         return services;
     }
+}
+
+
+/// <summary>
+/// Starts only with a predeployed and integrity-checked SQL Server schema.
+/// Deployment/DDL privileges must remain separate from the BFF runtime login.
+/// </summary>
+public sealed class SqlServerBffSchemaStartupGuard(string connectionString) : IHostedService
+{
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new SqlCommand("""
+            SELECT CASE WHEN
+                OBJECT_ID(N'dbo.FoundationBffSessions', N'U') IS NOT NULL
+                AND COL_LENGTH(N'dbo.FoundationBffSessions', N'SessionKey') IS NOT NULL
+                AND COL_LENGTH(N'dbo.FoundationBffSessions', N'TicketCiphertext') IS NOT NULL
+                AND COL_LENGTH(N'dbo.FoundationBffSessions', N'CreatedUtc') IS NOT NULL
+                AND COL_LENGTH(N'dbo.FoundationBffSessions', N'ExpiresUtc') IS NOT NULL
+                AND COL_LENGTH(N'dbo.FoundationBffSessions', N'AbsoluteExpiresUtc') IS NOT NULL
+                AND COL_LENGTH(N'dbo.FoundationBffSessions', N'RevokedUtc') IS NOT NULL
+                AND COL_LENGTH(N'dbo.FoundationBffSessions', N'Revision') IS NOT NULL
+                AND EXISTS (
+                    SELECT 1 FROM sys.key_constraints
+                    WHERE parent_object_id = OBJECT_ID(N'dbo.FoundationBffSessions')
+                        AND name = N'PK_FoundationBffSessions' AND type = 'PK')
+                AND EXISTS (
+                    SELECT 1 FROM sys.check_constraints
+                    WHERE parent_object_id = OBJECT_ID(N'dbo.FoundationBffSessions')
+                        AND name = N'CK_FoundationBffSessions_Expiry'
+                        AND is_disabled = 0 AND is_not_trusted = 0)
+                AND EXISTS (
+                    SELECT 1 FROM sys.check_constraints
+                    WHERE parent_object_id = OBJECT_ID(N'dbo.FoundationBffSessions')
+                        AND name = N'CK_FoundationBffSessions_Revocation'
+                        AND is_disabled = 0 AND is_not_trusted = 0)
+                THEN 1 ELSE 0 END;
+            """, connection);
+        var result = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        if (result != 1)
+            throw new InvalidOperationException(
+                "BFF SQL Server session schema/constraints are absent, disabled or untrusted. " +
+                "Deploy and verify src/Web/Bff/SqlServerBffSessionStore.sql before enabling BFF.");
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
