@@ -12,8 +12,8 @@ namespace Foundation.Bff.Tests;
 public sealed class BffAtomicStoreStartupGuardTests
 {
     [Theory]
-    [InlineData(Environments.Production)]
-    [InlineData(Environments.Staging)]
+    [InlineData("Production")]
+    [InlineData("Staging")]
     public void Non_development_bff_startup_rejects_plain_distributed_cache(string environment)
     {
         var services = new ServiceCollection();
