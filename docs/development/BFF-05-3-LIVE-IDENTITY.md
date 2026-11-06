@@ -22,3 +22,11 @@ Unit tests in `BffLiveIdentityValidationTests` check live System/Tenant, stamp r
 ## Continuity
 
 Merge only after build and complete BFF/Identity CI on latest PR head. The baseline before this branch is merged [PR #23](https://github.com/sholehamed/foundation-backend/pull/23) at `88239b7d3454fd03b87aa7bc20e70d1a820b088a`, with 82 BFF and 50 Identity tests green.
+
+## BFF-05.3 verified adapter checkpoint — 2026-11-06
+
+- [Draft PR #24](https://github.com/sholehamed/foundation-backend/pull/24) includes a BFF-only abstract validation contract and a Web-host Identity DB adapter. The production Web composition registers OIDC ticket capture and cookie `OnValidatePrincipal` live user/Tenant/security-stamp/grant checks only when `Identity:Bff:Enabled=true`.
+- [Code-head CI #42206181883](https://github.com/sholehamed/foundation-backend/actions/runs/42206181883): **82 BFF + 58 Identity tests**, full solution build passed. Added direct adapter DB tests and HTTP CookieAuthentication tests for System/Tenant, security-stamp rotation, tenant deactivation and removed-session replay.
+- The HTTP tests issue a **test-only baseline ticket**, not an actual OIDC callback; the new OIDC `OnTicketReceived` adapter hook still needs true end-to-end verification with the live Foundation Identity server, as do stamp-exchange callback races.
+- Do **not** assert production readiness: BFF flag stays disabled, Angular legacy Password Grant/localStorage unchanged. Logout-all, remote token revocation, renewal races, actual browser, SQL Server and multi-node infrastructure still pending.
+
