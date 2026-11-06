@@ -198,3 +198,9 @@ The authorization endpoint currently handles GET; POST is explicitly refused to 
 - Foundation's signed fake-issuer callback PR #18 is merged (`3f90363227ed5497c82a378c9f73093c46adcad4`, [CI 42143363623](https://github.com/sholehamed/foundation-backend/actions/runs/42143363623)). This does **not** replace the pending two-real-host OpenIddict integration gate.
 - [PR #19](https://github.com/sholehamed/foundation-backend/pull/19) introduced an opt-in, cookie-scheme-only `GET /bff/session` plus per-read registered-host/account/tenant context validation and no-store safe JSON. Isolated HTTP tests do not claim full auth E2E.
 - BFF-05 remains incomplete until CSRF, logout/revoke-all, expiration, current DB-grant revalidation and distributed-store checks. BFF-06 Angular migration remains blocked.
+
+## Continuation review — 2026-11-06
+
+- Reviewed PR #23 head `663ebd201527b89e2126d14f35dc328de240d9d9`: [CI 42200256418](https://github.com/sholehamed/foundation-backend/actions/runs/42200256418) passed full solution build, **68 BFF + 48 Identity tests**. No unresolved review threads at review time.
+- Added regression coverage for logout replay, preserving an independent ticket, request token without antiforgery cookie, GET logout refusal, cross-host CSRF bootstrap, HTTPS enforcement, Referer fallback, opaque Origin, port mismatch and Fetch Metadata boundaries. These additions require a new green PR-head CI before merge.
+- Next implementation slice: live user/tenant/security-stamp/grant revalidation behind the BFF cookie boundary, followed by account-wide revocation and refresh coordination. Angular migration remains blocked; frontend handoff must reflect PR #22 and this slice. Keep both F00 PRs open.
