@@ -63,6 +63,31 @@ public sealed partial class BffSessionHttpTests
     }
 
     [Fact]
+    public async Task Csrf_token_for_one_authenticated_user_cannot_logout_a_different_user()
+    {
+        await using var h = await Harness.StartAsync();
+        const string host = "tenant-a.shinera.localhost";
+        var firstCookie = (await h.IssueSessionAsync(host)).Split(';')[0];
+        var secondCookie = (await h.IssueSessionAsync(host)).Split(';')[0];
+
+        using var firstCsrf = await h.GetCsrfAsync(firstCookie, host);
+        Assert.Equal(HttpStatusCode.NoContent, firstCsrf.StatusCode);
+        var (firstToken, firstAntiCookie) = ReadCsrfCookies(firstCsrf);
+
+        // The antiforgery token must be bound to the validated BFF principal,
+        // not to an anonymous default bearer scheme.
+        using var rejected = await h.LogoutAsync(
+            secondCookie, host, firstToken, firstAntiCookie,
+            origin: "https://" + host, fetchSite: "same-origin");
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+
+        using var secondStillActive = await h.ReadSessionAsync(secondCookie, host);
+        Assert.Equal(HttpStatusCode.OK, secondStillActive.StatusCode);
+        using var firstStillActive = await h.ReadSessionAsync(firstCookie, host);
+        Assert.Equal(HttpStatusCode.OK, firstStillActive.StatusCode);
+    }
+
+    [Fact]
     public async Task Forged_antiforgery_token_cannot_logout_a_session()
     {
         await using var h = await Harness.StartAsync();
