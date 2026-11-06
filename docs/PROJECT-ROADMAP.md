@@ -4,6 +4,13 @@
 > Parent decision: [ADR-0001 — Full BFF](decisions/ADR-0001-browser-bff.md)  
 > Current state: [PROJECT-STATE.md](PROJECT-STATE.md)
 
+## Latest merged checkpoint — BFF-04.2 (2026-11-06)
+
+- [PR #16](https://github.com/sholehamed/foundation-backend/pull/16) merged at `c4f6a81c302f3524bed3e58931221874be16928f`; [CI 42140557977](https://github.com/sholehamed/foundation-backend/actions/runs/42140557977) green: 46 BFF + 42 Identity tests.
+- The opt-in client/challenge/callback registration and protected ticket infrastructure now exist on `main`, **disabled by default**. The code-grant token exchange is now handled in the actual Identity passthrough endpoint.
+- BFF-04 remains **in progress** until real callback + cookie E2E proves the protocol end-to-end. BFF-05 session APIs, CSRF, revocation and BFF-06 Angular migration remain pending.
+- Next technical slice: [BFF-04 full callback integration verification](development/BFF-04-IMPLEMENTATION.md). Keep legacy browser Password Grant unchanged until BFF-05/06 are E2E validated.
+
 ## Delivery rules
 
 A slice is complete only when code, tests, integration evidence and documentation are complete. Keep Identity Server session and BFF application session separate. Do not migrate Angular early, do not expose tokens to browser JavaScript, and do not remove legacy Password Grant until dependent clients are migrated and verified.
@@ -48,7 +55,7 @@ Acceptance:
 - CI green and all docs/checkpoint updated.
 
 ### BFF-04 — confidential OIDC client, callback and BFF session
-**In progress — secure return-URL validator merged in PR #14; opt-in OIDC client and callback registration in PR #16; full browser login NOT verified** · [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)
+**In progress — PR #14 and PR #16 merged, opt-in client registered; full browser callback + cookie E2E NOT verified** · [Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)
 
 Scope:
 - [First security slice] `Modules.System.Bff.Security.BffLocalReturnUrl`: conservative rooted same-origin return-path validator with tests. Must be used by future OIDC challenge; does not issue cookie or Token.

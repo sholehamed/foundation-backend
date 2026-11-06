@@ -2,6 +2,15 @@
 
 > **Status:** Accepted target architecture; implementation is in progress. The full browser flow is **not yet operational**. [ADR](../decisions/ADR-0001-browser-bff.md).
 
+## Current merged BFF checkpoint — 2026-11-06
+
+- **Merged to `main`:** [PR #16](https://github.com/sholehamed/foundation-backend/pull/16) at `c4f6a81c302f3524bed3e58931221874be16928f`. Last verified PR-head [CI 42140557977](https://github.com/sholehamed/foundation-backend/actions/runs/42140557977): **46/46 BFF** and **42/42 Identity** tests plus full solution build passed. This supersedes historical draft statuses lower in this file.
+- **Included:** opt-in BFF OIDC Authorization Code + PKCE challenge, configured callback middleware, protected server-side ticket store and isolated Secure/HttpOnly host-only cookie scheme; Identity code-grant token endpoint passthrough and current-user revalidation; strict host-derived System/Tenant login context and validated return paths. Broad CORS credentials were not enabled.
+- **Still not accepted as complete BFF-04:** no real two-host OIDC callback E2E or actual cookie-issuance/browser verification. `Identity:Bff:Enabled` is **false by default**. Do not enable in production or migrate existing Angular token storage on this evidence alone.
+- **Next task:** implement authentic Identity Server ↔ BFF callback integration tests covering protected browser cookie, invalid/missing nonce/state/correlation, code replay, account/tenant mismatch and logout/expiration. Then BFF-05 (`/bff/session`, CSRF, revocation, fresh host/context validation) and BFF-06 Angular migration after cross-repo E2E.
+- **Frontend dependency:** [Frontend PR #8](https://github.com/sholehamed/foundation-frontend/pull/8) merged at `e94c144e4293faa297290aa608c5e7409aeaa1c2`, 22 unit tests + development build passed; it handles only same-origin Identity UI continuation and preserves legacy Password Grant.
+- **Code map and test/deployment instructions:** [BFF-04.2 implementation handoff](development/BFF-04-IMPLEMENTATION.md).
+
 ## Delivery checkpoint — 2026-11-06
 
 | Slice | Status | Evidence | Boundary |
@@ -9,7 +18,7 @@
 | BFF-01 — server-side ticket store | Implemented, CI green | `Modules.System.Bff/DistributedBffTicketStore.cs`, PR #6 | The store/cookie primitives exist; PR #16 composes the module into Web but keeps it disabled by default. |
 | BFF-02 — Identity interactive session | Implemented, CI green | `IdentityServerCookieDefaults`, `IUserCredentialAuthenticator`, `Auth.cs`, PR #8 | Issues only the separate Identity Server cookie. It does not yet complete OpenIddict authorization or create a BFF session. |
 | Authorization Code + PKCE | **Merged (PR #11)** | `Web/Endpoints/Connect.cs`, `IdentitySessionValidator`, BFF client seeder | Code+PKCE exchange and rejection tests green in isolated TestServer CI; does not yet supply browser BFF session. |
-| BFF OIDC callback + session | **In PR #16, opt-in; not end-to-end proven** | BFF challenge tests / code | ASP.NET OIDC challenge + callback middleware and ticket store registered. Actual callback/code exchange and issuance not yet integration-tested. |
+| BFF OIDC callback + session | **Merged PR #16, opt-in; not end-to-end proven** | BFF challenge tests / code | ASP.NET OIDC challenge + callback middleware and ticket store registered. Actual callback/code exchange and issuance not yet integration-tested. |
 | Browser endpoints + Angular migration | Planned | Roadmap BFF-05/06 | No production browser BFF endpoints or Angular migration yet. |
 
 The current implementation is deliberately split across two independent cookies:
