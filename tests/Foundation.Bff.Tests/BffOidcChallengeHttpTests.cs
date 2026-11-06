@@ -106,6 +106,25 @@ public sealed class BffOidcChallengeHttpTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("identity")]
+    [InlineData("auth")]
+    [InlineData("api")]
+    [InlineData("www")]
+    [InlineData("admin")]
+    public async Task Identity_and_infrastructure_hosts_cannot_become_tenant_Bff_hosts(
+        string infrastructureSlug)
+    {
+        await using var harness = await Harness.StartAsync();
+        using var response = await harness.Client.GetAsync(
+            "https://" + infrastructureSlug +
+            ".shinera.localhost/bff/auth/login?returnUrl=%2Fdashboard");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("unrecognized_bff_host",
+            await response.Content.ReadAsStringAsync());
+    }
+
     private static async Task AssertResponseStatusAsync(HttpResponseMessage response, HttpStatusCode expected)
     {
         if (response.StatusCode != expected)
