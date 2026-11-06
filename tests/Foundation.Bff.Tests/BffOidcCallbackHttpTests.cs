@@ -36,7 +36,8 @@ public sealed class BffOidcCallbackHttpTests
         var challenge = await harness.BeginAsync();
         var callback = await harness.CallbackAsync(challenge);
 
-        Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
+        Assert.True(callback.StatusCode == HttpStatusCode.Redirect,
+            $"Expected a successful BFF callback, got {(int)callback.StatusCode}: {await callback.Content.ReadAsStringAsync()}");
         Assert.Equal("/dashboard", callback.Headers.Location?.OriginalString);
         Assert.True(issuer.CodeWasExchanged);
         Assert.True(issuer.UserInfoWasRequested);
@@ -114,7 +115,8 @@ public sealed class BffOidcCallbackHttpTests
         var challenge = await harness.BeginAsync();
 
         var first = await harness.CallbackAsync(challenge);
-        Assert.Equal(HttpStatusCode.Redirect, first.StatusCode);
+        Assert.True(first.StatusCode == HttpStatusCode.Redirect,
+            $"Expected a first successful callback, got {(int)first.StatusCode}: {await first.Content.ReadAsStringAsync()}");
 
         var replay = await harness.CallbackAsync(challenge);
         Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
@@ -167,6 +169,21 @@ public sealed class BffOidcCallbackHttpTests
             builder.Services.Configure<OpenIdConnectOptions>(
                 BffDefaults.OidcScheme,
                 options => options.BackchannelHttpHandler = issuer);
+
+            // Test-only diagnostics. Keep production OnRemoteFailure's
+            // opaque error body unchanged and never expose exception details there.
+            builder.Services.PostConfigure<OpenIdConnectOptions>(
+                BffDefaults.OidcScheme,
+                options =>
+                {
+                    var original = options.Events.OnRemoteFailure;
+                    options.Events.OnRemoteFailure = async context =>
+                    {
+                        await original(context);
+                        await context.HttpContext.Response.WriteAsync(
+                            "\nTEST_ONLY_FAILURE: " + context.Failure);
+                    };
+                });
 
             var app = builder.Build();
             app.UseDeveloperExceptionPage();
