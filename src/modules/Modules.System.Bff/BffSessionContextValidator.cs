@@ -6,16 +6,15 @@ using Microsoft.AspNetCore.Http.Extensions;
 namespace Modules.System.Bff;
 
 /// <summary>
-/// Binds the authenticated OIDC principal to the host/context that initiated
-/// the challenge. A valid OIDC response for a different tenant is not a BFF session.
+/// Validates account type and tenant against the exact browser host that owns
+/// a BFF session. Callback validation additionally validates the return URI.
+/// This is host binding, not a substitute for live database access validation.
 /// </summary>
 public static class BffSessionContextValidator
 {
     /// <summary>
-    /// Compatibility overload for callers that still hold a RedirectUri in
-    /// AuthenticationProperties. The OIDC TicketReceived event must use the
-    /// overload taking TicketReceivedContext.ReturnUri instead, because the
-    /// framework clears AuthenticationProperties.RedirectUri first.
+    /// Compatibility overload for code that still stores RedirectUri in its
+    /// AuthenticationProperties. OIDC OnTicketReceived must use ReturnUri.
     /// </summary>
     public static bool TryValidate(
         ClaimsPrincipal? principal,
@@ -34,9 +33,36 @@ public static class BffSessionContextValidator
         string? returnUri,
         out string error)
     {
-        error = "The OIDC identity does not match the initiating browser context.";
+        if (!TryValidateActiveSession(principal, properties, request, settings, out error))
+            return false;
+
+        if (!Security.BffLocalReturnUrl.TryValidate(returnUri, out _))
+        {
+            error = "The OIDC return path is not local to the BFF host.";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
+    }
+
+    /// <summary>
+    /// Validates the persisted BFF ticket on every browser session read.
+    /// A callback's RedirectUri is not available on subsequent requests.
+    /// Rejects unrecognized hosts, mismatched tenant/account claims and
+    /// callbacks that are not explicitly registered for the current origin.
+    /// </summary>
+    public static bool TryValidateActiveSession(
+        ClaimsPrincipal? principal,
+        AuthenticationProperties? properties,
+        HttpRequest request,
+        BffOidcSettings settings,
+        out string error)
+    {
+        error = "The BFF session does not match the request host or account.";
 
         if (principal?.Identity?.IsAuthenticated != true ||
+            string.IsNullOrWhiteSpace(principal.FindFirst("sub")?.Value) ||
             properties is null ||
             !properties.Items.TryGetValue(BffDefaults.LoginContextProperty, out var expectedContext) ||
             expectedContext is not ("system" or "tenant") ||
@@ -82,9 +108,6 @@ public static class BffSessionContextValidator
                 return false;
             }
         }
-
-        if (!Security.BffLocalReturnUrl.TryValidate(returnUri, out _))
-            return false;
 
         error = string.Empty;
         return true;

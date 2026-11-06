@@ -57,3 +57,9 @@ Current legacy Angular login is untouched, with no automatic migration or token 
 - Acceptance assertions: OIDC callback redirects to the validated return path, protected `__Host-Foundation.Bff` host-only Secure/HttpOnly cookie contains no OAuth credentials, server ticket retains access/ID tokens, invalid state/nonce, tenant mismatch and reused code fail closed.
 - Tests are isolated from real DNS/production credentials. No production middleware options or cookie restrictions were relaxed. Latest-head CI must pass before any merge.
 - **Still required after PR #18:** End-to-end tests with two real Foundation TestServer hosts (OpenIddict Identity + BFF), including actual token endpoint passthrough, current user/tenant revalidation, identity cookies, and final browser session flows; then BFF-05 APIs, CSRF, logout, revocation and Angular migration.
+
+## BFF-05.1 — read-only browser session slice (active branch)
+
+- [PR #18](https://github.com/sholehamed/foundation-backend/pull/18) is merged at `3f90363227ed5497c82a378c9f73093c46adcad4` (signed fake-issuer callback CI green). Real Identity Server integration remains pending.
+- New `GET /bff/session` uses explicit BFF cookie authentication; bearer credentials never authenticate this endpoint. It validates current host/callback against registered redirect hosts, System/Tenant context, and tenant claims, and returns only a minimal no-store session snapshot. 401 = missing/invalid cookie; 403 = host/context mismatch.
+- Tests: `tests/Foundation.Bff.Tests/BffSessionHttpTests.cs`. Issue remains open: real two-host code-flow E2E, active-user/tenant DB checks, revocation, CSRF/logout, distributed storage and Angular migration. `Identity:Bff:Enabled` stays false by default.
