@@ -210,6 +210,45 @@ public sealed class SqlServerBffAtomicStoreTests
             Assert.Equal(1, Convert.ToInt32(await command.ExecuteScalarAsync()));
         });
 
+
+    [Fact]
+    public async Task Startup_guard_accepts_deployed_schema_but_rejects_missing_table()
+        => await WithDatabaseAsync(async connectionString =>
+        {
+            var guard = new SqlServerBffSchemaStartupGuard(connectionString);
+            await guard.StartAsync(CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(
+                "DROP TABLE dbo.FoundationBffSessions;", connection);
+            await command.ExecuteNonQueryAsync();
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => guard.StartAsync(CancellationToken.None));
+            Assert.Contains("schema/constraints", exception.Message);
+        });
+
+    [Fact]
+    public async Task Startup_guard_rejects_disabled_or_untrusted_expiry_constraint()
+        => await WithDatabaseAsync(async connectionString =>
+        {
+            var guard = new SqlServerBffSchemaStartupGuard(connectionString);
+            await guard.StartAsync(CancellationToken.None);
+
+            await using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = new SqlCommand("""
+                ALTER TABLE dbo.FoundationBffSessions
+                NOCHECK CONSTRAINT CK_FoundationBffSessions_Expiry;
+                """, connection);
+            await command.ExecuteNonQueryAsync();
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => guard.StartAsync(CancellationToken.None));
+            Assert.Contains("schema/constraints", exception.Message);
+        });
+
     private static AuthenticationTicket NewTicket(string name)
         => new(new ClaimsPrincipal(new ClaimsIdentity(
                 [new Claim(ClaimTypes.NameIdentifier, name)], BffDefaults.CookieScheme)),
