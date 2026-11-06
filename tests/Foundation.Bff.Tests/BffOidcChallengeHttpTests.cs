@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.AspNetCore.WebUtilities;
 using Modules.System.Bff;
@@ -148,13 +149,18 @@ public sealed class BffOidcChallengeHttpTests
                 BffDefaults.OidcScheme,
                 options =>
                 {
-                    options.Configuration = new OpenIdConnectConfiguration
-                    {
-                        Issuer = "https://identity.example.com/",
-                        AuthorizationEndpoint = "https://identity.example.com/api/connect/authorize",
-                        TokenEndpoint = "https://identity.example.com/api/system/Auth/login",
-                        UserInfoEndpoint = "https://identity.example.com/api/system/Auth/userinfo"
-                    };
+                    // An isolated TestServer must never contact the fake IdP hostname.
+                    // Setting Configuration alone in PostConfigure is too late:
+                    // OpenIdConnectPostConfigureOptions has already built the dynamic
+                    // metadata manager. Override the manager itself with fixed test metadata.
+                    options.ConfigurationManager = new StaticConfigurationManager<OpenIdConnectConfiguration>(
+                        new OpenIdConnectConfiguration
+                        {
+                            Issuer = "https://identity.example.com/",
+                            AuthorizationEndpoint = "https://identity.example.com/api/connect/authorize",
+                            TokenEndpoint = "https://identity.example.com/api/system/Auth/login",
+                            UserInfoEndpoint = "https://identity.example.com/api/system/Auth/userinfo"
+                        });
                 });
 
             var app = builder.Build();
