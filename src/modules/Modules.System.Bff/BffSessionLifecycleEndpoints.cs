@@ -95,10 +95,17 @@ public static class BffSessionLifecycleEndpoints
         if (!auth.Succeeded || auth.Principal is null)
             return Results.Unauthorized();
 
-        return BffSessionContextValidator.TryValidateActiveSession(
-            auth.Principal, auth.Properties, context.Request, settings, out _)
-            ? null
-            : Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (!BffSessionContextValidator.TryValidateActiveSession(
+                auth.Principal, auth.Properties, context.Request, settings, out _))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        // The host's default authentication scheme remains native/bearer.
+        // Antiforgery must bind to the validated BFF principal instead of
+        // implicitly treating this browser request as anonymous.
+        context.User = auth.Principal;
+        return null;
     }
 
     private static void SetNoStore(HttpContext context)
