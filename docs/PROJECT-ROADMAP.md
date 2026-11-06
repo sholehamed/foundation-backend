@@ -1,5 +1,12 @@
 # Foundation Backend — BFF implementation roadmap
 
+## Active BFF-05.5b.2 SQL Server transactional session store — 2026-11-06
+
+- [Draft PR #32](https://github.com/sholehamed/foundation-backend/pull/32) introduces the actual `SqlServerBffAtomicTicketStore` Web adapter behind `IBffAtomicTicketStore`: protected server-side tickets, 24h original lifetime, one-row conditional **UPDATE-only** renewal and atomic SQL revocation (payload cleared) on the same primary; independently managed idempotent DDL and explicit secret-managed SQL connection.
+- New `tests/Foundation.Bff.SqlServerTests` runs disposable SQL Server database tests (cross-connection renew/revoke race, expired/revoked/missing keys, tampering/SQL failure, deadline cap, schema idempotence). Separate SQL Server 2022 GitHub Actions service job added. **Await final latest-HEAD CI before claiming merged.**
+- SQL provider requires `Identity:Bff:SqlServer:Enabled=true` *and* `Identity:Bff:Enabled=true`, with `ConnectionStrings:BffSessions`; no automatic prod DDL. Existing BFF remains OFF by default, Angular Password Grant/localStorage/guards untouched. Shared Data Protection keyring and production failover/browser gates still open. See [technical rollout and limitations](development/BFF-05-5B-SQL-ATOMIC-SESSION.md), [master #20](https://github.com/sholehamed/foundation-backend/issues/20), [SQL #30](https://github.com/sholehamed/foundation-backend/issues/30).
+
+
 ## Verified BFF-05.5a + BFF-05.5b.1 merged checkpoint — 2026-11-06
 
 - **Merged race mitigation:** [PR #28](https://github.com/sholehamed/foundation-backend/pull/28) at `ccbaddcad3d8e7c413a505ba7c8e2e0a04e59298`. [Final PR-head CI #42210307369](https://github.com/sholehamed/foundation-backend/actions/runs/42210307369) passed solution build, **88 BFF + 60 Identity tests**. Protected session tickets carry a 24-hour original-issuance absolute ceiling, revoked keys receive a 48-hour tombstone, and Retrieve/Renew validate revocation before/after cached reads/writes; deterministic concurrency tests prove the single-shared-consistent-cache interleavings.
