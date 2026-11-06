@@ -149,7 +149,8 @@ public sealed class BffSessionHttpTests
             builder.Services.AddBffAuthentication(builder.Configuration, builder.Environment);
 
             var app = builder.Build();
-            app.UseAuthentication();
+            if (enabled)
+                app.UseAuthentication();
             app.MapBffEndpoints(builder.Configuration);
 
             if (enabled)
