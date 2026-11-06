@@ -131,7 +131,8 @@ public sealed partial class BffSessionHttpTests
             _client = client;
         }
 
-        public static async Task<Harness> StartAsync(bool enabled = true)
+        public static async Task<Harness> StartAsync(bool enabled = true,
+            IBffAccountSessionRevoker? accountRevoker = null)
         {
             var builder = WebApplication.CreateBuilder(
                 new WebApplicationOptions { EnvironmentName = Environments.Development });
@@ -146,6 +147,8 @@ public sealed partial class BffSessionHttpTests
                 ["Identity:Bff:RedirectUris:1"] = "https://localhost/signin-oidc",
                 ["Tenant:WorkspaceBaseDomain"] = "shinera.localhost"
             });
+            if (accountRevoker is not null)
+                builder.Services.AddSingleton(accountRevoker);
             builder.Services.AddBffAuthentication(builder.Configuration, builder.Environment);
 
             var app = builder.Build();
