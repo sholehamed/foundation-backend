@@ -50,7 +50,9 @@ public static class OpenIddictBffClientSeeder
                 OpenIddictConstants.Permissions.Scopes.Profile,
                 OpenIddictConstants.Permissions.Scopes.Email,
                 OpenIddictConstants.Permissions.Prefixes.Scope + OpenIddictConstants.Scopes.OfflineAccess,
-                OpenIddictConstants.Permissions.Prefixes.Scope + "api"
+                OpenIddictConstants.Permissions.Prefixes.Scope + "api",
+                OpenIddictConstants.Permissions.Prefixes.Scope + "roles",
+                OpenIddictConstants.Permissions.Prefixes.Scope + "permissions"
             },
             Requirements =
             {

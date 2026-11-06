@@ -1,6 +1,6 @@
 # Browser authentication HTTP contract — v1 proposal
 
-> Status: **Planned / not yet implemented**. Security requirements are mandatory when endpoints are introduced. API response schemas are provisional until integration tests and OpenAPI agree.
+> Status: **Partially implemented in BFF-04.2 Draft PR #16; disabled by default, not full-browser E2E verified**. Session/CSRF/logout APIs remain planned. API response schemas are provisional until integration tests and OpenAPI agree.
 
 | Method | Path | Auth | Browser-visible result |
 | --- | --- | --- | --- |
@@ -82,3 +82,27 @@ The following remain Planned: `/bff/auth/login`, `/signin-oidc`, `/bff/session`,
 The following protocol parameters are needed on authorization: `client_id`, `response_type=code`, `scope` including `openid`, `redirect_uri` (exact), `state`, `nonce`, `code_challenge`, `code_challenge_method=S256`, and `login_context=system|tenant`; Tenant flows also carry the exact `tenant` slug. The client and URI must have been explicitly registered and PKCE enforced by OpenIddict. Never accept `returnUrl` as an absolute arbitrary redirect; only allow safe local paths and review login-UI continuation.
 
 **Current status:** only the handler and registration scaffold exist on PR #11. Protocol E2E must verify code issuance, token exchange, invalid client/redirect, replay and consent behavior before the endpoint can be called production-ready. No OAuth tokens are intended for browser JSON responses.
+
+## BFF-04.2 login challenge draft contract (PR #16; not shipped)
+
+- `GET /bff/auth/login?returnUrl=<localPath>` is an anonymous navigation endpoint, opt-in by `Identity:Bff:Enabled`.
+- Invalid return URL or unknown browser host: `400`. Tenant or context supplied by query that conflicts with host-derived identity: `403`.
+- Valid request: `302` OIDC Authorization Code redirect with PKCE S256, state, nonce, confidential registered client and exact callback `/signin-oidc`; client and server must carry System vs Tenant identity context.
+- Session cookie and OAuth tokens are not provided by the challenge response. Callback/CSRF/revocation remain outside this tested contract until integration passes.
+- This version is a **Draft partial implementation**. Initial challenge tests failed during fake-IdP metadata discovery and were fixed in TestServer; latest pre-doc CI [42140046994](https://github.com/sholehamed/foundation-backend/actions/runs/42140046994) passed 46 BFF and 42 Identity tests. Full callback/cookie E2E remains unverified.
+
+
+### 2026-11-06 — BFF-04.2 challenge test recovery
+
+- The three unexpected HTTP 500 failures were traced to isolated OIDC TestServer metadata lookup against a fake Identity hostname and an unqualified Forbid response on a tenant mismatch. Production discovery has **not** been replaced with static metadata.
+- Fixes: explicit HTTP 403 for host/tenant mismatch, `StaticConfigurationManager<OpenIdConnectConfiguration>` in the test harness only, diagnostics on unexpected TestServer 500.
+- [CI #42138452399](https://github.com/sholehamed/foundation-backend/actions/runs/42138452399) **passed** (solution Build; 46/46 BFF tests and 42/42 Identity tests). This confirms the isolated HTTP challenge test fix, **not** full deployed Identity/BFF callback integration.
+- BFF-04 remains **Draft PR #16**, not merged. Callback/token-exchange E2E, browser cookie issuance, live session lifecycle and multi-host verification are still required before acceptance.
+
+## Latest BFF-04.2 review — 2026-11-06
+
+- **Current branch under review:** [Draft PR #16](https://github.com/sholehamed/foundation-backend/pull/16) adds opt-in `/bff/auth/login`, confidential OIDC challenge/callback registration, validated host/System/Tenant context, and a protected distributed ticket-backed `__Host-Foundation.Bff` cookie scheme. `Identity:Bff:Enabled` remains **false** by default. The login challenge is verified with TestServer; the actual cross-origin OIDC callback/browser-cookie round trip is **not yet integration-tested**.
+- **Latest CI evidence before docs update:** [run 42140046994](https://github.com/sholehamed/foundation-backend/actions/runs/42140046994), full solution build, **46/46 BFF** and **42/42 Identity** tests passed. Recheck latest-head CI after each commit.
+- **Security review adjustment:** removed `.AllowCredentials()` from the broad pre-existing CORS origin allowlist. Interactive Identity UI and `/api/connect/authorize` must be served on the **same origin**; no credentialed cross-origin workaround for CSRF/XSRF cookies.
+- **Not complete:** no proof of a real browser callback/token exchange and cookie issuance; no `/bff/session`, CSRF-protected BFF write APIs, logout/revocation, distributed refresh coordination or full Angular migration.
+- **Required next PR:** TestServer integration of full Authorization Code callback and server-held tokens (positive + failure/replay/cross-tenant tests), then implement BFF-05 session lifecycle and full-stack E2E. A CI-green challenge-only slice must not be described as production-ready.

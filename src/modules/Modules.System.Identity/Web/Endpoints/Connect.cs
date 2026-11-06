@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Http;
 using Modules.System.Identity.Application.Abstractions;
+using Modules.System.Identity.Application.Services;
 using Modules.System.Identity.Web.Util;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
@@ -174,12 +175,14 @@ public sealed class Connect : EndpointGroupBase
             OpenIddictConstants.Scopes.Profile,
             OpenIddictConstants.Scopes.Email,
             OpenIddictConstants.Scopes.OfflineAccess,
-            "api"
+            "api",
+            "roles",
+            "permissions"
         }).ToArray();
 
         principal.SetScopes(allowedScopes);
         principal.SetResources("resource_server");
-        SetClaimDestinations(principal, allowedScopes);
+        IdentityPrincipalDestinations.Apply(principal, allowedScopes);
 
         return Results.SignIn(
             principal,
@@ -234,57 +237,6 @@ public sealed class Connect : EndpointGroupBase
            !value.Contains('\r') &&
            !value.Contains('\n') &&
            !value.Contains('#');
-
-    private static void SetClaimDestinations(
-        global::System.Security.Claims.ClaimsPrincipal principal,
-        IReadOnlyCollection<string> scopes)
-    {
-        var profileRequested = scopes.Contains(OpenIddictConstants.Scopes.Profile);
-        var emailRequested = scopes.Contains(OpenIddictConstants.Scopes.Email);
-
-        foreach (var claim in principal.Claims)
-        {
-            switch (claim.Type)
-            {
-                case OpenIddictConstants.Claims.Subject:
-                    claim.SetDestinations(
-                        OpenIddictConstants.Destinations.AccessToken,
-                        OpenIddictConstants.Destinations.IdentityToken);
-                    break;
-
-                case OpenIddictConstants.Claims.Username:
-                    claim.SetDestinations(profileRequested
-                        ? [OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken]
-                        : [OpenIddictConstants.Destinations.AccessToken]);
-                    break;
-
-                case OpenIddictConstants.Claims.Email:
-                    claim.SetDestinations(emailRequested
-                        ? [OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken]
-                        : [OpenIddictConstants.Destinations.AccessToken]);
-                    break;
-
-                case OpenIddictConstants.Claims.GivenName:
-                case OpenIddictConstants.Claims.Picture:
-                    claim.SetDestinations(profileRequested
-                        ? [OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken]
-                        : [OpenIddictConstants.Destinations.AccessToken]);
-                    break;
-
-                case "auth_time":
-                    claim.SetDestinations(OpenIddictConstants.Destinations.IdentityToken);
-                    break;
-
-                case OpenIddictConstants.Claims.Role:
-                case "tenant_id":
-                case "tenant":
-                case "permission":
-                case "account_type":
-                    claim.SetDestinations(OpenIddictConstants.Destinations.AccessToken);
-                    break;
-            }
-        }
-    }
 
     private static IResult OAuthError(string error, string description)
         => Results.Forbid(

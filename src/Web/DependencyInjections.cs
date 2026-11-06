@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.HttpOverrides;
 using Modules.System.FileStorage;
+using Modules.System.Bff;
 using Modules.System.Identity;
 using Scalar.AspNetCore;
 using Scalar.ClientGeneration;
@@ -14,6 +15,7 @@ namespace Server
             builder.Services.AddAntiforgery();
             builder.Services.AddMediaStorage(builder.Configuration);
             builder.Services.AddIdentityModule(builder.Configuration, builder.Environment);
+            builder.Services.AddBffAuthentication(builder.Configuration, builder.Environment);
             builder.Services.AddScalarClientGeneration();
 
             // Salon Modules
@@ -63,6 +65,7 @@ namespace Server
             app.UseCors("Cors");
             app.UseMediaStorage(configuration);
             app.UseIdentityModule(configuration);
+            app.MapBffEndpoints(configuration);
 
             // Salon Modules
           
