@@ -1,6 +1,15 @@
 # BFF-05.5b.2 — SQL Server atomic session ticket provider
 
-> [Backend PR #32](https://github.com/sholehamed/foundation-backend/pull/32) — verification on latest code head pending final documentation CI. SQL Server TestServer CI code head [#42215510887](https://github.com/sholehamed/foundation-backend/actions/runs/42215510887) has **9/9 real SQL integration tests green**. This is the *first actual provider* for the prior `IBffAtomicTicketStore` startup contract. BFF remains opt-in OFF; browser/Angular migration is blocked by other BFF-05 gates.
+## Verified BFF-05.5b.2 — merged SQL Server transactional atomic store (2026-11-06)
+
+- **Merged:** [PR #32](https://github.com/sholehamed/foundation-backend/pull/32) at `c2ebf86053c17fb87309ec630f932ac32701a127`. [Final latest-head CI #42215944644](https://github.com/sholehamed/foundation-backend/actions/runs/42215944644) passed solution build, **94/94 BFF + 60/60 Identity + 9/9 real SQL Server integration tests** (163 total, zero failures).
+- **Shipped:** SQL Server provider implements `IBffAtomicTicketStore` in Web: server-protected opaque cookie ticket, SQL conditional UPDATE-only renewal against existing active session, atomic UPDATE revoked-row + ciphertext removal, 24-hour immutable absolute session lifetime, manual idempotent SQL schema and Startup Guard rejecting missing/untrusted constraints. Feature requires explicit `Identity:Bff:SqlServer:Enabled` and a secret-managed `ConnectionStrings:BffSessions`; global BFF opt-in remains `false`.
+- **Verified integration:** disposable SQL Server 2022 CI service, forced concurrent row-lock renew-vs-logout, replay rejection, expiry/tamper/outage/schema tests, **two independent TestServers sharing persisted Data Protection keyring plus real SQL database**, cookie works cross-host but fails after logout and even after both hosts restart. This is not proof of production SQL Always On/failover or HTTPS browser/reverse-proxy behavior.
+- **Still blocked:** production encrypted/rotated shared keyring, SQL HA/failover/cleanup and deployment probes, logout-all and upstream Identity refresh-token revocation, coordinated refresh rotation, OIDC callback race, real browser/SQL Server/proxy E2E, Angular BFF-06 migration and final BFF-07 legacy-client/password-grant closeout. **Do not enable BFF in Production or migrate Angular yet.**
+- Follow [SQL implementation and deployment runbook](development/BFF-05-5B-SQL-ATOMIC-SESSION.md), [backend master #20](https://github.com/sholehamed/foundation-backend/issues/20), [SQL production certification #30](https://github.com/sholehamed/foundation-backend/issues/30), [frontend BFF-06 #10](https://github.com/sholehamed/foundation-frontend/issues/10). Original F00 PR #2 remains open and unchanged.
+
+
+> [Backend PR #32](https://github.com/sholehamed/foundation-backend/pull/32) merged with final latest-head CI #42215944644 passing all 163 tests. SQL Server TestServer CI code head [#42215510887](https://github.com/sholehamed/foundation-backend/actions/runs/42215510887) has **9/9 real SQL integration tests green**. This is the *first actual provider* for the prior `IBffAtomicTicketStore` startup contract. BFF remains opt-in OFF; browser/Angular migration is blocked by other BFF-05 gates.
 
 ## Ownership and architecture
 
