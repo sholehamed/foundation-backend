@@ -7,7 +7,10 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
+    <EmbeddedResource Include="Bff/SqlServerBffSessionStore.sql"
+                      LogicalName="Foundation.Bff.SqlServerSchema.sql" />
   </ItemGroup>
 
   <ItemGroup>

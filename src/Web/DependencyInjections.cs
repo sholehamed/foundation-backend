@@ -16,6 +16,13 @@ namespace Server
             builder.Services.AddAntiforgery();
             builder.Services.AddMediaStorage(builder.Configuration);
             builder.Services.AddIdentityModule(builder.Configuration, builder.Environment);
+            if (builder.Configuration.GetValue<bool>("Identity:Bff:Enabled") &&
+                builder.Configuration.GetValue<bool>("Identity:Bff:SqlServer:Enabled"))
+            {
+                // SQL-backed atomic session persistence is host Infrastructure,
+                // not an Identity/BFF module persistence dependency.
+                builder.Services.AddSqlServerBffAtomicTicketStore(builder.Configuration);
+            }
             builder.Services.AddBffAuthentication(builder.Configuration, builder.Environment);
             if (builder.Configuration.GetValue<bool>("Identity:Bff:Enabled"))
                 builder.Services.AddBffIdentitySessionValidation();
