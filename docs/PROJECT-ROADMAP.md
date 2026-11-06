@@ -1,5 +1,13 @@
 # Foundation Backend — BFF implementation roadmap
 
+## Verified merged BFF-05.3 callback gate — 2026-11-06
+
+- **Merged:** [PR #26](https://github.com/sholehamed/foundation-backend/pull/26) at `fa76eb952d99353d1f66e9249ec63cc6e9ef4e21`; [CI #42208199510](https://github.com/sholehamed/foundation-backend/actions/runs/42208199510) passed solution build, **82/82 BFF** and **60/60 Identity** tests.
+- Real Foundation OpenIddict two-TestServer Integration runs the **Web-owned live DB validator during OIDC callback and later cookie reads** for System and Tenant. Stamp rotation invalidates the protected server-side ticket; restoring the stamp does not resurrect the cookie.
+- **Not yet proven:** stamp-change race between token exchange and BFF baseline capture, outage behavior, distributed ticket renew-vs-logout, upstream token revocation/logout-all, absolute/idle expiry, real browser/SQL Server/trusted proxy and multi-node keyring/cache.
+- BFF remains disabled by default; Angular Password Grant/localStorage unchanged. Continue from [backend Issue #20](https://github.com/sholehamed/foundation-backend/issues/20) and [frontend Issue #10](https://github.com/sholehamed/foundation-frontend/issues/10). The original F00 PR #2 remains open.
+
+
 ## BFF-05.3 real callback + Web adapter integration gate — 2026-11-06
 
 - [Draft PR #26](https://github.com/sholehamed/foundation-backend/pull/26) runs actual Foundation OpenIddict Identity and BFF middleware on two independent TestServers **with the production Web-owned live Identity validator wired into the BFF host**. It shares an explicit EF InMemory root only for test DB access, not an issuer/token mock.
