@@ -287,7 +287,7 @@ public sealed class FoundationIdentityBffTwoHostTests
                     {
                         ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(15)
                     });
-                return Results.NoContent();
+                ctx.Response.StatusCode = StatusCodes.Status204NoContent;
             }).AllowAnonymous();
 
             await identityApp.StartAsync();
@@ -394,14 +394,14 @@ public sealed class FoundationIdentityBffTwoHostTests
 
         public async Task<HttpResponseMessage> AuthorizeAsync(Uri url, string identityCookie)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var request = new HttpRequestMessage(global::System.Net.Http.HttpMethod.Get, url);
             request.Headers.TryAddWithoutValidation("Cookie", identityCookie);
             return await _identityClient.SendAsync(request);
         }
 
         public async Task<HttpResponseMessage> CallbackAsync(Uri callback, string browserCookies)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, callback);
+            using var request = new HttpRequestMessage(global::System.Net.Http.HttpMethod.Get, callback);
             if (!string.IsNullOrWhiteSpace(browserCookies))
                 request.Headers.TryAddWithoutValidation("Cookie", browserCookies);
             return await _bffClient.SendAsync(request);
@@ -410,7 +410,7 @@ public sealed class FoundationIdentityBffTwoHostTests
         public async Task<HttpResponseMessage> ReadSessionAsync(string host, string cookie)
         {
             using var request = new HttpRequestMessage(
-                HttpMethod.Get, "https://" + host + "/bff/session");
+                global::System.Net.Http.HttpMethod.Get, "https://" + host + "/bff/session");
             request.Headers.TryAddWithoutValidation("Cookie", cookie);
             return await _bffClient.SendAsync(request);
         }
