@@ -155,10 +155,20 @@ public sealed class BffLiveCookieHttpTests
                     "tenant-a.shinera.localhost") { RowVersion = [1] };
                 var system = new User(null, "system-user", "system@example.test",
                     "System", "User", UserType.System)
-                    { SecurityStamp = "initial-stamp", RowVersion = [1] };
+                    {
+                        SecurityStamp = "initial-stamp", RowVersion = [1],
+                        NormalizedUserName = "SYSTEM-USER",
+                        NormalizedEmail = "SYSTEM@EXAMPLE.TEST",
+                        PasswordHash = "test-only"
+                    };
                 var tenantUser = new User(t.Id, "tenant-user", "tenant@example.test",
                     "Tenant", "User", UserType.Tenant)
-                    { SecurityStamp = "initial-stamp", RowVersion = [1] };
+                    {
+                        SecurityStamp = "initial-stamp", RowVersion = [1],
+                        NormalizedUserName = "TENANT-USER",
+                        NormalizedEmail = "TENANT@EXAMPLE.TEST",
+                        PasswordHash = "test-only"
+                    };
                 db.AddRange(t, system, tenantUser);
                 await db.SaveChangesAsync();
             }
