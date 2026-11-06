@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Bff;
+using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Application.Services;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure;
