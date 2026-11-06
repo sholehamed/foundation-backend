@@ -3,12 +3,14 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Modules.System.Bff;
 
 /// <summary>
-/// First cookie-only BFF write boundary: CSRF bootstrap and current-session
-/// logout. Does not implement logout-all or Identity Provider signout.
+/// Cookie-only BFF write boundary: CSRF bootstrap, current-session logout
+/// and host-provided account-wide browser ticket revocation. Does not end
+/// the upstream Identity Provider session or refresh-token grants.
 /// </summary>
 public static class BffSessionLifecycleEndpoints
 {
@@ -19,6 +21,9 @@ public static class BffSessionLifecycleEndpoints
             .AllowAnonymous().WithTags("BFF");
 
         endpoints.MapPost("/bff/auth/logout", Logout)
+            .AllowAnonymous().WithTags("BFF");
+
+        endpoints.MapPost("/bff/auth/logout-all", LogoutAll)
             .AllowAnonymous().WithTags("BFF");
 
         return endpoints;
@@ -77,6 +82,55 @@ public static class BffSessionLifecycleEndpoints
         // CookieAuthenticationHandler removes the protected server-side
         // ITicketStore session on SignOutAsync. Merely expiring a cookie is not
         // sufficient and must never be used as a substitute for this call.
+        await context.SignOutAsync(BffDefaults.CookieScheme);
+        context.Response.Cookies.Delete("XSRF-TOKEN", new CookieOptions
+        {
+            Path = "/",
+            Secure = true,
+            SameSite = SameSiteMode.Lax
+        });
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> LogoutAll(
+        HttpContext context,
+        BffOidcSettings settings,
+        IAntiforgery antiforgery)
+    {
+        SetNoStore(context);
+        var accessFailure = await ValidateBffSessionAsync(context, settings);
+        if (accessFailure is not null)
+            return accessFailure;
+
+        if (!Security.BffUnsafeRequestGuard.IsSameOrigin(context.Request))
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+        try
+        {
+            await antiforgery.ValidateRequestAsync(context);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Results.BadRequest(new { error = "invalid_antiforgery_token" });
+        }
+
+        // The subject is exclusively from a verified, context-bound BFF
+        // principal. Never accept user/tenant/session identifiers from JSON,
+        // query strings or client-controlled route parameters.
+        if (!Guid.TryParse(context.User.FindFirst("sub")?.Value, out var subject) ||
+            subject == Guid.Empty)
+            return Results.Unauthorized();
+
+        var revoker = context.RequestServices.GetService<IBffAccountSessionRevoker>();
+        if (revoker is null)
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+
+        // A SQL failure throws: the endpoint must not claim 204 or only
+        // expire a browser cookie while server tickets remain active.
+        await revoker.RevokeAllAsync(subject, context.RequestAborted);
+
+        // Expire this browser's opaque cookie as well; the SQL operation
+        // has already invalidated the other existing account sessions.
         await context.SignOutAsync(BffDefaults.CookieScheme);
         context.Response.Cookies.Delete("XSRF-TOKEN", new CookieOptions
         {
