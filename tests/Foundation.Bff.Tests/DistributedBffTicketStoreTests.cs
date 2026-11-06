@@ -45,9 +45,15 @@ public sealed class DistributedBffTicketStoreTests
     {
         using var provider = CreateProvider();
         var store = provider.GetRequiredService<ITicketStore>();
-        var key = await store.StoreAsync(NewTicket("alice"));
+        var original = NewTicket("alice");
+        var key = await store.StoreAsync(original);
+        var renewed = NewTicket("bob");
+        // CookieAuthenticationHandler keeps the protected original session
+        // absolute-expiry property during sliding renewal.
+        foreach (var item in original.Properties.Items)
+            renewed.Properties.Items[item.Key] = item.Value;
 
-        await store.RenewAsync(key, NewTicket("bob"));
+        await store.RenewAsync(key, renewed);
 
         Assert.Equal("bob",
             (await store.RetrieveAsync(key))?.Principal

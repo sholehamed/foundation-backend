@@ -1,5 +1,13 @@
 # Browser authentication HTTP contract — v1 proposal
 
+## Active BFF-05.5a — no ticket resurrection during logout/renewal (draft PR #28)
+
+- [PR #28](https://github.com/sholehamed/foundation-backend/pull/28) adds a **server-side 48-hour revocation tombstone** and immutable **24-hour maximum ticket lifetime** to BFF's `ITicketStore`. Renewal checks whether the original key is active and verifies revocation after the write; reads check revocation before and after cached bytes. This prevents stale read/write resurrection on a single strongly-consistent shared cache.
+- New deterministic two-store concurrency tests cover delayed renewal writes, delayed stale reads, replay, absolute expiry and invalid renewal baseline. **Await latest PR-head CI before marking implemented.**
+- `IDistributedCache` itself provides no atomic compare-and-set or eviction guarantees. This is **not** a production-ready multi-node/Redis/SQL Server/failover acceptance. See [security design and limitations](../development/BFF-05-5-TICKET-REVOCATION-RACES.md); prove provider-level atomicity/consistency or use a dedicated atomic backend before enabling BFF.
+- Baseline: merged [PR #26](https://github.com/sholehamed/foundation-backend/pull/26) real OIDC Web validator test, CI 82 BFF + 60 Identity. Backend BFF opt-in still disabled; Angular Password Grant/localStorage unchanged. Original F00 PR #2 remains open.
+
+
 > Status: **Partially implemented through merged BFF-05.1 PR #19**. GET /bff/session exists behind a disabled-by-default BFF flag; CSRF/logout/revocation remain planned. Actual Foundation Identity↔BFF E2E is unverified. API response schemas beyond the tested session endpoint remain provisional.
 
 ## Latest verified merged checkpoint — BFF-05.1 (2026-11-06)
