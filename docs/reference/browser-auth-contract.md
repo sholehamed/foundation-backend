@@ -1,6 +1,14 @@
 # Browser authentication HTTP contract — v1 proposal
 
-> Status: **Partially implemented in merged BFF-04.2 PR #16; disabled by default, not full-browser E2E verified**. Session/CSRF/logout APIs remain planned. API response schemas are provisional until integration tests and OpenAPI agree.
+> Status: **Partially implemented through merged BFF-05.1 PR #19**. GET /bff/session exists behind a disabled-by-default BFF flag; CSRF/logout/revocation remain planned. Actual Foundation Identity↔BFF E2E is unverified. API response schemas beyond the tested session endpoint remain provisional.
+
+## Latest verified merged checkpoint — BFF-05.1 (2026-11-06)
+
+- **Merged:** [BFF-04.3 PR #18](https://github.com/sholehamed/foundation-backend/pull/18) at `3f90363227ed5497c82a378c9f73093c46adcad4`; [CI 42143363623](https://github.com/sholehamed/foundation-backend/actions/runs/42143363623) passed signed fake-issuer OIDC callback tests.
+- **Merged:** [BFF-05.1 PR #19](https://github.com/sholehamed/foundation-backend/pull/19) at `bcfc109488be75981dee7f3aead91e1bca38d976`; [latest PR-head CI 42194597675](https://github.com/sholehamed/foundation-backend/actions/runs/42194597675): full solution Build (0 errors; 263 pre-existing warnings), **58/58 BFF** and **42/42 Identity** tests passed.
+- **What now exists (opt-in):** GET `/bff/session`, explicitly cookie-scheme authenticated (bearer alone is 401); safe no-store System/Tenant JSON; current-host/callback/tenant binding checked on every session read. 401 anonymous/invalid, 403 host mismatch. Fake test cookie issuance is not a real Identity↔BFF E2E.
+- **Still blocked:** real two-host OpenIddict Identity↔BFF E2E ([Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)); CSRF/logout/revocation/live user and tenant DB checks and durable infrastructure ([Issue #20](https://github.com/sholehamed/foundation-backend/issues/20)). `Identity:Bff:Enabled=false` by default. Frontend BFF-06 ([Issue #10](https://github.com/sholehamed/foundation-frontend/issues/10)) is not started; Angular Password Grant/localStorage are unchanged.
+- **Two F00 baseline PRs remain open by explicit decision.** All later slices require independent PR, tests and documentation. This section supersedes older snapshots that call PR #16 or #18 Draft.
 
 | Method | Path | Auth | Browser-visible result |
 | --- | --- | --- | --- |
@@ -75,9 +83,9 @@ For `interactive-login`, send the antiforgery request token in `X-XSRF-TOKEN`. T
 
 The existing `POST /api/system/Auth/login` token endpoint continues to accept the legacy Password and Refresh Token grants. Its credential verification now shares the same authenticator as interactive sign-in. This is temporary migration compatibility, not the target browser flow.
 
-### Not yet available
+### Implementation status (updated 2026-11-06)
 
-The following remain Planned: `/bff/auth/login`, `/signin-oidc`, `/bff/session`, `/bff/auth/csrf`, `/bff/auth/logout`, and `/bff/auth/logout-all`. Do not build Angular against these routes until their implementation and integration tests are merged.
+The opt-in `/bff/auth/login`, `/signin-oidc` callback middleware and `GET /bff/session` are merged but disabled by default. `/bff/auth/csrf`, `/bff/auth/logout`, and `/bff/auth/logout-all` are not implemented. The current Angular client must not use the new BFF session until Identity↔BFF E2E and all lifecycle/CSRF/revocation checks pass.
 
 
 ## Authorization Server endpoint — BFF-03 (in-progress)
@@ -116,7 +124,7 @@ The following protocol parameters are needed on authorization: `client_id`, `res
 - **Not complete:** no proof of a real browser callback/token exchange and cookie issuance; no `/bff/session`, CSRF-protected BFF write APIs, logout/revocation, distributed refresh coordination or full Angular migration.
 - **Required next PR:** TestServer integration of full Authorization Code callback and server-held tokens (positive + failure/replay/cross-tenant tests), then implement BFF-05 session lifecycle and full-stack E2E. A CI-green challenge-only slice must not be described as production-ready.
 
-## BFF-05.1 read-only session contract — active branch, pending CI/merge
+## BFF-05.1 read-only session contract — merged PR #19, tests green
 
 - With `Identity:Bff:Enabled=true` **in an isolated test environment only**, `GET /bff/session` authenticates the explicit `Foundation.Bff` cookie scheme; a bearer token alone is not a BFF session. When disabled, the endpoint is not mapped (404).
 - `200` example: `{ "authenticated": true, "user": { "id": "<subject>", "username": "operator", "displayName": "Operator" }, "context": { "type": "tenant", "tenantId": "<uuid>", "tenantSlug": "tenant-a" } }`. System context returns `tenantId: null`, `tenantSlug: null`.
