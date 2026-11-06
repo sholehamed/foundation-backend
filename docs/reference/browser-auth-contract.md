@@ -17,7 +17,19 @@
 - Real discovery/JWKS, Authorization Code+PKCE, token exchange/UserInfo, secure opaque BFF cookie and /bff/session were exercised for System and Tenant accounts. Security-stamp change before exchange, account-context mismatch, reused code, missing correlation cookie and cross-host cookie replay are rejected.
 - Root causes fixed **inside the test fixture**, not Production: stable EF InMemory database name across scopes; proper Delegate route mapping so the real UserInfo IResult is executed rather than silently discarded. Temporary OIDC diagnostics only exist in TestServer. Production authentication/CORS/cookies stay unchanged.
 - **Not full-production acceptance:** Identity login UI + CAPTCHA/browser Playwright, SQL Server data behavior, trusted reverse proxy, shared Data Protection keyring, durable cache, session refresh, CSRF/logout/revocation/live tenant grant revalidation remain pending. BFF remains `Identity:Bff:Enabled=false` by default. Angular still uses legacy Password Grant and localStorage.
-- Protocol report: [BFF-04 real Identity E2E](development/BFF-04-REAL-IDENTITY-E2E.md). BFF-05 tasks: [Issue #20](https://github.com/sholehamed/foundation-backend/issues/20); Angular BFF-06: [Issue #10](https://github.com/sholehamed/foundation-frontend/issues/10).
+- Protocol report: [BFF-04 real Identity E2E](../development/BFF-04-REAL-IDENTITY-E2E.md). BFF-05 tasks: [Issue #20](https://github.com/sholehamed/foundation-backend/issues/20); Angular BFF-06: [Issue #10](https://github.com/sholehamed/foundation-frontend/issues/10).
+
+## Current checkpoint — BFF-05.2 verified implementation (2026-11-06)
+
+- [PR #22](https://github.com/sholehamed/foundation-backend/pull/22) merged the real Foundation OpenIddict Identity + BFF two-TestServer flow at `f53c5e04d899b09d33133f57beafe234b671501c`.
+- [PR #23](https://github.com/sholehamed/foundation-backend/pull/23) implements cookie-only CSRF bootstrap and current-session logout. Code head `2abab6b3973580298db01005b97f617f1014ff5f` passed [CI 42202732554](https://github.com/sholehamed/foundation-backend/actions/runs/42202732554): full solution build, **82 BFF + 50 Identity tests**, zero failures. Final documentation-head checks and merge state are available on the PR.
+- Verified System/Tenant lifecycle through real OpenIddict code exchange: CSRF bootstrap, rejected missing-token logout, successful local ticket removal, replay rejection, preservation of a second ticket for the same user, and fresh login via the separate Identity cookie. Boundary tests also cover GET logout refusal, missing antiforgery cookie, cross-host CSRF bootstrap, HTTPS, Referer fallback, Origin/port and Fetch Metadata.
+- This is **current-session local logout only**. It does not revoke upstream tokens, other sessions or the Identity cookie. Two-TestServer tests exclude the interactive password/CAPTCHA UI, browser cookie enforcement, SQL Server and deployed infrastructure.
+- Frontend handoff [PR #12](https://github.com/sholehamed/foundation-frontend/pull/12) merged at `73b5d9ba46425a8951d7eda81c0573559d4ffc34`, after [CI 42202665599](https://github.com/sholehamed/foundation-frontend/actions/runs/42202665599) passed tests and build. Angular runtime still uses legacy Password Grant/localStorage. BFF remains disabled by default.
+- **Next:** live user/tenant/security-stamp/grant revalidation at the BFF cookie boundary; then account-wide/upstream revocation, bounded idle/absolute lifetime and refresh coordination. Test logout-versus-renewal concurrency: the current cache store's unconditional renewal must not be treated as proof against ticket resurrection during concurrent requests.
+- **Remaining release gates:** durable shared cache/keyring, restart/outage behavior, trusted proxy and SQL Server, real System/Tenant browser E2E, then Angular BFF-06 migration and legacy-client closeout. Both F00 PRs remain open.
+- The sections below preserve historical checkpoints. This current checkpoint supersedes their old pending/merged status descriptions.
+
 
 | Method | Path | Auth | Browser-visible result |
 | --- | --- | --- | --- |
@@ -51,7 +63,7 @@
 - **Still not accepted as complete BFF-04:** no real two-host OIDC callback E2E or actual cookie-issuance/browser verification. `Identity:Bff:Enabled` is **false by default**. Do not enable in production or migrate existing Angular token storage on this evidence alone.
 - **Next task:** implement authentic Identity Server ↔ BFF callback integration tests covering protected browser cookie, invalid/missing nonce/state/correlation, code replay, account/tenant mismatch and logout/expiration. Then BFF-05 (`/bff/session`, CSRF, revocation, fresh host/context validation) and BFF-06 Angular migration after cross-repo E2E.
 - **Frontend dependency:** [Frontend PR #8](https://github.com/sholehamed/foundation-frontend/pull/8) merged at `e94c144e4293faa297290aa608c5e7409aeaa1c2`, 22 unit tests + development build passed; it handles only same-origin Identity UI continuation and preserves legacy Password Grant.
-- **Code map and test/deployment instructions:** [BFF-04.2 implementation handoff](development/BFF-04-IMPLEMENTATION.md).
+- **Code map and test/deployment instructions:** [BFF-04.2 implementation handoff](../development/BFF-04-IMPLEMENTATION.md).
 
 ### Mandatory semantics
 

@@ -19,7 +19,7 @@ namespace Foundation.Bff.Tests;
 /// Isolated HTTP tests for the BFF-05.1 session read API. Ticket issuance is
 /// test-only; it does not stand in for a real Identity Server OIDC E2E flow.
 /// </summary>
-public sealed class BffSessionHttpTests
+public sealed partial class BffSessionHttpTests
 {
     [Fact]
     public async Task Anonymous_or_bearer_only_requests_return_401_without_caching()
@@ -120,7 +120,7 @@ public sealed class BffSessionHttpTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    private sealed class Harness : IAsyncDisposable
+    private sealed partial class Harness : IAsyncDisposable
     {
         private readonly WebApplication _app;
         private readonly HttpClient _client;

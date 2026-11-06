@@ -4,7 +4,19 @@
 > Repo: `sholehamed/foundation-backend` · integration branch: `main`  
 > **Read this first in a new chat.** Always verify current GitHub head/CI before writing.
 
-## Latest verified merged checkpoint — BFF-05.1 (2026-11-06)
+## Current checkpoint — BFF-05.2 verified implementation (2026-11-06)
+
+- [PR #22](https://github.com/sholehamed/foundation-backend/pull/22) merged the real Foundation OpenIddict Identity + BFF two-TestServer flow at `f53c5e04d899b09d33133f57beafe234b671501c`.
+- [PR #23](https://github.com/sholehamed/foundation-backend/pull/23) implements cookie-only CSRF bootstrap and current-session logout. Code head `2abab6b3973580298db01005b97f617f1014ff5f` passed [CI 42202732554](https://github.com/sholehamed/foundation-backend/actions/runs/42202732554): full solution build, **82 BFF + 50 Identity tests**, zero failures. Final documentation-head checks and merge state are available on the PR.
+- Verified System/Tenant lifecycle through real OpenIddict code exchange: CSRF bootstrap, rejected missing-token logout, successful local ticket removal, replay rejection, preservation of a second ticket for the same user, and fresh login via the separate Identity cookie. Boundary tests also cover GET logout refusal, missing antiforgery cookie, cross-host CSRF bootstrap, HTTPS, Referer fallback, Origin/port and Fetch Metadata.
+- This is **current-session local logout only**. It does not revoke upstream tokens, other sessions or the Identity cookie. Two-TestServer tests exclude the interactive password/CAPTCHA UI, browser cookie enforcement, SQL Server and deployed infrastructure.
+- Frontend handoff [PR #12](https://github.com/sholehamed/foundation-frontend/pull/12) merged at `73b5d9ba46425a8951d7eda81c0573559d4ffc34`, after [CI 42202665599](https://github.com/sholehamed/foundation-frontend/actions/runs/42202665599) passed tests and build. Angular runtime still uses legacy Password Grant/localStorage. BFF remains disabled by default.
+- **Next:** live user/tenant/security-stamp/grant revalidation at the BFF cookie boundary; then account-wide/upstream revocation, bounded idle/absolute lifetime and refresh coordination. Test logout-versus-renewal concurrency: the current cache store's unconditional renewal must not be treated as proof against ticket resurrection during concurrent requests.
+- **Remaining release gates:** durable shared cache/keyring, restart/outage behavior, trusted proxy and SQL Server, real System/Tenant browser E2E, then Angular BFF-06 migration and legacy-client closeout. Both F00 PRs remain open.
+- The sections below preserve historical checkpoints. This current checkpoint supersedes their old pending/merged status descriptions.
+
+
+## Earlier merged checkpoint — BFF-05.1 (2026-11-06)
 
 - **Merged:** [BFF-04.3 PR #18](https://github.com/sholehamed/foundation-backend/pull/18) at `3f90363227ed5497c82a378c9f73093c46adcad4`; [CI 42143363623](https://github.com/sholehamed/foundation-backend/actions/runs/42143363623) passed signed fake-issuer OIDC callback tests.
 - **Merged:** [BFF-05.1 PR #19](https://github.com/sholehamed/foundation-backend/pull/19) at `bcfc109488be75981dee7f3aead91e1bca38d976`; [latest PR-head CI 42194597675](https://github.com/sholehamed/foundation-backend/actions/runs/42194597675): full solution Build (0 errors; 263 pre-existing warnings), **58/58 BFF** and **42/42 Identity** tests passed.
@@ -128,3 +140,9 @@
 - [Merged PR #19](https://github.com/sholehamed/foundation-backend/pull/19) adds opt-in `GET /bff/session`, explicitly authenticating **only** `Foundation.Bff` cookie. A valid ticket is checked again against the current registered host, System/Tenant account context, callback origin and tenant claims. Responses are no-store and contain only minimal identity/context JSON; no OAuth tokens. Unauthenticated returns 401; mismatched host/account returns 403.
 - Tests exercise anonymous/bearer-only requests, valid Tenant and System cookies, wrong-host replay, corrupt cookies and disabled feature. Cookie issuance in these tests is test-only, not proof of a production Identity Server login.
 - **Gates remaining:** real OpenIddict Identity↔BFF two-host E2E, independent current-user/tenant DB revalidation, session expiration/revocation, CSRF-protected logout and write APIs, distributed cache/keyring failure modes. BFF remains `Enabled=false`; Angular Password Grant and localStorage are unchanged. PR-head CI 42194597675 passed: 58/58 BFF and 42/42 Identity tests.
+
+## Continuation review — 2026-11-06
+
+- Reviewed PR #23 head `663ebd201527b89e2126d14f35dc328de240d9d9`: [CI 42200256418](https://github.com/sholehamed/foundation-backend/actions/runs/42200256418) passed full solution build, **68 BFF + 48 Identity tests**. No unresolved review threads at review time.
+- Added regression coverage for logout replay, preserving an independent ticket, request token without antiforgery cookie, GET logout refusal, cross-host CSRF bootstrap, HTTPS enforcement, Referer fallback, opaque Origin, port mismatch and Fetch Metadata boundaries. These additions require a new green PR-head CI before merge.
+- Next implementation slice: live user/tenant/security-stamp/grant revalidation behind the BFF cookie boundary, followed by account-wide revocation and refresh coordination. Angular migration remains blocked; frontend handoff must reflect PR #22 and this slice. Keep both F00 PRs open.
