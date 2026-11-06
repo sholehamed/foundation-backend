@@ -274,7 +274,7 @@ public sealed class SqlServerBffAtomicStoreTests
         return services.BuildServiceProvider();
     }
 
-    private static async Task WithDatabaseAsync(Func<string, Task> action)
+    internal static async Task WithDatabaseAsync(Func<string, Task> action)
     {
         var raw = Environment.GetEnvironmentVariable("SHINERA_SQLSERVER_TEST_CONNECTION")
             ?? throw new InvalidOperationException(
