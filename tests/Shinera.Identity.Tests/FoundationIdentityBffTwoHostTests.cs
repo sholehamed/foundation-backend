@@ -359,6 +359,21 @@ public sealed class FoundationIdentityBffTwoHostTests
                 BffDefaults.OidcScheme,
                 options => options.BackchannelHttpHandler = backchannel);
 
+            // Test-only diagnostic. Never expose an OIDC exception to a
+            // production browser; keep the real handler's generic 401.
+            bffBuilder.Services.PostConfigure<OpenIdConnectOptions>(
+                BffDefaults.OidcScheme,
+                options =>
+                {
+                    var original = options.Events.OnRemoteFailure;
+                    options.Events.OnRemoteFailure = async context =>
+                    {
+                        await original(context);
+                        await context.HttpContext.Response.WriteAsync(
+                            "\nTEST_ONLY_OIDC_FAILURE: " + context.Failure);
+                    };
+                });
+
             var bffApp = bffBuilder.Build();
             bffApp.UseAuthentication();
             bffApp.MapBffEndpoints(bffBuilder.Configuration);
