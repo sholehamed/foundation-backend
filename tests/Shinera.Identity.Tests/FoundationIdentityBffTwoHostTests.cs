@@ -212,8 +212,12 @@ public sealed class FoundationIdentityBffTwoHostTests
                 ["Identity:LoginUrls:Tenant"] = "/auth/login"
             });
 
+            // A stable unique DB name is required across seeding and HTTP
+            // request scopes. Generating it inside AddDbContext's options
+            // callback would create a different database for every scope.
+            var databaseName = Guid.NewGuid().ToString("N");
             identityBuilder.Services.AddDbContext<IdentityDbContext>(options =>
-                options.UseInMemoryDatabase(Guid.NewGuid().ToString("N")).UseOpenIddict());
+                options.UseInMemoryDatabase(databaseName).UseOpenIddict());
             identityBuilder.Services.AddScoped<ITenantContext, TenantContext>();
             identityBuilder.Services.AddScoped<IIdentityDbContext>(sp =>
                 sp.GetRequiredService<IdentityDbContext>());
