@@ -1,5 +1,12 @@
 # Foundation browser BFF — phased implementation (not production-ready)
 
+## BFF-05.5b.2 SQL Server implementation — PR #32 code-head CI verified (2026-11-06)
+
+- [PR #32](https://github.com/sholehamed/foundation-backend/pull/32) contains the **real** Web-owned `SqlServerBffAtomicTicketStore`: an opaque protected Ticket INSERT, SQL conditional UPDATE-only renewal and atomic revoked-row UPDATE, 24h fixed absolute deadline, idempotent manual SQL schema, fail-closed **Startup schema/constraint preflight**, no Redis dependency. Production registration still requires explicit `Identity:Bff:SqlServer:Enabled` and secret-managed `ConnectionStrings:BffSessions`.
+- [Code-head CI #42215510887](https://github.com/sholehamed/foundation-backend/actions/runs/42215510887) reports **9 real SQL Server tests** passing; includes cross-connection row-lock race and **two independent TestServers sharing a persisted Data Protection keyring**: cookie works across hosts, logout on one blocks the other and a restarted third host. The earlier code-head [CI #42214992134](https://github.com/sholehamed/foundation-backend/actions/runs/42214992134) ran all **94 BFF + 60 Identity** tests and full solution build. Await latest documentation-head CI before merge.
+- Security limitation: the SQL Server instance is a disposable CI service, **not a proven production failover network topology**. Keyring sharing in the test does **not** certify encrypted, rotated production key storage. Existing BFF disabled; frontend Password Grant/localStorage unchanged. Logout-all/upstream token revocation, refresh coordination and browser/proxy deployment acceptance remain open. [Detailed SQL handoff](../../../docs/development/BFF-05-5B-SQL-ATOMIC-SESSION.md), [BFF master #20](https://github.com/sholehamed/foundation-backend/issues/20), [SQL provider #30](https://github.com/sholehamed/foundation-backend/issues/30).
+
+
 ## Active BFF-05.5b.2 SQL Server transactional session store — 2026-11-06
 
 - [Draft PR #32](https://github.com/sholehamed/foundation-backend/pull/32) introduces the actual `SqlServerBffAtomicTicketStore` Web adapter behind `IBffAtomicTicketStore`: protected server-side tickets, 24h original lifetime, one-row conditional **UPDATE-only** renewal and atomic SQL revocation (payload cleared) on the same primary; independently managed idempotent DDL and explicit secret-managed SQL connection.
