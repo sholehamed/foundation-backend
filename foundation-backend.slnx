@@ -24,6 +24,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Foundation.Bff.Tests/Foundation.Bff.Tests.csproj" />
+    <Project Path="tests/Foundation.Bff.SqlServerTests/Foundation.Bff.SqlServerTests.csproj" />
     <Project Path="tests/Shinera.Identity.Tests/Shinera.Identity.Tests.csproj" />
   </Folder>
 </Solution>
