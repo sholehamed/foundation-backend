@@ -4,7 +4,16 @@
 > Repo: `sholehamed/foundation-backend` · integration branch: `main`  
 > **Read this first in a new chat.** Always verify current GitHub head/CI before writing.
 
-## Latest verified merged checkpoint — BFF-05.1 (2026-11-06)
+## Latest BFF checkpoint — 2026-11-06 (BFF-04.4 merged; BFF-05.2 active)
+
+- **BFF-04.4 merged:** [Backend PR #22](https://github.com/sholehamed/foundation-backend/pull/22), commit `f53c5e04d899b09d33133f57beafe234b671501c`. Actual *Foundation OpenIddict Identity TestServer + separate BFF TestServer*, real discovery/JWKS, Code+PKCE, UserInfo, secure cookie and host isolation. Final PR-head [CI #42198862063](https://github.com/sholehamed/foundation-backend/actions/runs/42198862063): **58 BFF and 48 Identity tests passed**, solution build green. This is not a deployed-browser, SQL Server or multi-node acceptance result.
+- **BFF-05.1 merged:** [PR #19](https://github.com/sholehamed/foundation-backend/pull/19), GET `/bff/session` explicitly authenticates BFF cookie (no bearer fallback), revalidates registered Host and Account/Tenant context; 401/403, safe no-store JSON.
+- **BFF-05.2 draft:** [PR #23](https://github.com/sholehamed/foundation-backend/pull/23) implements opt-in GET `/bff/auth/csrf` and POST `/bff/auth/logout` for the **current server-side session** only. Requires BFF cookie/host validation, same-origin Origin/Fetch-Metadata policy and a validated ASP.NET Core antiforgery request header+cookie. Antiforgery is bound to the validated BFF principal. Logout calls cookie scheme `SignOutAsync` to remove its `ITicketStore` ticket, not merely the browser cookie. System/Tenant, failure, replay, and 401/403/400 cases have HTTP tests; await latest PR-head CI before claiming complete.
+- **Still not implemented/proven:** cross-session logout-all, Identity Provider logout/token revocation, fresh database user/tenant/stamp/permission checks for every protected request, CSRF enforcement across future *all* unsafe BFF APIs, refresh coordination, restart and distributed keyring/cache failures, browser Angular Playwright and SQL Server/deployment validation.
+- `Identity:Bff:Enabled=false` by default. Angular Password Grant/localStorage unchanged; **do not migrate browser auth until end-to-end lifecycle and deployment gates**. The initial F00 PR #2 remains untouched.
+
+
+## Earlier merged checkpoint — BFF-05.1 (2026-11-06)
 
 - **Merged:** [BFF-04.3 PR #18](https://github.com/sholehamed/foundation-backend/pull/18) at `3f90363227ed5497c82a378c9f73093c46adcad4`; [CI 42143363623](https://github.com/sholehamed/foundation-backend/actions/runs/42143363623) passed signed fake-issuer OIDC callback tests.
 - **Merged:** [BFF-05.1 PR #19](https://github.com/sholehamed/foundation-backend/pull/19) at `bcfc109488be75981dee7f3aead91e1bca38d976`; [latest PR-head CI 42194597675](https://github.com/sholehamed/foundation-backend/actions/runs/42194597675): full solution Build (0 errors; 263 pre-existing warnings), **58/58 BFF** and **42/42 Identity** tests passed.

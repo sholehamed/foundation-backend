@@ -1,6 +1,6 @@
 # BFF-04.4 — Real Foundation Identity to BFF protocol integration
 
-> Status: PR #22 test head passed CI #42198434579; final documentation-head CI/merge pending. This is NOT a production or deployed-browser acceptance claim.
+> Status: merged PR #22 at f53c5e04d899b09d33133f57beafe234b671501c, final PR-head CI #42198862063 green (58 BFF + 48 Identity). This is NOT deployed-browser or production acceptance.
 
 ## Test topology
 
@@ -30,7 +30,7 @@
 
 ## Continuation
 
-Track draft PR #22 at https://github.com/sholehamed/foundation-backend/pull/22. Check latest-head GitHub Actions, fix actual failures without weakening Identity/BFF checks, and record final result in docs/PROJECT-STATE.md and docs/PROJECT-ROADMAP.md before merge.
+PR #22 merged. Continue with BFF-05.2 PR #23 (CSRF/bootstrap/current-session logout), then live DB revalidation and remaining session lifecycle. Do not migrate Angular yet.
 ## Verified test-head CI
 
 - [GitHub Actions #42198434579](https://github.com/sholehamed/foundation-backend/actions/runs/42198434579): 58 BFF + 48 Identity tests all green; full solution build passed.
