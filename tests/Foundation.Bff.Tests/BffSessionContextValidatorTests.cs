@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Modules.System.Bff;
 using Xunit;
 
@@ -72,10 +73,10 @@ public sealed class BffSessionContextValidatorTests
         string context, string? tenant, string callback)
     {
         var properties = new AuthenticationProperties { RedirectUri = "/dashboard" };
-        properties.Items[BffDefaults.LoginContextProperty] = context;
-        properties.Items[BffDefaults.CallbackUriProperty] = callback;
+        properties.Items[".bff.login_context"] = context;
+        properties.Items[".bff.callback_uri"] = callback;
         if (tenant is not null)
-            properties.Items[BffDefaults.TenantProperty] = tenant;
+            properties.Items[".bff.tenant"] = tenant;
         return properties;
     }
 
