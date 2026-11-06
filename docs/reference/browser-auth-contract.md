@@ -10,6 +10,15 @@
 - **Still blocked:** real two-host OpenIddict Identity↔BFF E2E ([Issue #12](https://github.com/sholehamed/foundation-backend/issues/12)); CSRF/logout/revocation/live user and tenant DB checks and durable infrastructure ([Issue #20](https://github.com/sholehamed/foundation-backend/issues/20)). `Identity:Bff:Enabled=false` by default. Frontend BFF-06 ([Issue #10](https://github.com/sholehamed/foundation-frontend/issues/10)) is not started; Angular Password Grant/localStorage are unchanged.
 - **Two F00 baseline PRs remain open by explicit decision.** All later slices require independent PR, tests and documentation. This section supersedes older snapshots that call PR #16 or #18 Draft.
 
+## BFF-04.4 real Foundation Identity ↔ BFF two-host checkpoint — 2026-11-06
+
+- [Draft PR #22](https://github.com/sholehamed/foundation-backend/pull/22) implements an isolated two-TestServer HTTP gate using the actual OpenIddict Foundation Identity endpoints and the actual confidential BFF OIDC middleware. No fake issuer, token, key or UserInfo is used; only transport and test-only Identity cookie sign-in are provided by the fixture.
+- [PR-head CI #42198434579](https://github.com/sholehamed/foundation-backend/actions/runs/42198434579) passed: full solution build (0 errors, 264 existing warnings), **58/58 BFF tests** and **48/48 Identity tests**. This includes six new cross-module positive/negative Identity+BFF cases; verify final latest-head CI after documentation changes before merge.
+- Real discovery/JWKS, Authorization Code+PKCE, token exchange/UserInfo, secure opaque BFF cookie and /bff/session were exercised for System and Tenant accounts. Security-stamp change before exchange, account-context mismatch, reused code, missing correlation cookie and cross-host cookie replay are rejected.
+- Root causes fixed **inside the test fixture**, not Production: stable EF InMemory database name across scopes; proper Delegate route mapping so the real UserInfo IResult is executed rather than silently discarded. Temporary OIDC diagnostics only exist in TestServer. Production authentication/CORS/cookies stay unchanged.
+- **Not full-production acceptance:** Identity login UI + CAPTCHA/browser Playwright, SQL Server data behavior, trusted reverse proxy, shared Data Protection keyring, durable cache, session refresh, CSRF/logout/revocation/live tenant grant revalidation remain pending. BFF remains `Identity:Bff:Enabled=false` by default. Angular still uses legacy Password Grant and localStorage.
+- Protocol report: [BFF-04 real Identity E2E](development/BFF-04-REAL-IDENTITY-E2E.md). BFF-05 tasks: [Issue #20](https://github.com/sholehamed/foundation-backend/issues/20); Angular BFF-06: [Issue #10](https://github.com/sholehamed/foundation-frontend/issues/10).
+
 | Method | Path | Auth | Browser-visible result |
 | --- | --- | --- | --- |
 | GET | `/bff/auth/login?returnUrl=/app` | Anonymous | 302 to OIDC authorize; validates local return URL |

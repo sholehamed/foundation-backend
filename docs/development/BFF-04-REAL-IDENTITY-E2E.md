@@ -1,6 +1,6 @@
 # BFF-04.4 — Real Foundation Identity to BFF protocol integration
 
-> Status: draft PR #22, pending CI and review. This is NOT a production or deployed-browser acceptance claim.
+> Status: PR #22 test head passed CI #42198434579; final documentation-head CI/merge pending. This is NOT a production or deployed-browser acceptance claim.
 
 ## Test topology
 
@@ -12,14 +12,14 @@
 
 ## Evidence-gated checks
 
-- [ ] Actual OpenIddict discovery and JWKS accepted by the BFF handler.
-- [ ] Real authorization-code + PKCE token exchange, signed ID-token validation, UserInfo and cookie issuance.
-- [ ] System and Tenant A logins produce correctly bound BFF sessions with safe JSON.
-- [ ] Browser-visible cookies remain opaque, Secure, HttpOnly, host-only; no OAuth tokens in response bodies.
-- [ ] System Identity cookie cannot authorize for a Tenant challenge.
-- [ ] Revoked security stamp before token exchange fails closed.
-- [ ] Code replay, missing correlation cookie and cross-tenant-host cookie replay fail closed.
-- [ ] Full .NET solution build and existing BFF / Identity test suites remain green.
+- [x] Actual OpenIddict discovery and JWKS accepted by the BFF handler.
+- [x] Real authorization-code + PKCE token exchange, signed ID-token validation, UserInfo and cookie issuance.
+- [x] System and Tenant A logins produce correctly bound BFF sessions with safe JSON.
+- [x] Browser-visible cookies remain opaque, Secure, HttpOnly, host-only; no OAuth tokens in response bodies.
+- [x] System Identity cookie cannot authorize for a Tenant challenge.
+- [x] Revoked security stamp before token exchange fails closed.
+- [x] Code replay, missing correlation cookie and cross-tenant-host cookie replay fail closed.
+- [x] Full .NET solution build and existing BFF / Identity test suites remain green.
 
 ## Remaining gates
 
@@ -31,3 +31,9 @@
 ## Continuation
 
 Track draft PR #22 at https://github.com/sholehamed/foundation-backend/pull/22. Check latest-head GitHub Actions, fix actual failures without weakening Identity/BFF checks, and record final result in docs/PROJECT-STATE.md and docs/PROJECT-ROADMAP.md before merge.
+## Verified test-head CI
+
+- [GitHub Actions #42198434579](https://github.com/sholehamed/foundation-backend/actions/runs/42198434579): 58 BFF + 48 Identity tests all green; full solution build passed.
+- Real Foundation OpenIddict test server had valid discovery/JWKS, Authorization Code+PKCE, signed ID token and UserInfo. The BFF stored an opaque server-held ticket and produced no OAuth tokens in session responses.
+- Test harness bugs uncovered and repaired: ephemeral EF InMemory database names per scope, and an incorrect method-group MapGet overload that returned 200 with no UserInfo JSON. Neither bug required Production runtime changes.
+- Still unverified: browser UI/HTTPS deployment, SQL Server, revoked BFF cookie after Identity changes, CSRF/logout, long-lived refresh and multi-node cache/keyring.
