@@ -22,30 +22,35 @@ public class Roles : EndpointGroupBase
             "Identity:PlatformPermissions:EnforceRoleEndpoints");
         Action<RouteHandlerBuilder> requireCreate = endpoint =>
         {
+            endpoint.WithFeatureEndpoint("SYSTEM.ROLES.CREATE", "roles", "ROLES.CREATE", "Create roles");
             if (granular) endpoint.RequireSystemPermission("roles", "create");
         };
         Action<RouteHandlerBuilder> requireUpdate = endpoint =>
         {
+            endpoint.WithFeatureEndpoint("SYSTEM.ROLES.UPDATE", "roles", "ROLES.UPDATE", "Update roles");
             if (granular) endpoint.RequireSystemPermission("roles", "update");
         };
         Action<RouteHandlerBuilder> requireDelete = endpoint =>
         {
+            endpoint.WithFeatureEndpoint("SYSTEM.ROLES.DELETE", "roles", "ROLES.DELETE", "Delete roles");
             if (granular) endpoint.RequireSystemPermission("roles", "delete");
         };
         Action<RouteHandlerBuilder> requireState = endpoint =>
         {
+            endpoint.WithFeatureEndpoint("SYSTEM.ROLES.CHANGE-STATE", "roles", "ROLES.CHANGE-STATE", "Change role state");
             if (granular) endpoint.RequireSystemPermission("roles", "change-state");
         };
         Action<RouteHandlerBuilder> requireAssignments = endpoint =>
         {
+            endpoint.WithFeatureEndpoint("SYSTEM.ROLES.ASSIGN-PERMISSIONS", "roles", "ROLES.ASSIGN-PERMISSIONS", "Assign role permissions");
             if (granular) endpoint.RequireSystemPermission("roles", "assign-permissions");
         };
 
         app.MapGroup(this).RequireAuthorization("SystemAdministrator")
-             .MapPost(RolePagedList, "pagedList")
-                .MapGet(RoleGetById, "{id}")
-            .MapGet(RolesLookup, "lookup", configure: x => x.RequireAuthorization())
-            .MapGet(RolePermissionsTree, "{roleId}/permissions/tree", configure: x => x.RequireAuthorization())
+             .MapPost(RolePagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.ROLES.PAGED", "roles", "ROLES.READ", "List roles"))
+                .MapGet(RoleGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ROLES.DETAIL", "roles", "ROLES.READ", "Role details"))
+            .MapGet(RolesLookup, "lookup", configure: x => x.WithFeatureEndpoint("SYSTEM.ROLES.LOOKUP", "roles", "ROLES.READ", "Role lookup"))
+            .MapGet(RolePermissionsTree, "{roleId}/permissions/tree", configure: x => x.WithFeatureEndpoint("SYSTEM.ROLES.PERMISSIONS-TREE", "roles", "ROLES.READ", "Role permissions tree"))
            .MapPost(RoleCreate, configure: requireCreate)
                 .MapPut(RoleUpdate, "{id}", configure: requireUpdate)
                 .MapDelete(RoleDelete, "{id}", configure: requireDelete)

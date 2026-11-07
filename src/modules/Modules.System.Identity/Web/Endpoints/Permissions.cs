@@ -16,26 +16,30 @@ namespace Modules.System.Identity.Web.Endpoints
                 "Identity:PlatformPermissions:EnforcePermissionEndpoints");
             Action<RouteHandlerBuilder> requireCreate = e =>
             {
+                e.WithFeatureEndpoint("SYSTEM.PERMISSIONS.CREATE", "permissions", "PERMISSIONS.CREATE", "Create permission");
                 if (granular) e.RequireSystemPermission("permissions", "create");
             };
             Action<RouteHandlerBuilder> requireUpdate = e =>
             {
+                e.WithFeatureEndpoint("SYSTEM.PERMISSIONS.UPDATE", "permissions", "PERMISSIONS.UPDATE", "Update permission");
                 if (granular) e.RequireSystemPermission("permissions", "update");
             };
             Action<RouteHandlerBuilder> requireDelete = e =>
             {
+                e.WithFeatureEndpoint("SYSTEM.PERMISSIONS.DELETE", "permissions", "PERMISSIONS.DELETE", "Delete permission");
                 if (granular) e.RequireSystemPermission("permissions", "delete");
             };
             Action<RouteHandlerBuilder> requireState = e =>
             {
+                e.WithFeatureEndpoint("SYSTEM.PERMISSIONS.CHANGE-STATE", "permissions", "PERMISSIONS.CHANGE-STATE", "Change permission state");
                 if (granular) e.RequireSystemPermission("permissions", "change-state");
             };
 
             app.MapGroup(this).RequireAuthorization("SystemAdministrator")
-                .MapPost(PermissionPagedList, "{resourceId}/pagedList")
-                .MapPost(PermissionGlobalPagedList, "pagedList")
-                .MapGet(PermissionLookup, "lookup")
-                .MapGet(PermissionGetById, "{id:guid}")
+                .MapPost(PermissionPagedList, "{resourceId}/pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.PERMISSIONS.RESOURCE-PAGED", "permissions", "PERMISSIONS.READ", "Resource permissions"))
+                .MapPost(PermissionGlobalPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.PERMISSIONS.PAGED", "permissions", "PERMISSIONS.READ", "List permissions"))
+                .MapGet(PermissionLookup, "lookup", configure: e => e.WithFeatureEndpoint("SYSTEM.PERMISSIONS.LOOKUP", "permissions", "PERMISSIONS.READ", "Permission lookup"))
+                .MapGet(PermissionGetById, "{id:guid}", configure: e => e.WithFeatureEndpoint("SYSTEM.PERMISSIONS.DETAIL", "permissions", "PERMISSIONS.READ", "Permission details"))
                 .MapPost(PermissionCreate, configure: requireCreate)
                 .MapPut(PermissionUpdate, "{id}", configure: requireUpdate)
                 .MapDelete(PermissionDelete, "{id}", configure: requireDelete)

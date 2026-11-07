@@ -86,15 +86,10 @@ namespace Modules.System.Identity.Application.Features.ApiResources.Services
                     IsDeprecated = false
                 }).ToList();
 
-            var deprecatedResources = existingResources
-                .Where(e => e.Source == ApiSource.Auto && !discoveredEndpoints.Any(d => d.Key == e.Key))
-                .ToList();
-
-            foreach (var item in deprecatedResources)
-            {
-                item.IsDeprecated = true;
-                item.IsActive = false;
-            }
+            // FR-02A: An endpoint temporarily disappearing from an inventory
+            // is NOT evidence that an operator intended to revoke its mapping.
+            // Report drift through reviewed FeatureRegistry/preview. Never
+            // auto-deprecate or disable existing API records here.
 
             var toUpdate = existingResources
                 .Where(e => e.Source == ApiSource.Auto)
@@ -104,8 +99,9 @@ namespace Modules.System.Identity.Application.Features.ApiResources.Services
             {
                 item.Existing.RouteTemplate = item.Discovered.RouteTemplate;
                 item.Existing.AllowAnonymous = item.Discovered.AllowAnonymous;
-                item.Existing.IsDeprecated = false;
-                item.Existing.IsActive = true;
+                // Do not overwrite an operator's disabled/deprecated choices.
+                // This legacy route-key sync is not a permission grant tool; see
+                // FeatureRegistry/preview + apply for stable code-owned keys.
             }
 
             if (newEndpoints.Any())

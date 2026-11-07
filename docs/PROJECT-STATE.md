@@ -1,5 +1,12 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-02A — code-owned Feature Registry preview and additive apply (2026-11-07)
+
+- **First executable backend vertical (PR pending CI):** [FR-02A runbook](development/FR-02A-FEATURE-REGISTRY.md). `FeatureRegistryDefinitions` declares System Roles/Permissions code-owned module/resource/UI page/read permission/menu keys. Explicit endpoint metadata on Roles/Permissions CRUD/read routes provides stable API keys independently of URL. The `FeatureRegistrySyncService` plans read-only differences and optionally inserts missing definitions/links. No automatic grants or deletions. Admin-only `GET /api/System/FeatureRegistry/preview`; `POST .../apply` requires `Identity:FeatureRegistry:EnableApply=true` (OFF by default).
+- **Safety:** Existing disabled/manual records are preserved and key conflicts block Apply. Legacy ApiResource route-derived sync no longer auto-deprecates/reactivates records. Only Roles/Permissions are in this first manifest; no general feature auto-generation claim. A deployed database must be inventoried before production apply.
+- **Dependency:** separate Angular build-time manifest and admin Preview/Apply UI PR; current-user Sidebar intentionally remains grant-filtered (new `*.READ` grants require explicit approval). No BFF or authorization enforcement flag changes.
+
+
 ## FR-04A — current-user navigation from live DB (2026-11-07)
 
 - **Backend PR under test:** [Current-user navigation contract](architecture/current-user-navigation.md). `GET /api/System/Menus/me` requires an authenticated principal (System or Tenant), never a caller-supplied RoleId. Bounded direct/role/group grant aggregation with user deny precedence, active menu/category filter, strict parent tree and route-scope checks. Empty catalog returns []; invalid identity/scope returns 403; unauthenticated returns 401. Legacy SystemAdministrator menu administration and roleId GET remain unchanged.
