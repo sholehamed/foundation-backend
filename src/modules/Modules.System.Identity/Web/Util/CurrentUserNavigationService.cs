@@ -76,24 +76,34 @@ public sealed class CurrentUserNavigationService(IIdentityDbContext db)
         var allowed = (await direct.Where(x => x.IsGranted)
             .Select(x => x.PermissionId).ToListAsync(cancellationToken)).ToHashSet();
 
-        allowed.UnionWith(await db.UserRoles.IgnoreQueryFilters(["tenant"]).AsNoTracking()
+        // Resolve all direct and group role IDs first, then read permission
+        // links from the RolePermissions root. Explicit queries avoid relying
+        // on deep nested collection navigation fixup and stay bounded.
+        var roleIds = (await db.UserRoles.IgnoreQueryFilters(["tenant"]).AsNoTracking()
             .Where(x => x.UserId == userId && x.TenantId == scopeId &&
                 x.Role.TenantId == scopeId && x.Role.IsActive)
-            .SelectMany(x => x.Role.RolePermissions
-                .Where(rp => rp.TenantId == scopeId && rp.Permission.IsActive)
-                .Select(rp => rp.PermissionId))
-            .Distinct().ToListAsync(cancellationToken));
+            .Select(x => x.RoleId)
+            .ToListAsync(cancellationToken)).ToHashSet();
 
-        allowed.UnionWith(await db.UserGroups.IgnoreQueryFilters(["tenant"]).AsNoTracking()
+        var groupIds = await db.UserGroups.IgnoreQueryFilters(["tenant"]).AsNoTracking()
             .Where(x => x.UserId == userId && x.TenantId == scopeId &&
                 x.Group.TenantId == scopeId && x.Group.IsActive)
-            .SelectMany(x => x.Group.GroupRoles
-                .Where(gr => gr.TenantId == scopeId &&
-                    gr.Role.TenantId == scopeId && gr.Role.IsActive)
-                .SelectMany(gr => gr.Role.RolePermissions
-                    .Where(rp => rp.TenantId == scopeId && rp.Permission.IsActive)
-                    .Select(rp => rp.PermissionId)))
-            .Distinct().ToListAsync(cancellationToken));
+            .Select(x => x.GroupId).ToListAsync(cancellationToken);
+
+        if (groupIds.Count > 0)
+            roleIds.UnionWith(await db.GroupRoles.IgnoreQueryFilters(["tenant"]).AsNoTracking()
+                .Where(x => x.TenantId == scopeId && groupIds.Contains(x.GroupId) &&
+                    x.Group!.TenantId == scopeId && x.Group.IsActive &&
+                    x.Role!.TenantId == scopeId && x.Role.IsActive)
+                .Select(x => x.RoleId).ToListAsync(cancellationToken));
+
+        if (roleIds.Count > 0)
+            allowed.UnionWith(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).AsNoTracking()
+                .Where(x => x.TenantId == scopeId && roleIds.Contains(x.RoleId) &&
+                    x.Role!.TenantId == scopeId && x.Role.IsActive &&
+                    x.Permission!.IsActive)
+                .Select(x => x.PermissionId).Distinct()
+                .ToListAsync(cancellationToken));
 
         allowed.ExceptWith(denied);
 
