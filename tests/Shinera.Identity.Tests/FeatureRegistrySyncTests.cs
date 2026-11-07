@@ -202,6 +202,35 @@ public sealed class FeatureRegistrySyncTests
     }
 
     [Fact]
+    public async Task Legacy_same_resource_method_route_different_key_blocks_approved_apply()
+    {
+        await using var db = await CreateDbAsync();
+        var bootstrap = new FeatureRegistrySyncService(db, Endpoints());
+        await bootstrap.ApplyAsync();
+
+        var resource = await db.Resources.SingleAsync(x => x.Code == "roles");
+        db.ApiResources.Add(new ApiResource(Guid.NewGuid(), resource.Id,
+            "POST:/api/System/Roles", "Legacy route-key API", null,
+            IdentityHttpMethod.POST, "/api/System/Roles")
+        {
+            RowVersion = [1], Source = ApiSource.Auto, IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var registry = new FeatureRegistrySyncService(db, Endpoints(
+            Route("SYSTEM.ROLES.CREATE", "roles", "ROLES.CREATE",
+                "POST", "/api/System/Roles")));
+        var preview = await registry.PreviewAsync();
+        Assert.False(preview.CanApply);
+        Assert.Contains(preview.Changes, x =>
+            x.Type == "ApiResource" && x.Key == "SYSTEM.ROLES.CREATE" &&
+            x.State == "Conflict" && x.Detail!.Contains("legacy route-derived"));
+        Assert.False((await registry.ApplyAsync()).CanApply);
+        Assert.Single(db.ApiResources);
+        Assert.Empty(db.PermissionApiResources);
+    }
+
+    [Fact]
     public async Task Stable_endpoint_key_survives_route_change_without_reactivating_disabled_api()
     {
         await using var db = await CreateDbAsync();
