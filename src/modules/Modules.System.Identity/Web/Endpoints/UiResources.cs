@@ -1,3 +1,4 @@
+using Modules.System.Identity.Web.Util;
 ﻿using Modules.System.Identity.Application.Features.UiResources.Commands;
 using Modules.System.Identity.Application.Features.UiResources.Queries;
 
@@ -9,14 +10,14 @@ namespace Modules.System.Identity.Web.Endpoints
         {
             app.MapGroup(this).RequireAuthorization("SystemAdministrator")
 
-                .MapPost(UiResourcePagedList, "{resourceId}/pagedList")
-                .MapPost(UiResourceGlobalPagedList, "pagedList")
-                .MapGet(UiResourceGetById, "{id}")
-                .MapGet(UiResourceLookup, "lookup")
-                .MapPost(UiResourceCreate)
-                .MapPut(UiResourceUpdate, "{id}")
-                .MapDelete(UiResourceDelete, "{id}")
-                .MapPatch(UiResourceChangeState, "{id}")
+                .MapPost(UiResourcePagedList, "{resourceId}/pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.RESOURCE-PAGED", "ui-resources", "UI-RESOURCES.READ", "UiResourcePagedList"))
+                .MapPost(UiResourceGlobalPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.PAGED", "ui-resources", "UI-RESOURCES.READ", "UiResourceGlobalPagedList"))
+                .MapGet(UiResourceGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.DETAIL", "ui-resources", "UI-RESOURCES.READ", "UiResourceGetById"))
+                .MapGet(UiResourceLookup, "lookup", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.LOOKUP", "ui-resources", "UI-RESOURCES.READ", "UiResourceLookup"))
+                .MapPost(UiResourceCreateconfigure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.CREATE", "ui-resources", "UI-RESOURCES.CREATE", "UiResourceCreate"))
+                .MapPut(UiResourceUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.UPDATE", "ui-resources", "UI-RESOURCES.UPDATE", "UiResourceUpdate"))
+                .MapDelete(UiResourceDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.DELETE", "ui-resources", "UI-RESOURCES.DELETE", "UiResourceDelete"))
+                .MapPatch(UiResourceChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.CHANGE-STATE", "ui-resources", "UI-RESOURCES.CHANGE-STATE", "UiResourceChangeState"))
             ;
         }
         // Global, SystemAdministrator-protected list for root panel menu pages.

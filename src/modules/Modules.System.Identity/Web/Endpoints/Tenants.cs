@@ -1,3 +1,4 @@
+using Modules.System.Identity.Web.Util;
 ﻿using Modules.System.Identity.Application.Features.Tenants.Commands;
 using Modules.System.Identity.Application.Features.Tenants.Queries;
 
@@ -10,13 +11,13 @@ public class Tenants : EndpointGroupBase
     {
         app.MapGroup(this).RequireAuthorization("SystemAdministrator")
 
-            .MapPost(TenantPagedList, "pagedList")
+            .MapPost(TenantPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.TENANTS.PAGED", "tenants", "TENANTS.READ", "TenantPagedList"))
             .MapGet(TenantResolveBySlug, "resolve", configure: x => x.AllowAnonymous())
-            .MapGet(TenantGetById, "{id}")
-            .MapPost(TenantCreate)
-            .MapPut(TenantUpdate, "{id}")
-            .MapDelete(TenantDelete, "{id}")
-            .MapPatch(TenantChangeState, "{id}")
+            .MapGet(TenantGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.TENANTS.DETAIL", "tenants", "TENANTS.READ", "TenantGetById"))
+            .MapPost(TenantCreateconfigure: e => e.WithFeatureEndpoint("SYSTEM.TENANTS.CREATE", "tenants", "TENANTS.CREATE", "TenantCreate"))
+            .MapPut(TenantUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.TENANTS.UPDATE", "tenants", "TENANTS.UPDATE", "TenantUpdate"))
+            .MapDelete(TenantDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.TENANTS.DELETE", "tenants", "TENANTS.DELETE", "TenantDelete"))
+            .MapPatch(TenantChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.TENANTS.CHANGE-STATE", "tenants", "TENANTS.CHANGE-STATE", "TenantChangeState"))
         ;
     }
     public async Task<Results<Ok<TenantResloveBySlugDto>, NotFound>> TenantResolveBySlug(IDispatcher sender,HttpContext httpContext)

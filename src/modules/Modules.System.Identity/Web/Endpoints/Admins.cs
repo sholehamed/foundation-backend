@@ -12,19 +12,19 @@ public class Admins : EndpointGroupBase
     {
         app.MapGroup(this).RequireAuthorization("SystemAdministrator")
 
-            .MapPost(AdminPagedList, "pagedList")
-            .MapGet(UserGetById, "{id}")
-            .MapGet(IsUsernameTaken, "isUserNameTaken")
-            .MapPost(UserCreate)
-            .MapPut(UserUpdate, "{id}")
-            .MapDelete(UserDelete, "{id}")
-            .MapPatch(UserChangeState, "{id}")
-            .MapPatch(UserChangeLockState, "{id}/changeLock")
-            .MapPut(GrantPlatformUserRole, "{id:guid}/roles/{roleId:guid}")
-            .MapDelete(RevokePlatformUserRole, "{id:guid}/roles/{roleId:guid}")
-            .MapPut(AllowPlatformUserPermission, "{id:guid}/permissions/{permissionId:guid}/allow")
-            .MapPut(DenyPlatformUserPermission, "{id:guid}/permissions/{permissionId:guid}/deny")
-            .MapDelete(RemovePlatformUserPermission, "{id:guid}/permissions/{permissionId:guid}")
+            .MapPost(AdminPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.PAGED", "admins", "ADMINS.READ", "AdminPagedList"))
+            .MapGet(UserGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.DETAIL", "admins", "ADMINS.READ", "UserGetById"))
+            .MapGet(IsUsernameTaken, "isUserNameTaken", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.USERNAME-CHECK", "admins", "ADMINS.READ", "IsUsernameTaken"))
+            .MapPost(UserCreateconfigure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.CREATE", "admins", "ADMINS.CREATE", "UserCreate"))
+            .MapPut(UserUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.UPDATE", "admins", "ADMINS.UPDATE", "UserUpdate"))
+            .MapDelete(UserDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.DELETE", "admins", "ADMINS.DELETE", "UserDelete"))
+            .MapPatch(UserChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.CHANGE-STATE", "admins", "ADMINS.CHANGE-STATE", "UserChangeState"))
+            .MapPatch(UserChangeLockState, "{id}/changeLock", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.CHANGE-LOCK", "admins", "ADMINS.CHANGE-LOCK", "UserChangeLockState"))
+            .MapPut(GrantPlatformUserRole, "{id:guid}/roles/{roleId:guid}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.GRANT-ROLE", "admins", "ADMINS.ASSIGN-ROLE", "GrantPlatformUserRole"))
+            .MapDelete(RevokePlatformUserRole, "{id:guid}/roles/{roleId:guid}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.REVOKE-ROLE", "admins", "ADMINS.ASSIGN-ROLE", "RevokePlatformUserRole"))
+            .MapPut(AllowPlatformUserPermission, "{id:guid}/permissions/{permissionId:guid}/allow", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.ALLOW-PERMISSION", "admins", "ADMINS.ASSIGN-PERMISSION", "AllowPlatformUserPermission"))
+            .MapPut(DenyPlatformUserPermission, "{id:guid}/permissions/{permissionId:guid}/deny", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.DENY-PERMISSION", "admins", "ADMINS.ASSIGN-PERMISSION", "DenyPlatformUserPermission"))
+            .MapDelete(RemovePlatformUserPermission, "{id:guid}/permissions/{permissionId:guid}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.REMOVE-PERMISSION", "admins", "ADMINS.ASSIGN-PERMISSION", "RemovePlatformUserPermission"))
 
         ;
     }

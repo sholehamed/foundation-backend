@@ -1,3 +1,4 @@
+using Modules.System.Identity.Web.Util;
 ﻿using Modules.System.Identity.Application.Features.ApiResources.Commands;
 using Modules.System.Identity.Application.Features.ApiResources.Queries;
 
@@ -9,15 +10,15 @@ namespace Modules.System.Identity.Web.Endpoints
         {
             app.MapGroup(this).RequireAuthorization("SystemAdministrator")
 
-                .MapPost(ApiResourcePagedList, "{resourceId}/pagedList")
-                .MapPost(ApiResourceGlobalPagedList, "pagedList")
-                .MapPatch(ApiResourceSync, "{resourceId}/sync")
-                .MapGet(ApiResourceGetById, "{id}")
-                .MapGet(ApiResourceLookup, "lookup")
-                .MapPost(ApiResourceCreate,displayName:"ایجاد api جدید")
-                .MapPut(ApiResourceUpdate, "{id}")
-                .MapDelete(ApiResourceDelete, "{id}")
-                .MapPatch(ApiResourceChangeState, "{id}")
+                .MapPost(ApiResourcePagedList, "{resourceId}/pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.API-RESOURCES.RESOURCE-PAGED", "api-resources", "API-RESOURCES.READ", "ApiResourcePagedList"))
+                .MapPost(ApiResourceGlobalPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.API-RESOURCES.PAGED", "api-resources", "API-RESOURCES.READ", "ApiResourceGlobalPagedList"))
+                .MapPatch(ApiResourceSync, "{resourceId}/sync", configure: e => e.WithFeatureEndpoint("SYSTEM.API-RESOURCES.SYNC", "api-resources", "API-RESOURCES.SYNC", "ApiResourceSync"))
+                .MapGet(ApiResourceGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.API-RESOURCES.DETAIL", "api-resources", "API-RESOURCES.READ", "ApiResourceGetById"))
+                .MapGet(ApiResourceLookup, "lookup", configure: e => e.WithFeatureEndpoint("SYSTEM.API-RESOURCES.LOOKUP", "api-resources", "API-RESOURCES.READ", "ApiResourceLookup"))
+                .MapPost(ApiResourceCreate,displayName:"ایجاد api جدید", configure: e => e.WithFeatureEndpoint("SYSTEM.API-RESOURCES.CREATE", "api-resources", "API-RESOURCES.CREATE", "ApiResourceCreate"))
+                .MapPut(ApiResourceUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.API-RESOURCES.UPDATE", "api-resources", "API-RESOURCES.UPDATE", "ApiResourceUpdate"))
+                .MapDelete(ApiResourceDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.API-RESOURCES.DELETE", "api-resources", "API-RESOURCES.DELETE", "ApiResourceDelete"))
+                .MapPatch(ApiResourceChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.API-RESOURCES.CHANGE-STATE", "api-resources", "API-RESOURCES.CHANGE-STATE", "ApiResourceChangeState"))
             ;
         }
         // Global, SystemAdministrator-protected list for root panel menu pages.

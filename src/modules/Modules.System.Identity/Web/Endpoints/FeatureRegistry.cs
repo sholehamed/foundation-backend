@@ -14,9 +14,9 @@ public sealed class FeatureRegistry : EndpointGroupBase
     {
         app.MapGroup(this)
             .RequireAuthorization("SystemAdministrator")
-            .MapGet(Manifest, "manifest")
-            .MapGet(Preview, "preview")
-            .MapPost(Apply, "apply");
+            .MapGet(Manifest, "manifest", configure: e => e.WithFeatureEndpoint("SYSTEM.FEATURE-REGISTRY.MANIFEST", "feature-registry", "FEATURE-REGISTRY.READ", "Manifest"))
+            .MapGet(Preview, "preview", configure: e => e.WithFeatureEndpoint("SYSTEM.FEATURE-REGISTRY.PREVIEW", "feature-registry", "FEATURE-REGISTRY.READ", "Preview"))
+            .MapPost(Apply, "apply", configure: e => e.WithFeatureEndpoint("SYSTEM.FEATURE-REGISTRY.APPLY", "feature-registry", "FEATURE-REGISTRY.APPLY", "Apply"));
     }
 
     public static IResult Manifest(HttpContext http)
