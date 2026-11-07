@@ -38,6 +38,7 @@ The frontend UI currently checks the catalog only on the privileged Registry pag
 - Disabled-by-default Admin/User forms remain inactive; existing disabled rows and edited titles remain unchanged.
 - Conflict when an existing key is wrong resource/type/route or has unrelated permission links, without any write.
 - Angular route-only inventory must exactly enumerate real nested routes (including resource-scoped pages and tenant overview), not forms or action URLs invented from a REST endpoint.
-- No production SQL Server Apply has been executed. A real SQL Server Registry preview/apply transaction/race rollback suite and target DB inventory are still required before enabling production Apply. See [issue #44](https://github.com/sholehamed/foundation-backend/issues/44).
+- A new disposable SQL Server 2022 integration gate (`tests/Shinera.Identity.SqlServerTests/FeatureRegistrySqlServerTests.cs`) is wired into CI. It uses **real Identity migrations**, read-only Preview, idempotent Apply with 13 root/41 child descriptors, no role/user grants, disabled-row preservation and outer-transaction rollback. It is not a concurrent Apply certification.
+- **No production SQL Server Apply has been executed.** Concurrent Apply races, historical duplicate UI keys / missing unique constraints, target DB inventory and a documented production migration plan are still required before enabling production Apply. See [issue #44](https://github.com/sholehamed/foundation-backend/issues/44).
 
 Source files: `Web/Util/FeatureRegistryDefinitions.cs` and `Web/Util/FeatureRegistrySyncService.cs`. Tests: `tests/Shinera.Identity.Tests/FeatureRegistrySyncTests.cs`.

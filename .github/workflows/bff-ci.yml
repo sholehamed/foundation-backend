@@ -43,3 +43,7 @@ jobs:
         run: dotnet restore tests/Foundation.Bff.SqlServerTests/Foundation.Bff.SqlServerTests.csproj
       - name: Run disposable SQL Server BFF atomicity tests
         run: dotnet test tests/Foundation.Bff.SqlServerTests/Foundation.Bff.SqlServerTests.csproj --no-restore -c Release --logger "trx;LogFileName=bff-sql-results.trx"
+      - name: Restore Identity Feature Registry SQL tests
+        run: dotnet restore tests/Shinera.Identity.SqlServerTests/Shinera.Identity.SqlServerTests.csproj
+      - name: Run disposable SQL Server Feature Registry tests
+        run: dotnet test tests/Shinera.Identity.SqlServerTests/Shinera.Identity.SqlServerTests.csproj --no-restore -c Release --filter "FullyQualifiedName~FeatureRegistrySqlServerTests" --logger "trx;LogFileName=feature-registry-sql-results.trx"
