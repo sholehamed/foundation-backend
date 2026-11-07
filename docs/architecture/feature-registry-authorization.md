@@ -126,3 +126,8 @@ The two existing live System/Tenant Resource.Action handlers delegate to one sco
 ## FR-04A implementation (2026-11-07)
 
 A new authenticated current-user navigation GET exists separately from SystemAdministrator Menu administration. It uses live scoped role/group/direct grants and explicit deny, strict menu ancestry and temporary route namespace boundaries; it does not grant API access or auto-seed a catalog. See [FR-04A HTTP contract](current-user-navigation.md). TenantPermissionRestriction semantics and explicit Menu.Scope remain open gates.
+
+
+## FR-02A delivered vertical design and rollout gate (2026-11-07)
+
+Code-owned Roles/Permissions feature declarations and explicit endpoint metadata now have a read-only admin preview + explicitly gated additive Apply in the first vertical. This creates missing Module/Resource/Permission/UiResource/ApiResource/metadata links and permission-bound default menus without auto grants, deletes or reactivations. The old route-derived sync no longer deprecates missing endpoints. **Do not treat this as arbitrary Angular route discovery or a default-enabled production migration.** See [FR-02A operations](../development/FR-02A-FEATURE-REGISTRY.md).

@@ -70,6 +70,7 @@ namespace Modules.System.Identity
             options.UseOpenIddict();
         });
             services.AddScoped<ApiResourceSyncService, ApiResourceSyncService>();
+            services.AddScoped<FeatureRegistrySyncService>();
             var assembly = Assembly.GetExecutingAssembly();
             services.AddCustomCqrs<AppMappingProfile>(assembly); services.AddDataProtection();
             services.AddScoped<CaptchaService>();
