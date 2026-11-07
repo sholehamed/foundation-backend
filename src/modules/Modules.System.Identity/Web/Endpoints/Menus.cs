@@ -1,6 +1,8 @@
 ﻿using Microsoft.AspNetCore.Routing;
 using Modules.System.Identity.Application.Features.Menus.Commands;
 using Modules.System.Identity.Application.Features.Menus.Queries;
+using Modules.System.Identity.Application.Abstractions;
+using Modules.System.Identity.Web.Util;
 
 
 namespace Modules.System.Identity.Web.Endpoints;
@@ -9,6 +11,11 @@ public class Menus : EndpointGroupBase
 {
     public override void Map(WebApplication app)
     {
+        // User-scoped endpoint is intentionally NOT part of the
+        // SystemAdministrator-only menu administration group.
+        app.MapGroup(this).RequireAuthorization()
+            .MapGet(GetMyNavigation, "me");
+
         app.MapGroup(this).RequireAuthorization("SystemAdministrator")
             .MapPost(ReorderMenus, "reorder")
             .MapGet(GetUserMenus, "getUserMenus", configure: x => x.RequireAuthorization())
@@ -19,6 +26,17 @@ public class Menus : EndpointGroupBase
             .MapDelete(MenuDelete, "{id}")
         ;
     }
+    public static async Task<IResult> GetMyNavigation(
+        HttpContext http,
+        IIdentityDbContext db,
+        CancellationToken cancellationToken)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        var result = await new CurrentUserNavigationService(db)
+            .GetAsync(http.User, cancellationToken);
+        return result is null ? Results.Forbid() : Results.Ok(result);
+    }
+
     public async Task ReorderMenus(IDispatcher sender,MenuReorderCommand request,CancellationToken ct)
     {
         await sender.Send(request, ct);

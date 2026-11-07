@@ -121,3 +121,8 @@ This slice adds a read-only SQL catalog inventory and consistent **read** Menu J
 ## FR-01B partial implementation (2026-11-07)
 
 The two existing live System/Tenant Resource.Action handlers delegate to one scoped DB-backed `EffectivePermissionEvaluator`. The Identity token continues emitting legacy Name labels and adds deny-filtered `permission_code` values as **snapshots only**. No current-user navigation endpoint exists yet, and menu filtering must later use live grants rather than the JWT or a caller-submitted role. See [FR-01B handoff](../development/FR-01B-PERMISSION-EVALUATOR.md).
+
+
+## FR-04A implementation (2026-11-07)
+
+A new authenticated current-user navigation GET exists separately from SystemAdministrator Menu administration. It uses live scoped role/group/direct grants and explicit deny, strict menu ancestry and temporary route namespace boundaries; it does not grant API access or auto-seed a catalog. See [FR-04A HTTP contract](current-user-navigation.md). TenantPermissionRestriction semantics and explicit Menu.Scope remain open gates.

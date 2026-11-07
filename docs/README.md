@@ -11,6 +11,7 @@
 - [ADR-0001 — Full BFF for browser clients](decisions/ADR-0001-browser-bff.md)
 - [BFF implementation design](architecture/browser-bff.md)
 - [Feature Registry & Authorization — proposed design and phased handoff](architecture/feature-registry-authorization.md)
+- [FR-04A current-user navigation API contract](architecture/current-user-navigation.md)
 - [FR-01A — Identity catalog inventory and Menu read contract](development/FR-01A-IDENTITY-CATALOG-AND-MENU-CONTRACT.md)
 - [FR-01B — Shared live permission evaluator and claim compatibility](development/FR-01B-PERMISSION-EVALUATOR.md)
 - [FR-01 read-only SQL inventory](sql/fr-01-identity-catalog-inventory.sql)
