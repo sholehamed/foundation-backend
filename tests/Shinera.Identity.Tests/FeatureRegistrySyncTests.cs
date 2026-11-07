@@ -186,7 +186,7 @@ public sealed class FeatureRegistrySyncTests
             CategoryId = Guid.NewGuid(),
             Route = "/system/menu-management",
             Title = "Legacy admin menu with no required permission",
-            IsActive = true, RowVersion = [1]
+            Icon = "menu", IsActive = true, RowVersion = [1]
         });
         await db.SaveChangesAsync();
 
