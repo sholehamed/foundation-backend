@@ -48,6 +48,10 @@ public sealed class CurrentUserNavigationTests
         // removed; the snapshot token has not changed in this test.
         f.Db.UserPermissions.RemoveRange(f.Db.UserPermissions.ToList());
         f.Save();
+        // Verify the fixture still exposes an inherited group grant in the
+        // established single-permission evaluator after direct deny removal.
+        Assert.True(await new EffectivePermissionEvaluator(f.Db).HasPermissionAsync(
+            user.Id, Master, UserType.System, "SECRETS.READ"));
         var after = await new CurrentUserNavigationService(f.Db)
             .GetAsync(f.Principal(user, "system"));
         Assert.Equal(new[] { "Roles", "Users", "Secrets" },
