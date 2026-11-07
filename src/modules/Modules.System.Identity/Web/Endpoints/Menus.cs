@@ -21,7 +21,7 @@ public class Menus : EndpointGroupBase
             .MapGet(GetUserMenus, "getUserMenus", configure: e => { e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.LEGACY-ROLE-NAV", "menu-management", "MENU-MANAGEMENT.READ", "GetUserMenus"); e.RequireAuthorization(); })
             .MapGet(MenuGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.MENU-DETAIL", "menu-management", "MENU-MANAGEMENT.READ", "MenuGetById"))
             .MapPost(MenuGetPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.MENU-PAGED", "menu-management", "MENU-MANAGEMENT.READ", "MenuGetPagedList"))
-            .MapPost(MenuCreateconfigure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.MENU-CREATE", "menu-management", "MENU-MANAGEMENT.CREATE", "MenuCreate"))
+            .MapPost(MenuCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.MENU-CREATE", "menu-management", "MENU-MANAGEMENT.CREATE", "MenuCreate"))
             .MapPut(MenuUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.MENU-UPDATE", "menu-management", "MENU-MANAGEMENT.UPDATE", "MenuUpdate"))
             .MapDelete(MenuDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.MENU-DELETE", "menu-management", "MENU-MANAGEMENT.DELETE", "MenuDelete"))
         ;

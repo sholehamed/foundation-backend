@@ -14,7 +14,7 @@ namespace Modules.System.Identity.Web.Endpoints
                 .MapGet(ResourceGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.DETAIL", "resources", "RESOURCES.READ", "ResourceGetById"))
                 .MapGet(ResourceLookup, "lookup", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.LOOKUP", "resources", "RESOURCES.READ", "ResourceLookup"))
                 .MapGet(ResourceResourcesLookup, "{resourceId}/resources", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.CHILDREN-LOOKUP", "resources", "RESOURCES.READ", "ResourceResourcesLookup"))
-                .MapPost(ResourceCreateconfigure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.CREATE", "resources", "RESOURCES.CREATE", "ResourceCreate"))
+                .MapPost(ResourceCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.CREATE", "resources", "RESOURCES.CREATE", "ResourceCreate"))
                 .MapPut(ResourceUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.UPDATE", "resources", "RESOURCES.UPDATE", "ResourceUpdate"))
                 .MapDelete(ResourceDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.DELETE", "resources", "RESOURCES.DELETE", "ResourceDelete"))
                 .MapPatch(ResourceChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.CHANGE-STATE", "resources", "RESOURCES.CHANGE-STATE", "ResourceChangeState"))

@@ -20,7 +20,7 @@ namespace Groups.System.Identity.Web.Endpoints
                 .MapPost(GroupMembers, "{groupId:guid}/members", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.MEMBERS-LIST", "groups", "GROUPS.READ", "GroupMembers"))
                 .MapGet(GroupLookup, "lookup", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.LOOKUP", "groups", "GROUPS.READ", "GroupLookup"))
                 .MapGet(SearchUserToAddGroup, "searchmembers", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.MEMBER-SEARCH", "groups", "GROUPS.READ", "SearchUserToAddGroup"))
-                .MapPost(GroupCreateconfigure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.CREATE", "groups", "GROUPS.CREATE", "GroupCreate"))
+                .MapPost(GroupCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.CREATE", "groups", "GROUPS.CREATE", "GroupCreate"))
                 .MapPut(GroupUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.UPDATE", "groups", "GROUPS.UPDATE", "GroupUpdate"))
                 .MapDelete(GroupDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.DELETE", "groups", "GROUPS.DELETE", "GroupDelete"))
                 .MapPatch(GroupChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.CHANGE-STATE", "groups", "GROUPS.CHANGE-STATE", "GroupChangeState"))

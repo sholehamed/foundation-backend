@@ -15,7 +15,7 @@ public class MenuCategories : EndpointGroupBase
             .MapGet(MenuCategoryGetList, "list", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-LIST", "menu-management", "MENU-MANAGEMENT.READ", "MenuCategoryGetList"))
             .MapGet(MenuCategoryGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-DETAIL", "menu-management", "MENU-MANAGEMENT.READ", "MenuCategoryGetById"))
             .MapPost(MenuCategoryGetPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-PAGED", "menu-management", "MENU-MANAGEMENT.READ", "MenuCategoryGetPagedList"))
-            .MapPost(MenuCategoryCreateconfigure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-CREATE", "menu-management", "MENU-MANAGEMENT.CREATE", "MenuCategoryCreate"))
+            .MapPost(MenuCategoryCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-CREATE", "menu-management", "MENU-MANAGEMENT.CREATE", "MenuCategoryCreate"))
             .MapPut(MenuCategoryUpdateconfigure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-UPDATE", "menu-management", "MENU-MANAGEMENT.UPDATE", "MenuCategoryUpdate"))
             .MapGet(MenuCategoryGetMenus,"{categoryId}/menus", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-MENUS", "menu-management", "MENU-MANAGEMENT.READ", "MenuCategoryGetMenus"))
             .MapDelete(MenuCategoryDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-DELETE", "menu-management", "MENU-MANAGEMENT.DELETE", "MenuCategoryDelete"))

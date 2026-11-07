@@ -15,7 +15,7 @@ public class Admins : EndpointGroupBase
             .MapPost(AdminPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.PAGED", "admins", "ADMINS.READ", "AdminPagedList"))
             .MapGet(UserGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.DETAIL", "admins", "ADMINS.READ", "UserGetById"))
             .MapGet(IsUsernameTaken, "isUserNameTaken", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.USERNAME-CHECK", "admins", "ADMINS.READ", "IsUsernameTaken"))
-            .MapPost(UserCreateconfigure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.CREATE", "admins", "ADMINS.CREATE", "UserCreate"))
+            .MapPost(UserCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.CREATE", "admins", "ADMINS.CREATE", "UserCreate"))
             .MapPut(UserUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.UPDATE", "admins", "ADMINS.UPDATE", "UserUpdate"))
             .MapDelete(UserDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.DELETE", "admins", "ADMINS.DELETE", "UserDelete"))
             .MapPatch(UserChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.CHANGE-STATE", "admins", "ADMINS.CHANGE-STATE", "UserChangeState"))

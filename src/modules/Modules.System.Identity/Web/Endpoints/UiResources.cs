@@ -14,7 +14,7 @@ namespace Modules.System.Identity.Web.Endpoints
                 .MapPost(UiResourceGlobalPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.PAGED", "ui-resources", "UI-RESOURCES.READ", "UiResourceGlobalPagedList"))
                 .MapGet(UiResourceGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.DETAIL", "ui-resources", "UI-RESOURCES.READ", "UiResourceGetById"))
                 .MapGet(UiResourceLookup, "lookup", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.LOOKUP", "ui-resources", "UI-RESOURCES.READ", "UiResourceLookup"))
-                .MapPost(UiResourceCreateconfigure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.CREATE", "ui-resources", "UI-RESOURCES.CREATE", "UiResourceCreate"))
+                .MapPost(UiResourceCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.CREATE", "ui-resources", "UI-RESOURCES.CREATE", "UiResourceCreate"))
                 .MapPut(UiResourceUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.UPDATE", "ui-resources", "UI-RESOURCES.UPDATE", "UiResourceUpdate"))
                 .MapDelete(UiResourceDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.DELETE", "ui-resources", "UI-RESOURCES.DELETE", "UiResourceDelete"))
                 .MapPatch(UiResourceChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.UI-RESOURCES.CHANGE-STATE", "ui-resources", "UI-RESOURCES.CHANGE-STATE", "UiResourceChangeState"))
