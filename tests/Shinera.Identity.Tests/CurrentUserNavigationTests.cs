@@ -50,8 +50,14 @@ public sealed class CurrentUserNavigationTests
         f.Save();
         // Verify the fixture still exposes an inherited group grant in the
         // established single-permission evaluator after direct deny removal.
-        Assert.True(await new EffectivePermissionEvaluator(f.Db).HasPermissionAsync(
-            user.Id, Master, UserType.System, "SECRETS.READ"));
+        var stillAllowed = await new EffectivePermissionEvaluator(f.Db).HasPermissionAsync(
+            user.Id, Master, UserType.System, "SECRETS.READ");
+        Assert.True(stillAllowed,
+            $"Diagnostics only: userGroups={f.Db.UserGroups.IgnoreQueryFilters(["tenant"]).Count()}, " +
+            $"groupRoles={f.Db.GroupRoles.IgnoreQueryFilters(["tenant"]).Count()}, " +
+            $"rolePermissions={f.Db.RolePermissions.IgnoreQueryFilters(["tenant"]).Count()}, " +
+            $"directPermissions={f.Db.UserPermissions.IgnoreQueryFilters(["tenant"]).Count()}, " +
+            $"groupRoleId={groupRole.Id}, deniedPermissionId={deniedPermission.Id}");
         var after = await new CurrentUserNavigationService(f.Db)
             .GetAsync(f.Principal(user, "system"));
         Assert.Equal(new[] { "Roles", "Users", "Secrets" },
