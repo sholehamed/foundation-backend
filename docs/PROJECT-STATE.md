@@ -1,5 +1,11 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-06A — live System UI key checks (2026-11-07)
+
+- **First opt-in route/action pilot:** [FR-06A runbook](development/FR-06A-LIVE-SYSTEM-UI-ACCESS.md). New `GET /api/System/UiAccess/me/{key}` under live `SystemAdministrator` returns one current-user UI permission decision with no-store and no role/user/tenant parameters. It requires verified active root PAGE + optional child PAGE/ACTION, single correct PermissionUiResource link and live System master-role/direct/group grant, direct deny precedence. Unknown/disabled/misconfigured entries fail closed.
+- Angular companion guards **Role Permissions** route and Save only behind an explicit default-OFF pilot flag to avoid surprising existing admins before Registry Apply/grant rollout. UI visibility is NOT server API authorization. No BFF, production DB, grants, existing coarse/granular API flag changes. CI pending.
+
+
 ## FR-05A — code-owned nested System UI elements and ACTION metadata (2026-11-07)
 
 - **Backend implementation / CI gate:** [FR-05A runbook](development/FR-05A-NESTED-UI-REGISTRY.md). Registers **32 nested PAGEs + 9 ACTIONs** as code-owned UI resources linked to their exact permission (no nested menus or role/user grants). Admin/User create/edit and related role actions start **inactive** because their write workflows remain unverified. Existing disabled rows are preserved.
