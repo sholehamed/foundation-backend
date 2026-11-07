@@ -46,18 +46,16 @@ public sealed class CurrentUserNavigationTests
 
         // A denied group permission becomes accessible if direct deny is
         // removed; the snapshot token has not changed in this test.
-        f.Db.UserPermissions.RemoveRange(f.Db.UserPermissions.ToList());
+        f.Db.UserPermissions.RemoveRange(
+            f.Db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToList());
         f.Save();
         // Verify the fixture still exposes an inherited group grant in the
         // established single-permission evaluator after direct deny removal.
-        var stillAllowed = await new EffectivePermissionEvaluator(f.Db).HasPermissionAsync(
-            user.Id, Master, UserType.System, "SECRETS.READ");
-        Assert.True(stillAllowed,
-            $"Diagnostics only: userGroups={f.Db.UserGroups.IgnoreQueryFilters(["tenant"]).Count()}, " +
-            $"groupRoles={f.Db.GroupRoles.IgnoreQueryFilters(["tenant"]).Count()}, " +
-            $"rolePermissions={f.Db.RolePermissions.IgnoreQueryFilters(["tenant"]).Count()}, " +
-            $"directPermissions={f.Db.UserPermissions.IgnoreQueryFilters(["tenant"]).Count()}, " +
-            $"groupRoleId={groupRole.Id}, deniedPermissionId={deniedPermission.Id}");
+        // The fixture's tenant query filter is empty by default: ensure the
+        // direct deny really was deleted before asserting inherited group grants.
+        Assert.Empty(f.Db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToList());
+        Assert.True(await new EffectivePermissionEvaluator(f.Db).HasPermissionAsync(
+            user.Id, Master, UserType.System, "SECRETS.READ"));
         var after = await new CurrentUserNavigationService(f.Db)
             .GetAsync(f.Principal(user, "system"));
         Assert.Equal(new[] { "Roles", "Users", "Secrets" },
