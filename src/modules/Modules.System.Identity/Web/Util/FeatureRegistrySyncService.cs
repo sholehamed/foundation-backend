@@ -164,8 +164,13 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
             {
                 // Only an explicitly approved Apply may update code-owned URLs.
                 // Existing disabled/deprecated flags are never changed.
-                db.ApiResources.Attach(api);
-                api.RouteTemplate = endpoint.Route;
+                var tracked = db.ApiResources.Local.FirstOrDefault(x => x.Id == api.Id);
+                if (tracked is null)
+                {
+                    db.ApiResources.Attach(api);
+                    tracked = api;
+                }
+                tracked.RouteTemplate = endpoint.Route;
             }
 
             var permission = permissions[endpoint.PermissionCode];
