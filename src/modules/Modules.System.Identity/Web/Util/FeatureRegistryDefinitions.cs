@@ -36,8 +36,36 @@ public static class FeatureRegistryDefinitions
             "system.permissions", "مجوزها", "/system/permissions", "verified_user", 40,
             "PERMISSIONS.READ",
             ["PERMISSIONS.READ", "PERMISSIONS.CREATE", "PERMISSIONS.UPDATE",
-             "PERMISSIONS.DELETE", "PERMISSIONS.CHANGE-STATE"])
+             "PERMISSIONS.DELETE", "PERMISSIONS.CHANGE-STATE"]),
+        new("system", "System", "users", "Users",
+            "system.users", "کاربران", "/system/users", "group", 20,
+            "USERS.READ",
+            ["USERS.READ", "USERS.CREATE", "USERS.UPDATE", "USERS.DELETE",
+             "USERS.CHANGE-STATE", "USERS.CHANGE-LOCK",
+             "USERS.ASSIGN-ROLE", "USERS.ASSIGN-PERMISSION"])
     ];
+
+    /// <summary>
+    /// The backend is the authority for stable feature keys and required
+    /// view Permission.Code. Angular owns executable routes only and verifies
+    /// their paths against this contract before offering catalog Apply.
+    /// The DTO contains no user grants or mutable database configuration.
+    /// </summary>
+    public sealed record Manifest(int SchemaVersion, IReadOnlyList<ManifestFeature> Features);
+
+    public sealed record ManifestFeature(
+        string Key,
+        string ModuleCode,
+        string ResourceCode,
+        string Route,
+        string PageKey,
+        string ReadPermission);
+
+    public static Manifest ExportManifest() => new(1, Features
+        .Select(x => new ManifestFeature(x.PageKey, x.ModuleCode,
+            x.ResourceCode, x.Route, x.PageKey, x.ReadPermission))
+        .OrderBy(x => x.Key, StringComparer.Ordinal)
+        .ToArray());
 }
 
 /// <summary>

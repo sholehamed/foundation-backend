@@ -131,3 +131,8 @@ A new authenticated current-user navigation GET exists separately from SystemAdm
 ## FR-02A delivered vertical design and rollout gate (2026-11-07)
 
 Code-owned Roles/Permissions feature declarations and explicit endpoint metadata now have a read-only admin preview + explicitly gated additive Apply in the first vertical. This creates missing Module/Resource/Permission/UiResource/ApiResource/metadata links and permission-bound default menus without auto grants, deletes or reactivations. The old route-derived sync no longer deprecates missing endpoints. **Do not treat this as arbitrary Angular route discovery or a default-enabled production migration.** See [FR-02A operations](../development/FR-02A-FEATURE-REGISTRY.md).
+
+
+## FR-02B-1: source-owned manifest contract and Users vertical (2026-11-07)
+
+A read-only `/api/System/FeatureRegistry/manifest` contract (SchemaVersion 1) now exports all code-owned features without database grants. All System Users API endpoints are explicitly associated with a stable descriptive permission key; the Angular admin page compares the server manifest to its real route index before offering Apply. Metadata is NOT enforcement. This removes duplicated frontend Permission.Code/feature-key definitions but does not yet establish a versioned cross-repository build artifact. See [FR-02B-1 handoff](../development/FR-02B1-USERS-MANIFEST.md).
