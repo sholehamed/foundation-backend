@@ -72,7 +72,7 @@ public sealed class CurrentUserNavigationTests
         f.Menu(category, "System", "/system/users", null);
         f.Menu(category, "Javascript", "javascript:alert(1)", null);
         f.Menu(category, "Bad external", null, null, externalUrl: "javascript:alert(1)");
-        f.Menu(category, "Docs", null, null, externalUrl: "https://example.test/docs");
+        f.Menu(category, "Docs", null, null, order: 2, externalUrl: "https://example.test/docs");
         f.Save();
 
         var service = new CurrentUserNavigationService(f.Db);
