@@ -14,8 +14,15 @@ public sealed class FeatureRegistry : EndpointGroupBase
     {
         app.MapGroup(this)
             .RequireAuthorization("SystemAdministrator")
+            .MapGet(Manifest, "manifest")
             .MapGet(Preview, "preview")
             .MapPost(Apply, "apply");
+    }
+
+    public static IResult Manifest(HttpContext http)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        return TypedResults.Ok(FeatureRegistryDefinitions.ExportManifest());
     }
 
     public static async Task<IResult> Preview(

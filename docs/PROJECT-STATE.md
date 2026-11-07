@@ -1,5 +1,11 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-02B-1 — backend-owned manifest + third System Users feature (2026-11-07)
+
+- **PR / CI gate:** [FR-02B-1 backend contract](development/FR-02B1-USERS-MANIFEST.md). Source-owned Feature Registry now declares **System Users** in addition to Roles and Permissions; all 13 `Users` endpoints carry stable descriptive metadata. `GET /api/System/FeatureRegistry/manifest` is read-only, SystemAdministrator-only, schemaVersion 1 and contains stable feature/page keys, required view Permission.Code, backend route and resource identity. Angular will validate these routes at runtime before offering Apply, instead of copying permission codes in its TypeScript manifest.
+- Preview/Apply security remains **unchanged**: no default enablement, no automatic role/user grants, no enforcement change from existing coarse SystemAdministrator, no production migration. Existing `USERS.READ` owned by a different Resource must block Apply. Real DB inventory + SQL Server sync tests still required.
+
+
 ## FR-02A — code-owned Feature Registry preview and additive apply (2026-11-07)
 
 - **First executable backend vertical (PR pending CI):** [FR-02A runbook](development/FR-02A-FEATURE-REGISTRY.md). `FeatureRegistryDefinitions` declares System Roles/Permissions code-owned module/resource/UI page/read permission/menu keys. Explicit endpoint metadata on Roles/Permissions CRUD/read routes provides stable API keys independently of URL. The `FeatureRegistrySyncService` plans read-only differences and optionally inserts missing definitions/links. No automatic grants or deletions. Admin-only `GET /api/System/FeatureRegistry/preview`; `POST .../apply` requires `Identity:FeatureRegistry:EnableApply=true` (OFF by default).

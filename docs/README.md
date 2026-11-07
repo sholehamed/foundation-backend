@@ -26,3 +26,5 @@
 - آنچه هنوز اجرا یا تست نشده، با برچسب Planned مستند می‌شود.
 
 - [FR-02A — Code-owned Feature Registry with reviewed preview/apply](development/FR-02A-FEATURE-REGISTRY.md)
+
+- [FR-02B-1 — Source-owned Users feature and backend manifest](development/FR-02B1-USERS-MANIFEST.md)

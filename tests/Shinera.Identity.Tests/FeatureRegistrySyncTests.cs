@@ -14,7 +14,7 @@ public sealed class FeatureRegistrySyncTests
     public void Feature_keys_and_permissions_are_stable_and_unambiguous()
     {
         var features = FeatureRegistryDefinitions.Features;
-        Assert.Equal(2, features.Count);
+        Assert.Equal(3, features.Count);
         Assert.Equal(features.Count, features.Select(x => x.PageKey)
             .Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Equal(features.Count, features.Select(x => x.Route)
@@ -23,6 +23,14 @@ public sealed class FeatureRegistrySyncTests
         Assert.Equal(keys.Length, keys.Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.All(keys, x => Assert.Equal(x.ToUpperInvariant(), x));
         Assert.All(features, x => Assert.Contains(x.ReadPermission, x.PermissionCodes));
+        var contract = FeatureRegistryDefinitions.ExportManifest();
+        Assert.Equal(1, contract.SchemaVersion);
+        Assert.Equal(features.Count, contract.Features.Count);
+        Assert.Contains(contract.Features, x =>
+            x.Key == "system.users" && x.Route == "/system/users" &&
+            x.ReadPermission == "USERS.READ" && x.ResourceCode == "users");
+        Assert.Equal(contract.Features.Count, contract.Features
+            .Select(x => x.Key).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
     [Fact]
@@ -49,12 +57,12 @@ public sealed class FeatureRegistrySyncTests
         var applied = await registry.ApplyAsync();
         Assert.True(applied.CanApply);
         Assert.Single(db.Modules);
-        Assert.Equal(2, db.Resources.Count());
-        Assert.Equal(2, db.UiResources.Count());
-        Assert.Equal(2, db.Menus.Count());
+        Assert.Equal(3, db.Resources.Count());
+        Assert.Equal(3, db.UiResources.Count());
+        Assert.Equal(3, db.Menus.Count());
         Assert.Equal(2, db.ApiResources.Count());
         Assert.Equal(2, db.PermissionApiResources.Count());
-        Assert.Equal(2, db.PermissionUiResources.Count());
+        Assert.Equal(3, db.PermissionUiResources.Count());
 
         var persisted = await db.Permissions.SingleAsync(x => x.Id == manual.Id);
         Assert.Equal("Custom label", persisted.Name);
@@ -72,8 +80,54 @@ public sealed class FeatureRegistrySyncTests
         Assert.All(second.Changes, x => Assert.Equal("Present", x.State));
 
         await registry.ApplyAsync();
-        Assert.Equal(2, db.Menus.Count());
+        Assert.Equal(3, db.Menus.Count());
         Assert.Equal(2, db.ApiResources.Count());
+    }
+
+    [Fact]
+    public async Task Third_feature_users_creates_definitions_and_menu_without_any_user_grants()
+    {
+        await using var db = await CreateDbAsync();
+        var registry = new FeatureRegistrySyncService(db, Endpoints(
+            Route("SYSTEM.USERS.PAGED", "users", "USERS.READ",
+                "POST", "/api/System/Users/pagedList"),
+            Route("SYSTEM.USERS.GRANT-ROLE", "users", "USERS.ASSIGN-ROLE",
+                "PUT", "/api/System/Users/{id:guid}/roles/{roleId:guid}")));
+
+        var pending = await registry.PreviewAsync();
+        Assert.True(pending.CanApply);
+        Assert.Contains(pending.Changes, x => x.Type == "Menu" &&
+            x.Key == "/system/users" && x.State == "Create");
+
+        await registry.ApplyAsync();
+        var userFeature = FeatureRegistryDefinitions.ExportManifest().Features
+            .Single(x => x.Key == "system.users");
+        var menu = await db.Menus.SingleAsync(x => x.Route == userFeature.Route);
+        var permission = await db.Permissions.SingleAsync(x => x.Code == "USERS.READ");
+        Assert.Equal(permission.Id, menu.PermissionId);
+        Assert.Equal(2, await db.ApiResources.CountAsync());
+        Assert.Empty(db.UserPermissions.IgnoreQueryFilters(["tenant"]));
+        Assert.Empty(db.RolePermissions.IgnoreQueryFilters(["tenant"]));
+        Assert.False((await registry.PreviewAsync()).HasPending);
+    }
+
+    [Fact]
+    public async Task Preexisting_users_permission_owned_by_another_resource_blocks_apply()
+    {
+        await using var db = await CreateDbAsync();
+        var wrongResource = Guid.NewGuid();
+        db.Permissions.Add(new Permission(Guid.NewGuid(), "USERS.READ",
+            wrongResource, "Custom tenant users read", null) { RowVersion = [1] });
+        await db.SaveChangesAsync();
+
+        var registry = new FeatureRegistrySyncService(db, Endpoints());
+        var preview = await registry.PreviewAsync();
+        Assert.False(preview.CanApply);
+        Assert.Contains(preview.Changes, x => x.Type == "Permission" &&
+            x.Key == "USERS.READ" && x.State == "Conflict");
+        Assert.False((await registry.ApplyAsync()).CanApply);
+        Assert.Empty(db.Modules);
+        Assert.Empty(db.Menus);
     }
 
     [Fact]
