@@ -30,3 +30,5 @@
 - [FR-02B-1 — Source-owned Users feature and backend manifest](development/FR-02B1-USERS-MANIFEST.md)
 
 - [FR-02B-2 — All System root-page Registry definitions and endpoint metadata](development/FR-02B2-SYSTEM-PAGES.md)
+
+- [FR-05A — Nested System PAGE/ACTION UI Registry](development/FR-05A-NESTED-UI-REGISTRY.md)

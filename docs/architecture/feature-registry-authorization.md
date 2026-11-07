@@ -141,3 +141,8 @@ A read-only `/api/System/FeatureRegistry/manifest` contract (SchemaVersion 1) no
 ## FR-02B-2: Complete first-party System root page catalog (2026-11-07)
 
 The v1 code-owned System feature manifest now enumerates all 13 current System root pages and 82 additional privileged endpoint descriptors, without changing existing coarse or gated granular authorization. Protected and non-protected special endpoints are deliberately separated. Registration never grants roles or users, modifies BFF, or auto-applies to SQL. See [runbook](../development/FR-02B2-SYSTEM-PAGES.md).
+
+
+## FR-05A: nested PAGE/ACTION descriptive resources and manifest v2
+
+Additional subordinate PAGE route templates and named ACTION metadata use existing UiResourceType and PermissionUiResource tables without creating menu rows or user grants. UI keys are stable; incorrect existing owner/type/route or unrelated permission links block Preview/Apply. The manifest now includes these elements under schemaVersion=2, paired with Angular nested route compatibility checks. Admin/User create/edit metadata is initially inactive. It remains **descriptive** and cannot replace server enforcement. See [FR-05A handoff](../development/FR-05A-NESTED-UI-REGISTRY.md).

@@ -36,7 +36,14 @@ public sealed class FeatureRegistrySyncTests
         Assert.All(keys, x => Assert.Equal(x.ToUpperInvariant(), x));
         Assert.All(features, x => Assert.Contains(x.ReadPermission, x.PermissionCodes));
         var contract = FeatureRegistryDefinitions.ExportManifest();
-        Assert.Equal(1, contract.SchemaVersion);
+        Assert.Equal(2, contract.SchemaVersion);
+        Assert.Equal(41, contract.UiElements.Count);
+        Assert.Equal(32, contract.UiElements.Count(x => x.Type == "PAGE"));
+        Assert.Equal(9, contract.UiElements.Count(x => x.Type == "ACTION"));
+        Assert.Equal(contract.UiElements.Count, contract.UiElements.Select(x => x.Key)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(32, contract.UiElements.Where(x => x.Type == "PAGE")
+            .Select(x => x.Route).Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Equal(features.Count, contract.Features.Count);
         Assert.Contains(contract.Features, x =>
             x.Key == "system.users" && x.Route == "/system/users" &&
@@ -70,11 +77,11 @@ public sealed class FeatureRegistrySyncTests
         Assert.True(applied.CanApply);
         Assert.Single(db.Modules);
         Assert.Equal(13, db.Resources.Count());
-        Assert.Equal(13, db.UiResources.Count());
+        Assert.Equal(54, db.UiResources.Count());
         Assert.Equal(13, db.Menus.Count());
         Assert.Equal(2, db.ApiResources.Count());
         Assert.Equal(2, db.PermissionApiResources.Count());
-        Assert.Equal(13, db.PermissionUiResources.Count());
+        Assert.Equal(54, db.PermissionUiResources.Count());
 
         var persisted = await db.Permissions.SingleAsync(x => x.Id == manual.Id);
         Assert.Equal("Custom label", persisted.Name);
@@ -150,7 +157,7 @@ public sealed class FeatureRegistrySyncTests
 
         var preview = await service.PreviewAsync();
         Assert.True(preview.CanApply);
-        Assert.Equal(13, preview.Changes.Count(x =>
+        Assert.Equal(54, preview.Changes.Count(x =>
             x.Type == "UiResource" && x.State == "Create"));
         Assert.Equal(13, preview.Changes.Count(x =>
             x.Type == "Menu" && x.State == "Create"));
@@ -158,7 +165,7 @@ public sealed class FeatureRegistrySyncTests
         var applied = await service.ApplyAsync();
         Assert.True(applied.CanApply);
         Assert.Equal(13, await db.Menus.CountAsync());
-        Assert.Equal(13, await db.UiResources.CountAsync());
+        Assert.Equal(54, await db.UiResources.CountAsync());
 
         foreach (var feature in FeatureRegistryDefinitions.Features)
         {
@@ -175,6 +182,115 @@ public sealed class FeatureRegistrySyncTests
         Assert.Empty(db.GroupRoles.IgnoreQueryFilters(["tenant"]));
         Assert.Empty(db.UserRoles.IgnoreQueryFilters(["tenant"]));
         Assert.False((await service.PreviewAsync()).HasPending);
+    }
+
+    [Fact]
+    public async Task Subordinate_page_and_action_resources_are_permission_bound_but_not_menus()
+    {
+        await using var db = await CreateDbAsync();
+        var service = new FeatureRegistrySyncService(db, Endpoints());
+        Assert.True((await service.PreviewAsync()).CanApply);
+        await service.ApplyAsync();
+
+        Assert.Equal(13, await db.Menus.CountAsync());
+        foreach (var descriptor in FeatureRegistryDefinitions.UiElements)
+        {
+            var ui = await db.UiResources.SingleAsync(x => x.Key == descriptor.Key);
+            var feature = FeatureRegistryDefinitions.Features.Single(x =>
+                x.PageKey == descriptor.FeatureKey);
+            var resource = await db.Resources.SingleAsync(x =>
+                x.Code == feature.ResourceCode);
+            var permission = await db.Permissions.SingleAsync(x =>
+                x.Code == descriptor.PermissionCode);
+
+            Assert.Equal(resource.Id, ui.ResourceId);
+            Assert.Equal(descriptor.Type, ui.Type);
+            Assert.Equal(descriptor.Route, ui.Description);
+            Assert.Equal(descriptor.DefaultActive, ui.IsActive);
+            Assert.True(await db.PermissionUiResources.AnyAsync(x =>
+                x.UiResourceId == ui.Id && x.PermissionId == permission.Id));
+            Assert.False(await db.Menus.AnyAsync(x => x.Route == descriptor.Route &&
+                descriptor.Route != null));
+        }
+
+        // These current Forms are not certified for safe System writes.
+        Assert.All(db.UiResources.Where(x =>
+            x.Key.StartsWith("system.admins.") || x.Key.StartsWith("system.users.")),
+            x => Assert.True(x.Key is "system.admins" or "system.users" ||
+                !x.IsActive));
+
+        Assert.Empty(db.RolePermissions.IgnoreQueryFilters(["tenant"]));
+        Assert.Empty(db.UserPermissions.IgnoreQueryFilters(["tenant"]));
+        Assert.False((await service.PreviewAsync()).HasPending);
+    }
+
+    [Fact]
+    public async Task Existing_code_owned_subpage_is_preserved_without_reactivation_or_relabel()
+    {
+        await using var db = await CreateDbAsync();
+        var service = new FeatureRegistrySyncService(db, Endpoints());
+        await service.ApplyAsync();
+
+        var page = await db.UiResources.SingleAsync(x =>
+            x.Key == "system.roles.create");
+        var originalId = page.Id;
+        page.IsActive = false;
+        page.Title = "Manually customized title";
+        await db.SaveChangesAsync();
+
+        Assert.True((await service.PreviewAsync()).CanApply);
+        Assert.False((await service.PreviewAsync()).HasPending);
+        await service.ApplyAsync();
+        var after = await db.UiResources.SingleAsync(x => x.Id == originalId);
+        Assert.False(after.IsActive);
+        Assert.Equal("Manually customized title", after.Title);
+        Assert.Equal(54, await db.UiResources.CountAsync());
+    }
+
+    [Fact]
+    public async Task Existing_ui_resource_with_unrelated_permission_link_blocks_all_apply()
+    {
+        await using var db = await CreateDbAsync();
+        var bootstrap = new FeatureRegistrySyncService(db, Endpoints());
+        await bootstrap.ApplyAsync();
+        var target = await db.UiResources.SingleAsync(x =>
+            x.Key == "system.roles.create");
+        var unrelated = await db.Permissions.SingleAsync(x =>
+            x.Code == "GROUPS.READ");
+        db.PermissionUiResources.Add(new PermissionUiResource(unrelated.Id, target.Id)
+            { RowVersion = [1] });
+        await db.SaveChangesAsync();
+
+        var service = new FeatureRegistrySyncService(db, Endpoints());
+        var preview = await service.PreviewAsync();
+        Assert.False(preview.CanApply);
+        Assert.Contains(preview.Changes, x =>
+            x.Type == "PermissionUiResource" && x.State == "Conflict" &&
+            x.Key.Contains("system.roles.create"));
+        Assert.False((await service.ApplyAsync()).CanApply);
+        Assert.Equal(54, await db.UiResources.CountAsync());
+    }
+
+    [Fact]
+    public async Task Existing_ui_key_with_wrong_kind_or_route_never_gets_reassigned()
+    {
+        await using var db = await CreateDbAsync();
+        var bootstrap = new FeatureRegistrySyncService(db, Endpoints());
+        await bootstrap.ApplyAsync();
+
+        var page = await db.UiResources.SingleAsync(x =>
+            x.Key == "system.roles.edit");
+        page.Type = UiResourceType.ACTION;
+        await db.SaveChangesAsync();
+
+        var service = new FeatureRegistrySyncService(db, Endpoints());
+        var preview = await service.PreviewAsync();
+        Assert.False(preview.CanApply);
+        Assert.Contains(preview.Changes, x =>
+            x.Type == "UiResource" && x.Key == "system.roles.edit" &&
+            x.State == "Conflict");
+        Assert.False((await service.ApplyAsync()).CanApply);
+        Assert.Equal(UiResourceType.ACTION, page.Type);
     }
 
     [Fact]
