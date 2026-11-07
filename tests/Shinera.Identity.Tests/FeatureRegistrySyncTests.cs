@@ -159,7 +159,7 @@ public sealed class FeatureRegistrySyncTests
             RoutePatternFactory.Parse(route), 0);
         builder.Metadata.Add(new FeatureEndpointMetadata(key, resource, permission, key));
         builder.Metadata.Add(new HttpMethodMetadata([method]));
-        return builder.Build();
+        return (RouteEndpoint)builder.Build();
     }
 
     private static EndpointDataSource Endpoints(params Endpoint[] endpoints) =>
