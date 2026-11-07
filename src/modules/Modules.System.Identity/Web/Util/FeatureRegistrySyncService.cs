@@ -130,6 +130,33 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
                     { RowVersion = [1] });
             }
 
+            foreach (var element in FeatureRegistryDefinitions.UiElements
+                .Where(x => Same(x.FeatureKey, feature.PageKey)))
+            {
+                if (!ui.TryGetValue(element.Key, out var component))
+                {
+                    // Subordinate PAGE/ACTION: no separate menu, and draft
+                    // identity forms are deliberately inactive by default.
+                    component = new UiResource(Guid.NewGuid(), resource.Id,
+                        element.Key, element.Title, element.Route, element.Type)
+                    {
+                        RowVersion = [1],
+                        IsActive = element.DefaultActive
+                    };
+                    db.UiResources.Add(component);
+                    ui.Add(element.Key, component);
+                }
+
+                var required = permissions[element.PermissionCode];
+                if (!snapshot.UiLinks.Any(x =>
+                        x.PermissionId == required.Id && x.UiResourceId == component.Id))
+                {
+                    db.PermissionUiResources.Add(
+                        new PermissionUiResource(required.Id, component.Id)
+                        { RowVersion = [1] });
+                }
+            }
+
             if (!snapshot.Menus.Any(x => Same(x.Route, feature.Route)))
             {
                 db.Menus.Add(new Menu(Guid.NewGuid())
@@ -267,6 +294,33 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
         void Add(string type, string key, string status, string? message = null) =>
             changes.Add(new(type, key, status, message));
 
+        // Validate code-owned metadata before writes. Fail closed on duplicate
+        // stable keys/routes and undefined parent feature or permission.
+        foreach (var duplicate in FeatureRegistryDefinitions.UiElements
+            .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Count() > 1))
+            Add("UiResource", duplicate.Key, "Conflict", "Duplicate code-owned UI key");
+
+        foreach (var duplicate in FeatureRegistryDefinitions.UiElements
+            .Where(x => x.Type == UiResourceType.PAGE && x.Route is not null)
+            .GroupBy(x => x.Route!, StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Count() > 1))
+            Add("UiResource", duplicate.Key, "Conflict", "Duplicate code-owned UI route");
+
+        foreach (var element in FeatureRegistryDefinitions.UiElements)
+        {
+            var parent = FeatureRegistryDefinitions.Features.SingleOrDefault(x =>
+                Same(x.PageKey, element.FeatureKey));
+            if (parent is null ||
+                !parent.PermissionCodes.Any(x => Same(x, element.PermissionCode)) ||
+                (element.Type == UiResourceType.PAGE &&
+                    (string.IsNullOrWhiteSpace(element.Route) ||
+                     !element.Route.StartsWith("/system/", StringComparison.Ordinal))) ||
+                (element.Type == UiResourceType.ACTION && element.Route is not null))
+                Add("UiResource", element.Key, "Conflict",
+                    "Unknown parent/permission or invalid UI type/route");
+        }
+
         var categoryMatches = db.Categories.Where(x =>
             Same(x.Title, FeatureRegistryDefinitions.NavigationCategory)).ToList();
         Add("MenuCategory", FeatureRegistryDefinitions.NavigationCategory,
@@ -310,6 +364,38 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
                 read is not null && page is not null &&
                 db.UiLinks.Any(x => x.PermissionId == read.Id && x.UiResourceId == page.Id)
                     ? "Present" : "Create");
+
+            foreach (var element in FeatureRegistryDefinitions.UiElements
+                .Where(x => Same(x.FeatureKey, feature.PageKey)))
+            {
+                var existing = db.Ui.Where(x => Same(x.Key, element.Key)).ToList();
+                var component = existing.Count == 1 ? existing[0] : null;
+                var invalidComponent = existing.Count > 1 ||
+                    (component is not null &&
+                     (resource is null || component.ResourceId != resource.Id ||
+                      component.Type != element.Type ||
+                      (element.Type == UiResourceType.PAGE &&
+                       !Same(component.Description, element.Route))));
+                Add("UiResource", element.Key,
+                    invalidComponent ? "Conflict" :
+                    component is null ? "Create" : "Present",
+                    invalidComponent ? "UI resource key owned by a different resource/type/route" : null);
+
+                var linkedPermission = db.Permissions.FirstOrDefault(x =>
+                    Same(x.Code, element.PermissionCode));
+                var links = component is null
+                    ? new List<PermissionUiResource>()
+                    : db.UiLinks.Where(x => x.UiResourceId == component.Id).ToList();
+                // An unrelated existing permission link may broaden an ACTION
+                // or PAGE through OR authorization. Never silently add to it.
+                var unexpectedLinks = links.Any(x =>
+                    linkedPermission is null || x.PermissionId != linkedPermission.Id);
+                var linked = linkedPermission is not null && links.Any(x =>
+                    x.PermissionId == linkedPermission.Id);
+                Add("PermissionUiResource", element.PermissionCode + " -> " + element.Key,
+                    unexpectedLinks ? "Conflict" : linked ? "Present" : "Create",
+                    unexpectedLinks ? "Existing UI key has unrelated permission links" : null);
+            }
 
             var menuMatches = db.Menus.Where(x => Same(x.Route, feature.Route)).ToList();
             var badMenu = menuMatches.Count > 1 ||

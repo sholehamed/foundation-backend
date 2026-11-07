@@ -1,5 +1,12 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-05A — code-owned nested System UI elements and ACTION metadata (2026-11-07)
+
+- **Backend implementation / CI gate:** [FR-05A runbook](development/FR-05A-NESTED-UI-REGISTRY.md). Registers **32 nested PAGEs + 9 ACTIONs** as code-owned UI resources linked to their exact permission (no nested menus or role/user grants). Admin/User create/edit and related role actions start **inactive** because their write workflows remain unverified. Existing disabled rows are preserved.
+- Manifest schema now **v2** (`uiElements` added). Angular must deploy a paired route-only child-pattern index and validate backend/actual executable routes; v1 frontend intentionally blocks Apply against v2 Backend. Existing `SystemAdministrator`/BFF/permission enforcement flags and production data unchanged.
+- Preview conflicts fail closed for wrong child UI owner/type/route, duplicate keys, or unrelated PermissionUiResource associations. No SQL Server registry rollout certification yet.
+
+
 ## FR-02B-2 — code-owned catalog covers every System root page (2026-11-07)
 
 - **Backend implementation / CI PR gate:** [FR-02B-2 runbook](development/FR-02B2-SYSTEM-PAGES.md). All **13** real Angular System root pages now have code-owned Feature definitions, `Resource.Code`, scoped view Permission.Code, page key, Route and default permission-bound menu. **82 descriptive endpoint metadata** mappings added for System Admins, Groups, Modules, Tenants, Resources, API/UI resources, MenuCategories/Menus, Dashboard, and the Registry itself. Previous Users/Roles/Permissions mappings remain. `Menus/me` (System/Tenant user nav) and `Tenants/resolve` (AllowAnonymous) are intentionally outside System-only operation metadata.
