@@ -32,3 +32,5 @@
 - [FR-02B-2 — All System root-page Registry definitions and endpoint metadata](development/FR-02B2-SYSTEM-PAGES.md)
 
 - [FR-05A — Nested System PAGE/ACTION UI Registry](development/FR-05A-NESTED-UI-REGISTRY.md)
+
+- [FR-06A — Live System UI key access endpoint, pilot route/action](development/FR-06A-LIVE-SYSTEM-UI-ACCESS.md)

@@ -146,3 +146,8 @@ The v1 code-owned System feature manifest now enumerates all 13 current System r
 ## FR-05A: nested PAGE/ACTION descriptive resources and manifest v2
 
 Additional subordinate PAGE route templates and named ACTION metadata use existing UiResourceType and PermissionUiResource tables without creating menu rows or user grants. UI keys are stable; incorrect existing owner/type/route or unrelated permission links block Preview/Apply. The manifest now includes these elements under schemaVersion=2, paired with Angular nested route compatibility checks. Admin/User create/edit metadata is initially inactive. It remains **descriptive** and cannot replace server enforcement. See [FR-05A handoff](../development/FR-05A-NESTED-UI-REGISTRY.md).
+
+
+## FR-06A — live UI read/action hints (2026-11-07)
+
+A SystemAdministrator-only, no-store `UiAccess/me/{key}` checks live persisted UI permission links and effective current-user grants, using code-owned keys. This is **UI behavior only**: it does not replace API authorization, and an opt-in Angular pilot controls the Roles permissions page and save button. The default is OFF; registry activation and grants need separate reviewed rollout. See [runbook](../development/FR-06A-LIVE-SYSTEM-UI-ACCESS.md).
