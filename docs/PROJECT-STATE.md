@@ -1,5 +1,12 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-04A — current-user navigation from live DB (2026-11-07)
+
+- **Backend PR under test:** [Current-user navigation contract](architecture/current-user-navigation.md). `GET /api/System/Menus/me` requires an authenticated principal (System or Tenant), never a caller-supplied RoleId. Bounded direct/role/group grant aggregation with user deny precedence, active menu/category filter, strict parent tree and route-scope checks. Empty catalog returns []; invalid identity/scope returns 403; unauthenticated returns 401. Legacy SystemAdministrator menu administration and roleId GET remain unchanged.
+- **Deployment note:** production startup does not seed static Menu resources; new frontend intentionally will not display admin fallback links on empty/error. The System administrator must configure menu categories/menus and explicitly grant permissions. No DB migrations or auto grants.
+- **Not yet complete:** official Menu.Scope/feature registry, TenantPermissionRestriction semantics, server-enforced Angular feature route catalog, production DB inventory and BFF migration.
+
+
 ## FR-01B — shared live permission evaluator and token snapshot code (2026-11-07)
 
 - **PR pending CI:** [FR-01B architecture & test handoff](development/FR-01B-PERMISSION-EVALUATOR.md). Existing System/Tenant `Require*Permission` authorization handlers now use a common `EffectivePermissionEvaluator` for active account/scope, explicit direct deny, direct grant and active role/group grants, keeping API authorization DB-authoritative.
