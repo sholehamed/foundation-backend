@@ -329,13 +329,25 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
                 x.ModuleId == module.Id && Same(x.Code, feature.ResourceCode));
             var apiMatches = db.Api.Where(x => Same(x.Key, endpoint.Key)).ToList();
             var api = apiMatches.Count == 1 ? apiMatches[0] : null;
-            var conflict = apiMatches.Count > 1 ||
+            // Legacy URL-derived discovery may have already inserted a second
+            // key for the SAME resource/method/route. The database has a unique
+            // index on that tuple; report a reviewable conflict in Preview
+            // instead of letting approved Apply hit a late SQL constraint.
+            var legacyRouteCollision = resource is null ? null :
+                db.Api.FirstOrDefault(x => x.ResourceId == resource.Id &&
+                    x.HttpMethod == endpoint.Method &&
+                    Same(x.RouteTemplate, endpoint.Route) &&
+                    !Same(x.Key, endpoint.Key));
+            var conflict = apiMatches.Count > 1 || legacyRouteCollision is not null ||
                 (api is not null && (resource is null ||
                     api.ResourceId != resource.Id || api.HttpMethod != endpoint.Method ||
                     api.Source == ApiSource.Manual && !Same(api.RouteTemplate, endpoint.Route)));
             var state = conflict ? "Conflict" : api is null ? "Create" :
                 !Same(api.RouteTemplate, endpoint.Route) ? "UpdateRoute" : "Present";
-            Add("ApiResource", endpoint.Key, state, conflict ? "Existing key owned by another resource/verb or manual definition" : null);
+            Add("ApiResource", endpoint.Key, state, !conflict ? null :
+                legacyRouteCollision is not null
+                    ? "Existing API uses this resource/method/route with a different key; review legacy route-derived records"
+                    : "Existing key owned by another resource/verb or manual definition");
 
             var permission = db.Permissions.FirstOrDefault(x => Same(x.Code, endpoint.PermissionCode));
             Add("PermissionApiResource", endpoint.PermissionCode + " -> " + endpoint.Key,
