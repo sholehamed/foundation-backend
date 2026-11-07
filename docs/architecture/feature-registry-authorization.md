@@ -116,3 +116,8 @@ All slices update `docs/PROJECT-STATE.md`, this architecture record, the relevan
 ## FR-01A implementation handoff (2026-11-07)
 
 This slice adds a read-only SQL catalog inventory and consistent **read** Menu JSON fields with transitional aliases. It does not change permission policy evaluation, grant storage, deployed database state or Sidebar behavior. See [FR-01A catalog and Menu contract](../development/FR-01A-IDENTITY-CATALOG-AND-MENU-CONTRACT.md) for the actual seeder evidence, SQL procedure and remaining gaps. FR-01B covers normalizing permission claim contracts and validating menu tree integrity only after a compatibility and persisted-data review.
+
+
+## FR-01B partial implementation (2026-11-07)
+
+The two existing live System/Tenant Resource.Action handlers delegate to one scoped DB-backed `EffectivePermissionEvaluator`. The Identity token continues emitting legacy Name labels and adds deny-filtered `permission_code` values as **snapshots only**. No current-user navigation endpoint exists yet, and menu filtering must later use live grants rather than the JWT or a caller-submitted role. See [FR-01B handoff](../development/FR-01B-PERMISSION-EVALUATOR.md).

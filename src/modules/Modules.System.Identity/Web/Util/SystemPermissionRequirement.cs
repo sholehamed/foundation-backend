@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure.Persistence;
@@ -55,64 +54,8 @@ public sealed class SystemPermissionHandler(IIdentityDbContext db)
 
         var ct = context.Resource is HttpContext http
             ? http.RequestAborted : CancellationToken.None;
-        var scope = DefaultSeedData.MasterTenant.Id;
-
-        // System accounts are platform subjects, not tenants. This checks the
-        // pre-existing platform role-storage scope, not User.TenantId.
-        if (!await db.Users.AsNoTracking().AnyAsync(x =>
-            x.Id == userId && x.UserType == UserType.System &&
-            x.TenantId == null && x.IsActive &&
-            (!x.IsLockedOut || x.LockoutEndUtc <= DateTime.UtcNow), ct))
-            return;
-
-        if (!await db.Tenants.AsNoTracking().AnyAsync(x =>
-            x.Id == scope && x.IsActive, ct))
-            return;
-
-        // The existing identity schema supports IsGranted=false. Respect an
-        // explicit user-level denial before checking role/group inheritance.
-        var denied = await db.UserPermissions.IgnoreQueryFilters(["tenant"])
-            .AsNoTracking().AnyAsync(x =>
-                x.UserId == userId && x.TenantId == scope && !x.IsGranted &&
-                x.Permission.IsActive && x.Permission.Code == requirement.Key, ct);
-        if (denied)
-            return;
-
-        var direct = await db.UserPermissions.IgnoreQueryFilters(["tenant"])
-            .AsNoTracking().AnyAsync(x =>
-                x.UserId == userId && x.TenantId == scope && x.IsGranted &&
-                x.Permission.IsActive && x.Permission.Code == requirement.Key, ct);
-        if (direct)
-        {
-            context.Succeed(requirement);
-            return;
-        }
-
-        var viaRole = await db.UserRoles.IgnoreQueryFilters(["tenant"])
-            .AsNoTracking().AnyAsync(x =>
-                x.UserId == userId && x.TenantId == scope &&
-                x.Role.TenantId == scope && x.Role.IsActive &&
-                x.Role.RolePermissions.Any(rp =>
-                    rp.TenantId == scope && rp.Permission.IsActive &&
-                    rp.Permission.Code == requirement.Key), ct);
-        if (viaRole)
-        {
-            context.Succeed(requirement);
-            return;
-        }
-
-        var viaGroup = await db.UserGroups.IgnoreQueryFilters(["tenant"])
-            .AsNoTracking().AnyAsync(x =>
-                x.UserId == userId && x.TenantId == scope &&
-                x.Group.TenantId == scope && x.Group.IsActive &&
-                x.Group.GroupRoles.Any(gr =>
-                    gr.TenantId == scope &&
-                    gr.Role.TenantId == scope && gr.Role.IsActive &&
-                    gr.Role.RolePermissions.Any(rp =>
-                        rp.TenantId == scope && rp.Permission.IsActive &&
-                        rp.Permission.Code == requirement.Key)), ct);
-
-        if (viaGroup)
+        if (await new EffectivePermissionEvaluator(db).HasPermissionAsync(
+                userId, DefaultSeedData.MasterTenant.Id, UserType.System, requirement.Key, ct))
             context.Succeed(requirement);
     }
 }

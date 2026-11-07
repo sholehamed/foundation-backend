@@ -53,20 +53,29 @@ public sealed class IdentityPrincipalFactory(
                         x.Group.TenantId == scopeTenantId &&
                         x.Group.IsActive);
 
+        // Claims are snapshots for presentation only; API policy gates always
+        // re-read live permissions. Include both Code and legacy Name while
+        // filtering explicit denials out of both projections.
         var userPermissions = db.UserPermissions.IgnoreQueryFilters(["tenant"])
             .Where(x => x.UserId == user.Id &&
                         x.TenantId == scopeTenantId &&
-                        x.IsGranted &&
                         x.Permission.IsActive);
 
+        var deniedCodes = (await userPermissions
+            .Where(x => !x.IsGranted)
+            .Select(x => x.Permission.Code)
+            .ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var directPermissions = await userPermissions
-            .Select(x => x.Permission.Name)
+            .Where(x => x.IsGranted)
+            .Select(x => new { x.Permission.Code, x.Permission.Name })
             .ToListAsync(cancellationToken);
 
         var rolePermissions = await userRoles
             .SelectMany(x => x.Role.RolePermissions
                 .Where(rp => rp.TenantId == scopeTenantId && rp.Permission.IsActive)
-                .Select(rp => rp.Permission.Name))
+                .Select(rp => new { rp.Permission.Code, rp.Permission.Name }))
             .ToListAsync(cancellationToken);
 
         var groupPermissions = await userGroups
@@ -76,7 +85,7 @@ public sealed class IdentityPrincipalFactory(
                              gr.Role.TenantId == scopeTenantId)
                 .SelectMany(gr => gr.Role.RolePermissions
                     .Where(rp => rp.TenantId == scopeTenantId && rp.Permission.IsActive)
-                    .Select(rp => rp.Permission.Name)))
+                    .Select(rp => new { rp.Permission.Code, rp.Permission.Name })))
             .ToListAsync(cancellationToken);
 
         var directRoles = await userRoles
@@ -91,9 +100,17 @@ public sealed class IdentityPrincipalFactory(
                 .Select(gr => gr.Role.Name))
             .ToListAsync(cancellationToken);
 
-        var permissions = directPermissions
+        var permitted = directPermissions
             .Concat(rolePermissions)
             .Concat(groupPermissions)
+            .Where(x => !deniedCodes.Contains(x.Code))
+            .GroupBy(x => x.Code, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .ToList();
+
+        var legacyPermissionNames = permitted.Select(x => x.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        var stablePermissionCodes = permitted.Select(x => x.Code)
             .Distinct(StringComparer.OrdinalIgnoreCase);
 
         var roles = directRoles
@@ -122,8 +139,10 @@ public sealed class IdentityPrincipalFactory(
 
         claims.AddRange(roles.Select(role =>
             new Claim(OpenIddictConstants.Claims.Role, role)));
-        claims.AddRange(permissions.Select(permission =>
-            new Claim("permission", permission)));
+        claims.AddRange(legacyPermissionNames.Select(name =>
+            new Claim("permission", name)));
+        claims.AddRange(stablePermissionCodes.Select(permissionCode =>
+            new Claim("permission_code", permissionCode)));
 
         var identity = new ClaimsIdentity(
             claims,
