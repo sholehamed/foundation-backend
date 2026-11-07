@@ -33,7 +33,7 @@ public sealed class CurrentUserNavigationTests
         f.GroupGrant(user, groupRole, Master);
         f.Menu(category, "Users", "/system/users", firstPermission.Id, order: 2);
         f.Menu(category, "Roles", "/system/roles", secondPermission.Id, order: 1);
-        f.Menu(category, "Secrets", "/system/secret", deniedPermission.Id);
+        f.Menu(category, "Secrets", "/system/secret", deniedPermission.Id, order: 3);
         f.Direct(user, deniedPermission, Master, false);
         f.Save();
 
