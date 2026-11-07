@@ -53,6 +53,7 @@ public static class IdentityPrincipalDestinations
                 case "tenant_id":
                 case "tenant":
                 case "permission":
+                case "permission_code":
                 case "account_type":
                     claim.SetDestinations(OpenIddictConstants.Destinations.AccessToken);
                     break;

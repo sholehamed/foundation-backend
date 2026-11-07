@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Domain.Entities;
 using OpenIddict.Abstractions;
@@ -55,65 +54,17 @@ public sealed class TenantPermissionHandler(IIdentityDbContext db)
     protected override async Task HandleRequirementAsync(
         AuthorizationHandlerContext context, TenantPermissionRequirement requirement)
     {
-        var user = context.User;
-        if (user.Identity?.IsAuthenticated != true ||
-            !user.HasClaim("account_type", "tenant") ||
-            !Guid.TryParse(user.FindFirstValue(OpenIddictConstants.Claims.Subject), out var userId) ||
-            !Guid.TryParse(user.FindFirstValue("tenant_id"), out var tenantId))
+        var principal = context.User;
+        if (principal.Identity?.IsAuthenticated != true ||
+            !principal.HasClaim("account_type", "tenant") ||
+            !Guid.TryParse(principal.FindFirstValue(OpenIddictConstants.Claims.Subject), out var userId) ||
+            !Guid.TryParse(principal.FindFirstValue("tenant_id"), out var tenantId))
             return;
 
-        var ct = context.Resource is HttpContext http ? http.RequestAborted : CancellationToken.None;
-
-        var accountActive = await db.Users.AsNoTracking().AnyAsync(x =>
-            x.Id == userId && x.UserType == UserType.Tenant &&
-            x.TenantId == tenantId && x.IsActive &&
-            (!x.IsLockedOut || x.LockoutEndUtc <= DateTime.UtcNow), ct);
-        if (!accountActive)
-            return;
-
-        if (!await db.Tenants.AsNoTracking().AnyAsync(x => x.Id == tenantId && x.IsActive, ct))
-            return;
-
-        // Under the current Identity schema User.TenantId is the home-tenant
-        // membership. Cross-tenant access needs an explicit verified membership
-        // and is intentionally NOT granted by this Tenant-only requirement.
-        // Preserve the established Identity model: a user-level explicit
-        // revocation blocks inherited grants from roles and groups.
-        var explicitlyDenied = await db.UserPermissions.IgnoreQueryFilters(["tenant"]).AsNoTracking()
-            .AnyAsync(x => x.UserId == userId && x.TenantId == tenantId &&
-                !x.IsGranted && x.Permission.IsActive && x.Permission.Code == requirement.Key, ct);
-        if (explicitlyDenied)
-            return;
-
-        var direct = await db.UserPermissions.IgnoreQueryFilters(["tenant"]).AsNoTracking()
-            .AnyAsync(x => x.UserId == userId && x.TenantId == tenantId &&
-                x.IsGranted && x.Permission.IsActive && x.Permission.Code == requirement.Key, ct);
-        if (direct)
-        {
-            context.Succeed(requirement);
-            return;
-        }
-
-        var viaRole = await db.UserRoles.IgnoreQueryFilters(["tenant"]).AsNoTracking()
-            .AnyAsync(x => x.UserId == userId && x.TenantId == tenantId &&
-                x.Role.TenantId == tenantId && x.Role.IsActive &&
-                x.Role.RolePermissions.Any(rp => rp.TenantId == tenantId &&
-                    rp.Permission.IsActive && rp.Permission.Code == requirement.Key), ct);
-        if (viaRole)
-        {
-            context.Succeed(requirement);
-            return;
-        }
-
-        var viaGroup = await db.UserGroups.IgnoreQueryFilters(["tenant"]).AsNoTracking()
-            .AnyAsync(x => x.UserId == userId && x.TenantId == tenantId &&
-                x.Group.TenantId == tenantId && x.Group.IsActive &&
-                x.Group.GroupRoles.Any(gr => gr.TenantId == tenantId &&
-                    gr.Role.TenantId == tenantId && gr.Role.IsActive &&
-                    gr.Role.RolePermissions.Any(rp => rp.TenantId == tenantId &&
-                        rp.Permission.IsActive && rp.Permission.Code == requirement.Key)), ct);
-
-        if (viaGroup)
+        var ct = context.Resource is HttpContext http
+            ? http.RequestAborted : CancellationToken.None;
+        if (await new EffectivePermissionEvaluator(db).HasPermissionAsync(
+                userId, tenantId, UserType.Tenant, requirement.Key, ct))
             context.Succeed(requirement);
     }
 }

@@ -12,6 +12,7 @@
 - [BFF implementation design](architecture/browser-bff.md)
 - [Feature Registry & Authorization — proposed design and phased handoff](architecture/feature-registry-authorization.md)
 - [FR-01A — Identity catalog inventory and Menu read contract](development/FR-01A-IDENTITY-CATALOG-AND-MENU-CONTRACT.md)
+- [FR-01B — Shared live permission evaluator and claim compatibility](development/FR-01B-PERMISSION-EVALUATOR.md)
 - [FR-01 read-only SQL inventory](sql/fr-01-identity-catalog-inventory.sql)
 - [Browser authentication HTTP contracts](reference/browser-auth-contract.md)
 

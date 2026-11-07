@@ -1,5 +1,12 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-01B — shared live permission evaluator and token snapshot code (2026-11-07)
+
+- **PR pending CI:** [FR-01B architecture & test handoff](development/FR-01B-PERMISSION-EVALUATOR.md). Existing System/Tenant `Require*Permission` authorization handlers now use a common `EffectivePermissionEvaluator` for active account/scope, explicit direct deny, direct grant and active role/group grants, keeping API authorization DB-authoritative.
+- Adds additive access-token `permission_code` values (stable `Permission.Code`) while preserving existing legacy display-name `permission` claims; user denies are excluded from both snapshots. Neither claim authorizes protected APIs.
+- Still pending: data inventory in real SQL Server, TenantPermissionRestriction interpretation, safe current-user navigation, feature manifest/discovery, Sidebar fallback removal and BFF browser migration. No EF migrations, role grant writes or auth policy cutover in this slice.
+
+
 ## FR-01A — Menu read contract and read-only SQL catalog inventory (2026-11-07)
 
 - **Implementation in progress / PR CI gate:** [FR-01A handoff](development/FR-01A-IDENTITY-CATALOG-AND-MENU-CONTRACT.md), [read-only SQL inventory](sql/fr-01-identity-catalog-inventory.sql). Canonical Menu GetById/PagedList responses now include `parentId`, `route`, `externalUrl` (plus `parentTitle` in paged list); old response `pMenuId` / `url` / `pMenu` fields remain as read-only deprecated aliases. Category menu rows now include `externalUrl`. No grants, migrations, current-user navigation, BFF or System permission enforcement changes.

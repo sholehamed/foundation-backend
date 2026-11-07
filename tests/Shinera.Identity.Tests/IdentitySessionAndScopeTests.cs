@@ -33,9 +33,16 @@ public sealed class IdentitySessionAndScopeTests
 
         Assert.Contains("platform-operator", roles);
         Assert.DoesNotContain("tenant-admin", roles);
-        Assert.Contains("Platform Manage", permissions);
+        Assert.Contains("Platform Manage", permissions); // Legacy snapshot label, retained.
         Assert.DoesNotContain("Tenant Secrets", permissions);
+        var codes = principal.FindAll("permission_code").Select(x => x.Value).ToArray();
+        Assert.Contains("PLATFORM.MANAGE", codes);
+        Assert.DoesNotContain("TENANT.SECRETS", codes);
         Assert.Null(principal.FindFirst("tenant_id"));
+
+        IdentityPrincipalDestinations.Apply(principal, [OpenIddictConstants.Scopes.Profile]);
+        Assert.Contains(OpenIddictConstants.Destinations.AccessToken,
+            principal.FindFirst("permission_code")!.GetDestinations());
     }
 
     [Fact]
@@ -58,6 +65,39 @@ public sealed class IdentitySessionAndScopeTests
         Assert.DoesNotContain("other-owner", roles);
         Assert.Equal(first.Id.ToString(), principal.FindFirst("tenant_id")?.Value);
         Assert.Equal(first.Slug, principal.FindFirst("tenant")?.Value);
+    }
+
+    [Fact]
+    public async Task User_direct_deny_removes_role_inherited_permission_from_both_token_snapshots()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var user = fixture.AddUser(null, UserType.System);
+        var role = fixture.AddRole(MasterId, "platform-operator");
+        fixture.AssignRole(user, role, MasterId);
+        fixture.AssignPermission(role, MasterId, "roles.read");
+        fixture.Save();
+
+        var permission = await fixture.Db.Permissions
+            .SingleAsync(x => x.Code == "ROLES.READ");
+        var before = await fixture.Factory.CreateAsync(
+            user, IdentityLoginContext.System, null, 12345);
+        Assert.Contains(before.FindAll("permission"), x => x.Value == "Roles Read");
+        Assert.Contains(before.FindAll("permission_code"), x => x.Value == "ROLES.READ");
+
+        fixture.Db.UserPermissions.Add(new UserPermission(Guid.NewGuid())
+        {
+            RowVersion = [1],
+            TenantId = MasterId,
+            UserId = user.Id,
+            PermissionId = permission.Id,
+            IsGranted = false
+        });
+        fixture.Save();
+
+        var after = await fixture.Factory.CreateAsync(
+            user, IdentityLoginContext.System, null, 12345);
+        Assert.DoesNotContain(after.FindAll("permission"), x => x.Value == "Roles Read");
+        Assert.DoesNotContain(after.FindAll("permission_code"), x => x.Value == "ROLES.READ");
     }
 
     [Fact]
