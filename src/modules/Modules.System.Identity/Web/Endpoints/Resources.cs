@@ -1,3 +1,4 @@
+using Modules.System.Identity.Web.Util;
 ﻿using Modules.System.Identity.Application.Features.Resources.Commands;
 using Modules.System.Identity.Application.Features.Resources.Queries;
 
@@ -9,14 +10,14 @@ namespace Modules.System.Identity.Web.Endpoints
         {
             app.MapGroup(this).RequireAuthorization("SystemAdministrator")
 
-                .MapPost(ResourcePagedList, "pagedList")
-                .MapGet(ResourceGetById, "{id}")
-                .MapGet(ResourceLookup, "lookup")
-                .MapGet(ResourceResourcesLookup, "{resourceId}/resources")
-                .MapPost(ResourceCreate)
-                .MapPut(ResourceUpdate, "{id}")
-                .MapDelete(ResourceDelete, "{id}")
-                .MapPatch(ResourceChangeState, "{id}")
+                .MapPost(ResourcePagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.PAGED", "resources", "RESOURCES.READ", "ResourcePagedList"))
+                .MapGet(ResourceGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.DETAIL", "resources", "RESOURCES.READ", "ResourceGetById"))
+                .MapGet(ResourceLookup, "lookup", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.LOOKUP", "resources", "RESOURCES.READ", "ResourceLookup"))
+                .MapGet(ResourceResourcesLookup, "{resourceId}/resources", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.CHILDREN-LOOKUP", "resources", "RESOURCES.READ", "ResourceResourcesLookup"))
+                .MapPost(ResourceCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.CREATE", "resources", "RESOURCES.CREATE", "ResourceCreate"))
+                .MapPut(ResourceUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.UPDATE", "resources", "RESOURCES.UPDATE", "ResourceUpdate"))
+                .MapDelete(ResourceDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.DELETE", "resources", "RESOURCES.DELETE", "ResourceDelete"))
+                .MapPatch(ResourceChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.RESOURCES.CHANGE-STATE", "resources", "RESOURCES.CHANGE-STATE", "ResourceChangeState"))
             ;
         }
         public async Task ResourceChangeState(IDispatcher sender, Guid id)

@@ -1,3 +1,4 @@
+using Modules.System.Identity.Web.Util;
 ﻿using Modules.System.Identity.Application.Features.Modules.Commands;
 using Modules.System.Identity.Application.Features.Modules.Queries;
 
@@ -9,13 +10,13 @@ namespace Modules.System.Identity.Web.Endpoints
         {
             app.MapGroup(this).RequireAuthorization("SystemAdministrator")
 
-                .MapPost(ModulePagedList, "pagedList")
-                .MapGet(ModuleGetById, "{id}")
-                .MapGet(ModuleLookup, "lookup")
-                .MapPost(ModuleCreate)
-                .MapPut(ModuleUpdate, "{id}")
-                .MapDelete(ModuleDelete, "{id}")
-                .MapPatch(ModuleChangeState, "{id}")
+                .MapPost(ModulePagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.MODULES.PAGED", "modules", "MODULES.READ", "ModulePagedList"))
+                .MapGet(ModuleGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MODULES.DETAIL", "modules", "MODULES.READ", "ModuleGetById"))
+                .MapGet(ModuleLookup, "lookup", configure: e => e.WithFeatureEndpoint("SYSTEM.MODULES.LOOKUP", "modules", "MODULES.READ", "ModuleLookup"))
+                .MapPost(ModuleCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.MODULES.CREATE", "modules", "MODULES.CREATE", "ModuleCreate"))
+                .MapPut(ModuleUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MODULES.UPDATE", "modules", "MODULES.UPDATE", "ModuleUpdate"))
+                .MapDelete(ModuleDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MODULES.DELETE", "modules", "MODULES.DELETE", "ModuleDelete"))
+                .MapPatch(ModuleChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MODULES.CHANGE-STATE", "modules", "MODULES.CHANGE-STATE", "ModuleChangeState"))
             ;
         }
         public async Task ModuleChangeState(IDispatcher sender, Guid id)

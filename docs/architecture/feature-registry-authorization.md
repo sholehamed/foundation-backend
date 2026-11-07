@@ -136,3 +136,8 @@ Code-owned Roles/Permissions feature declarations and explicit endpoint metadata
 ## FR-02B-1: source-owned manifest contract and Users vertical (2026-11-07)
 
 A read-only `/api/System/FeatureRegistry/manifest` contract (SchemaVersion 1) now exports all code-owned features without database grants. All System Users API endpoints are explicitly associated with a stable descriptive permission key; the Angular admin page compares the server manifest to its real route index before offering Apply. Metadata is NOT enforcement. This removes duplicated frontend Permission.Code/feature-key definitions but does not yet establish a versioned cross-repository build artifact. See [FR-02B-1 handoff](../development/FR-02B1-USERS-MANIFEST.md).
+
+
+## FR-02B-2: Complete first-party System root page catalog (2026-11-07)
+
+The v1 code-owned System feature manifest now enumerates all 13 current System root pages and 82 additional privileged endpoint descriptors, without changing existing coarse or gated granular authorization. Protected and non-protected special endpoints are deliberately separated. Registration never grants roles or users, modifies BFF, or auto-applies to SQL. See [runbook](../development/FR-02B2-SYSTEM-PAGES.md).

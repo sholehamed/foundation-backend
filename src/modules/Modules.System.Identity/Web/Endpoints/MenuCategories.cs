@@ -1,3 +1,4 @@
+using Modules.System.Identity.Web.Util;
 ﻿using Microsoft.AspNetCore.Routing;
 using Modules.System.Identity.Application.Features.MenuCategories.Commands;
 using Modules.System.Identity.Application.Features.MenuCategories.Queries;
@@ -11,13 +12,13 @@ public class MenuCategories : EndpointGroupBase
     {
         app.MapGroup(this).RequireAuthorization("SystemAdministrator")
 
-            .MapGet(MenuCategoryGetList, "list")
-            .MapGet(MenuCategoryGetById, "{id}")
-            .MapPost(MenuCategoryGetPagedList, "pagedList")
-            .MapPost(MenuCategoryCreate)
-            .MapPut(MenuCategoryUpdate)
-            .MapGet(MenuCategoryGetMenus,"{categoryId}/menus")
-            .MapDelete(MenuCategoryDelete, "{id}")
+            .MapGet(MenuCategoryGetList, "list", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-LIST", "menu-management", "MENU-MANAGEMENT.READ", "MenuCategoryGetList"))
+            .MapGet(MenuCategoryGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-DETAIL", "menu-management", "MENU-MANAGEMENT.READ", "MenuCategoryGetById"))
+            .MapPost(MenuCategoryGetPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-PAGED", "menu-management", "MENU-MANAGEMENT.READ", "MenuCategoryGetPagedList"))
+            .MapPost(MenuCategoryCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-CREATE", "menu-management", "MENU-MANAGEMENT.CREATE", "MenuCategoryCreate"))
+            .MapPut(MenuCategoryUpdate, configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-UPDATE", "menu-management", "MENU-MANAGEMENT.UPDATE", "MenuCategoryUpdate"))
+            .MapGet(MenuCategoryGetMenus,"{categoryId}/menus", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-MENUS", "menu-management", "MENU-MANAGEMENT.READ", "MenuCategoryGetMenus"))
+            .MapDelete(MenuCategoryDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.MENU-MANAGEMENT.CATEGORY-DELETE", "menu-management", "MENU-MANAGEMENT.DELETE", "MenuCategoryDelete"))
         ;
     }
     public async Task<Results<Ok<List<MenuCategoryGetMenusDto>>, BadRequest>> MenuCategoryGetMenus(IDispatcher sender,Guid categoryId,string? text)

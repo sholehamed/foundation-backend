@@ -1,3 +1,4 @@
+using Modules.System.Identity.Web.Util;
 ﻿using Modules.System.Identity.Application.Features.Dashboard;
 
 namespace Modules.System.Identity.Web.Endpoints
@@ -8,7 +9,7 @@ namespace Modules.System.Identity.Web.Endpoints
         {
             app.MapGroup(this).RequireAuthorization("SystemAdministrator")
 
-                .MapGet(GetSuperDashboard, "super-dashboard")
+                .MapGet(GetSuperDashboard, "super-dashboard", configure: e => e.WithFeatureEndpoint("SYSTEM.DASHBOARD.SUPER-DASHBOARD", "dashboard", "DASHBOARD.READ", "GetSuperDashboard"))
 
             ;
         }

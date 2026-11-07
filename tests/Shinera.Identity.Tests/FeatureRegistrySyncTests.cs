@@ -14,7 +14,19 @@ public sealed class FeatureRegistrySyncTests
     public void Feature_keys_and_permissions_are_stable_and_unambiguous()
     {
         var features = FeatureRegistryDefinitions.Features;
-        Assert.Equal(3, features.Count);
+        Assert.Equal(13, features.Count);
+        var expectedRoutes = new[]
+        {
+            "/system/admins", "/system/users", "/system/roles", "/system/groups",
+            "/system/dashboard", "/system/tenants", "/system/modules",
+            "/system/permissions", "/system/api-resources", "/system/ui-resources",
+            "/system/resources", "/system/feature-registry", "/system/menu-management"
+        };
+        Assert.Equal(expectedRoutes.Order(StringComparer.Ordinal),
+            features.Select(x => x.Route).Order(StringComparer.Ordinal));
+        Assert.All(features, x => Assert.Equal("system", x.ModuleCode));
+        Assert.All(features, x => Assert.Equal(x.ReadPermission,
+            x.ResourceCode.ToUpperInvariant() + ".READ"));
         Assert.Equal(features.Count, features.Select(x => x.PageKey)
             .Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Equal(features.Count, features.Select(x => x.Route)
@@ -57,12 +69,12 @@ public sealed class FeatureRegistrySyncTests
         var applied = await registry.ApplyAsync();
         Assert.True(applied.CanApply);
         Assert.Single(db.Modules);
-        Assert.Equal(3, db.Resources.Count());
-        Assert.Equal(3, db.UiResources.Count());
-        Assert.Equal(3, db.Menus.Count());
+        Assert.Equal(13, db.Resources.Count());
+        Assert.Equal(13, db.UiResources.Count());
+        Assert.Equal(13, db.Menus.Count());
         Assert.Equal(2, db.ApiResources.Count());
         Assert.Equal(2, db.PermissionApiResources.Count());
-        Assert.Equal(3, db.PermissionUiResources.Count());
+        Assert.Equal(13, db.PermissionUiResources.Count());
 
         var persisted = await db.Permissions.SingleAsync(x => x.Id == manual.Id);
         Assert.Equal("Custom label", persisted.Name);
@@ -80,7 +92,7 @@ public sealed class FeatureRegistrySyncTests
         Assert.All(second.Changes, x => Assert.Equal("Present", x.State));
 
         await registry.ApplyAsync();
-        Assert.Equal(3, db.Menus.Count());
+        Assert.Equal(13, db.Menus.Count());
         Assert.Equal(2, db.ApiResources.Count());
     }
 
@@ -128,6 +140,94 @@ public sealed class FeatureRegistrySyncTests
         Assert.False((await registry.ApplyAsync()).CanApply);
         Assert.Empty(db.Modules);
         Assert.Empty(db.Menus);
+    }
+
+    [Fact]
+    public async Task All_system_pages_register_permission_bound_menu_without_grants()
+    {
+        await using var db = await CreateDbAsync();
+        var service = new FeatureRegistrySyncService(db, Endpoints());
+
+        var preview = await service.PreviewAsync();
+        Assert.True(preview.CanApply);
+        Assert.Equal(13, preview.Changes.Count(x =>
+            x.Type == "UiResource" && x.State == "Create"));
+        Assert.Equal(13, preview.Changes.Count(x =>
+            x.Type == "Menu" && x.State == "Create"));
+
+        var applied = await service.ApplyAsync();
+        Assert.True(applied.CanApply);
+        Assert.Equal(13, await db.Menus.CountAsync());
+        Assert.Equal(13, await db.UiResources.CountAsync());
+
+        foreach (var feature in FeatureRegistryDefinitions.Features)
+        {
+            var menu = await db.Menus.SingleAsync(x => x.Route == feature.Route);
+            var permission = await db.Permissions.SingleAsync(x =>
+                x.Code == feature.ReadPermission);
+            Assert.Equal(permission.Id, menu.PermissionId);
+            Assert.True(menu.IsActive);
+            Assert.False(menu.IsHidden);
+        }
+
+        Assert.Empty(db.UserPermissions.IgnoreQueryFilters(["tenant"]));
+        Assert.Empty(db.RolePermissions.IgnoreQueryFilters(["tenant"]));
+        Assert.Empty(db.GroupRoles.IgnoreQueryFilters(["tenant"]));
+        Assert.Empty(db.UserRoles.IgnoreQueryFilters(["tenant"]));
+        Assert.False((await service.PreviewAsync()).HasPending);
+    }
+
+    [Fact]
+    public async Task Conflicting_existing_management_menu_stops_all_registry_writes()
+    {
+        await using var db = await CreateDbAsync();
+        db.Menus.Add(new Menu(Guid.NewGuid())
+        {
+            CategoryId = Guid.NewGuid(),
+            Route = "/system/menu-management",
+            Title = "Legacy admin menu with no required permission",
+            Icon = "menu", IsActive = true, RowVersion = [1]
+        });
+        await db.SaveChangesAsync();
+
+        var service = new FeatureRegistrySyncService(db, Endpoints());
+        var preview = await service.PreviewAsync();
+        Assert.False(preview.CanApply);
+        Assert.Contains(preview.Changes, x =>
+            x.Type == "Menu" && x.Key == "/system/menu-management" &&
+            x.State == "Conflict");
+        Assert.False((await service.ApplyAsync()).CanApply);
+        Assert.Empty(db.Modules);
+        Assert.Empty(db.Permissions);
+    }
+
+    [Fact]
+    public async Task Legacy_same_resource_method_route_different_key_blocks_approved_apply()
+    {
+        await using var db = await CreateDbAsync();
+        var bootstrap = new FeatureRegistrySyncService(db, Endpoints());
+        await bootstrap.ApplyAsync();
+
+        var resource = await db.Resources.SingleAsync(x => x.Code == "roles");
+        db.ApiResources.Add(new ApiResource(Guid.NewGuid(), resource.Id,
+            "POST:/api/System/Roles", "Legacy route-key API", null,
+            IdentityHttpMethod.POST, "/api/System/Roles")
+        {
+            RowVersion = [1], Source = ApiSource.Auto, IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var registry = new FeatureRegistrySyncService(db, Endpoints(
+            Route("SYSTEM.ROLES.CREATE", "roles", "ROLES.CREATE",
+                "POST", "/api/System/Roles")));
+        var preview = await registry.PreviewAsync();
+        Assert.False(preview.CanApply);
+        Assert.Contains(preview.Changes, x =>
+            x.Type == "ApiResource" && x.Key == "SYSTEM.ROLES.CREATE" &&
+            x.State == "Conflict" && x.Detail!.Contains("legacy route-derived"));
+        Assert.False((await registry.ApplyAsync()).CanApply);
+        Assert.Single(db.ApiResources);
+        Assert.Empty(db.PermissionApiResources);
     }
 
     [Fact]

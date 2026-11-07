@@ -15,19 +15,19 @@ namespace Groups.System.Identity.Web.Endpoints
         {
             app.MapGroup(this).RequireAuthorization("SystemAdministrator")
 
-                .MapPost(GroupPagedList, "pagedList")
-                .MapGet(GroupGetById, "{id}")
-                .MapPost(GroupMembers, "{groupId:guid}/members")
-                .MapGet(GroupLookup, "lookup")
-                .MapGet(SearchUserToAddGroup, "searchmembers")
-                .MapPost(GroupCreate)
-                .MapPut(GroupUpdate, "{id}")
-                .MapDelete(GroupDelete, "{id}")
-                .MapPatch(GroupChangeState, "{id}")
-                .MapPost(AddGroupMembers, "{GroupId}/addmembers")
-                .MapDelete(RemoveGroupMember, "{groupId:guid}/members/{userId:guid}")
-                .MapPut(GrantGroupRole, "{groupId:guid}/roles/{roleId:guid}")
-                .MapDelete(RevokeGroupRole, "{groupId:guid}/roles/{roleId:guid}")
+                .MapPost(GroupPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.PAGED", "groups", "GROUPS.READ", "GroupPagedList"))
+                .MapGet(GroupGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.DETAIL", "groups", "GROUPS.READ", "GroupGetById"))
+                .MapPost(GroupMembers, "{groupId:guid}/members", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.MEMBERS-LIST", "groups", "GROUPS.READ", "GroupMembers"))
+                .MapGet(GroupLookup, "lookup", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.LOOKUP", "groups", "GROUPS.READ", "GroupLookup"))
+                .MapGet(SearchUserToAddGroup, "searchmembers", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.MEMBER-SEARCH", "groups", "GROUPS.READ", "SearchUserToAddGroup"))
+                .MapPost(GroupCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.CREATE", "groups", "GROUPS.CREATE", "GroupCreate"))
+                .MapPut(GroupUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.UPDATE", "groups", "GROUPS.UPDATE", "GroupUpdate"))
+                .MapDelete(GroupDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.DELETE", "groups", "GROUPS.DELETE", "GroupDelete"))
+                .MapPatch(GroupChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.CHANGE-STATE", "groups", "GROUPS.CHANGE-STATE", "GroupChangeState"))
+                .MapPost(AddGroupMembers, "{GroupId}/addmembers", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.ADD-MEMBERS", "groups", "GROUPS.MANAGE-MEMBERS", "AddGroupMembers"))
+                .MapDelete(RemoveGroupMember, "{groupId:guid}/members/{userId:guid}", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.REMOVE-MEMBER", "groups", "GROUPS.MANAGE-MEMBERS", "RemoveGroupMember"))
+                .MapPut(GrantGroupRole, "{groupId:guid}/roles/{roleId:guid}", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.GRANT-ROLE", "groups", "GROUPS.ASSIGN-ROLE", "GrantGroupRole"))
+                .MapDelete(RevokeGroupRole, "{groupId:guid}/roles/{roleId:guid}", configure: e => e.WithFeatureEndpoint("SYSTEM.GROUPS.REVOKE-ROLE", "groups", "GROUPS.ASSIGN-ROLE", "RevokeGroupRole"))
             ;
         }
         // SystemAdministrator is required for both routes, and the service

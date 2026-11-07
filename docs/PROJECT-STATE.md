@@ -1,5 +1,12 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-02B-2 — code-owned catalog covers every System root page (2026-11-07)
+
+- **Backend implementation / CI PR gate:** [FR-02B-2 runbook](development/FR-02B2-SYSTEM-PAGES.md). All **13** real Angular System root pages now have code-owned Feature definitions, `Resource.Code`, scoped view Permission.Code, page key, Route and default permission-bound menu. **82 descriptive endpoint metadata** mappings added for System Admins, Groups, Modules, Tenants, Resources, API/UI resources, MenuCategories/Menus, Dashboard, and the Registry itself. Previous Users/Roles/Permissions mappings remain. `Menus/me` (System/Tenant user nav) and `Tenants/resolve` (AllowAnonymous) are intentionally outside System-only operation metadata.
+- Existing `GET /api/System/FeatureRegistry/manifest` exports 13 known features; no HTTP schema change. Preview/Apply controls still require live SystemAdministrator, explicit `Identity:FeatureRegistry:EnableApply` for Apply (default OFF). No automatic permission grants, policy enforcement changes, migrations, BFF or Auth changes.
+- **Risk/gates:** Existing manual permissionless menu rows and cross-resource Permission.Code ownership can block preview; review data rather than disable safety validation. Registry addition does **not** repair Admins create/update or certify production DB reconciliation. No live production DB touched.
+
+
 ## FR-02B-1 — backend-owned manifest + third System Users feature (2026-11-07)
 
 - **PR / CI gate:** [FR-02B-1 backend contract](development/FR-02B1-USERS-MANIFEST.md). Source-owned Feature Registry now declares **System Users** in addition to Roles and Permissions; all 13 `Users` endpoints carry stable descriptive metadata. `GET /api/System/FeatureRegistry/manifest` is read-only, SystemAdministrator-only, schemaVersion 1 and contains stable feature/page keys, required view Permission.Code, backend route and resource identity. Angular will validate these routes at runtime before offering Apply, instead of copying permission codes in its TypeScript manifest.
