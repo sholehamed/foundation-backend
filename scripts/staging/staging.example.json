@@ -1,0 +1,17 @@
+{
+  "environment": "Staging",
+  "stage": "baseline",
+  "tenant_base_domain": "staging.shinera.ir",
+  "system_origin": "https://system.staging.shinera.ir",
+  "identity_origin": "https://identity.staging.shinera.ir",
+  "tenant_origin": "https://demo.staging.shinera.ir",
+  "backend": {
+    "bff_enabled": false,
+    "tenant_cookie_bridge_enabled": false,
+    "registry_apply_enabled": false
+  },
+  "frontend": {
+    "tenant_bff_pilot_enabled": false,
+    "system_ui_access_pilot_enabled": false
+  }
+}
