@@ -32,6 +32,7 @@ public sealed class TenantPermissionCatalogSync(IdentityDbContext db)
         var links = await db.PermissionUiResources.AsNoTracking().ToListAsync(ct);
 
         var changes = new List<TenantCatalogChange>();
+        var fingerprintFacts = new List<string>();
         static bool Same(string? a, string? b) =>
             string.Equals(a?.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
         void Add(string entity, string key, string state, string? detail = null) =>
@@ -39,6 +40,8 @@ public sealed class TenantPermissionCatalogSync(IdentityDbContext db)
 
         var ms = modules.Where(x => Same(x.Code, ModuleCode)).ToList();
         var module = ms.Count == 1 ? ms[0] : null;
+        fingerprintFacts.AddRange(ms.OrderBy(x => x.Id).Select(x =>
+            $"module:{x.Id:N}:{x.Code}:{x.Title}:{x.IsActive}"));
         Add("Module", ModuleCode, ms.Count switch
         {
             0 => "Create",
@@ -50,6 +53,8 @@ public sealed class TenantPermissionCatalogSync(IdentityDbContext db)
         // A resource with this code under a different module is unowned drift,
         // not permission to overwrite another module's Resource.
         var rs = resources.Where(x => Same(x.Code, ResourceCode)).ToList();
+        fingerprintFacts.AddRange(rs.OrderBy(x => x.Id).Select(x =>
+            $"resource:{x.Id:N}:{x.ModuleId:N}:{x.Code}:{x.Title}:{x.IsActive}"));
         var resource = rs.Count == 1 && module is not null &&
             rs[0].ModuleId == module.Id ? rs[0] : null;
         Add("Resource", ResourceCode, rs.Count switch
@@ -65,6 +70,8 @@ public sealed class TenantPermissionCatalogSync(IdentityDbContext db)
         foreach (var definition in TenantWorkspacePermissionCatalog.Definitions)
         {
             var ps = permissions.Where(x => Same(x.Code, definition.Key)).ToList();
+            fingerprintFacts.AddRange(ps.OrderBy(x => x.Id).Select(x =>
+                $"permission:{x.Id:N}:{x.Code}:{x.ResourceId}:{x.Name}:{x.IsActive}"));
             var p = ps.Count == 1 ? ps[0] : null;
             string pState;
             if (ps.Count == 0) pState = "Create";
@@ -77,6 +84,8 @@ public sealed class TenantPermissionCatalogSync(IdentityDbContext db)
                 pState == "Conflict" ? "Inactive or foreign-owned permission; never adopt silently" : null);
 
             var us = ui.Where(x => Same(x.Key, definition.UiKey)).ToList();
+            fingerprintFacts.AddRange(us.OrderBy(x => x.Id).Select(x =>
+                $"ui:{x.Id:N}:{x.ResourceId:N}:{x.Key}:{x.Title}:{x.Type}:{x.Description}:{x.IsActive}"));
             var u = us.Count == 1 ? us[0] : null;
             var uiType = definition.Kind == "PAGE" ? UiResourceType.PAGE : UiResourceType.ACTION;
             string uiState;
@@ -93,6 +102,11 @@ public sealed class TenantPermissionCatalogSync(IdentityDbContext db)
             var matching = (p is not null && u is not null)
                 ? links.Count(x => x.PermissionId == p.Id && x.UiResourceId == u.Id)
                 : 0;
+            if (p is not null && u is not null)
+                fingerprintFacts.AddRange(links.Where(x =>
+                    x.PermissionId == p.Id && x.UiResourceId == u.Id)
+                    .OrderBy(x => x.Id).Select(x =>
+                        $"link:{x.Id:N}:{x.PermissionId:N}:{x.UiResourceId:N}"));
             Add("PermissionUiResource", definition.Key + " -> " + definition.UiKey,
                 matching switch
                 {
@@ -106,7 +120,8 @@ public sealed class TenantPermissionCatalogSync(IdentityDbContext db)
         // Serializable SQL transaction and uniqueness constraints remain the
         // final defense against changing DB contents and concurrent Applies.
         var seed = string.Join("\n", changes.Select(x =>
-            x.Entity + "|" + x.Key + "|" + x.State + "|" + x.Detail));
+            x.Entity + "|" + x.Key + "|" + x.State + "|" + x.Detail)) +
+                   "\n" + string.Join("\n", fingerprintFacts);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(seed)));
         return new TenantCatalogPreview(hash,
             !changes.Any(x => x.State == "Conflict"),
