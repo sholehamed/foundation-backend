@@ -115,7 +115,7 @@ public static partial class PublicSignup
             Address = NullIfBlank(branchInput?.Address) ?? profileInput.Address!.Trim(),
             IsMain = true
         };
-        var ownerRole = new Role(tenant.Id, "Owner", "مالک فضای کاری");
+        var ownerRole = new Role(tenant.Id, "Owner", "مالک فضای کاری") { Scope = RoleScope.Tenant };
         var assignment = new UserRole(tenant.Id, user.Id, ownerRole.Id);
 
         // Only server-generated IDs enter this provisional scope. The scoped EF
