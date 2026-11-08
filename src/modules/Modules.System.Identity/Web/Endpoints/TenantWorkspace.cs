@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
@@ -41,6 +43,10 @@ public static class TenantWorkspace
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members", GetMembers)
             .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/members", CreatePendingMember)
+            .RequireAuthorization()
+            .RequireRateLimiting("tenant-member-create")
+            .WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/roles", GetMemberRoles)
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/roles", ReplaceMemberRoles)
@@ -243,7 +249,8 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.RolesCreate
                 or TenantWorkspacePermissionCatalog.RolesUpdate
                 or TenantWorkspacePermissionCatalog.RolesChangeState
-                or TenantWorkspacePermissionCatalog.MembersAssignRoles)
+                or TenantWorkspacePermissionCatalog.MembersAssignRoles
+                or TenantWorkspacePermissionCatalog.MembersCreate)
                 allowed = allowed && current.WritableTenantIds.Contains(tenantId);
             // IAM writes also require a live local Owner, independent of
             // delegated read/group permissions.
@@ -251,7 +258,8 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.RolesCreate
                 or TenantWorkspacePermissionCatalog.RolesUpdate
                 or TenantWorkspacePermissionCatalog.RolesChangeState
-                or TenantWorkspacePermissionCatalog.MembersAssignRoles)
+                or TenantWorkspacePermissionCatalog.MembersAssignRoles
+                or TenantWorkspacePermissionCatalog.MembersCreate)
                 allowed = allowed && await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(
                     current, db, ct);
             entries.Add(new UiAccessItem(
@@ -290,7 +298,8 @@ public static class TenantWorkspace
             canChangeRoleState = await TenantRoleLifecycleWriter.CanWriteAsync(
                 current, db, TenantWorkspacePermissionCatalog.RolesChangeState, ct),
             canAssignMemberRoles = await TenantMemberRoleAssignmentWriter.CanManageAsync(
-                current, db, ct)
+                current, db, ct),
+            canCreateMembers = await TenantPendingMemberWriter.CanCreateAsync(current, db, ct)
         });
     }
 
@@ -325,6 +334,42 @@ public static class TenantWorkspace
             rows.Take(DirectoryPageSize).ToArray(), page, rows.Count > DirectoryPageSize));
     }
 
+
+    // FR-13B-1: only create a disabled, non-login local member with a
+    // random undisclosed password and append-only SQL audit. Invitation and
+    // activation are separate reviewed operations, NOT simulated here.
+    public static async Task<IResult> CreatePendingMember(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        IPasswordHasher<User> hasher, TenantPendingMemberWriter.CreateRequest request,
+        CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            return Results.Ok(await TenantPendingMemberWriter.CreateAsync(
+                current, db, hasher, request, ct));
+        }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
+        catch (TenantMemberCreateValidationException e)
+        {
+            return Results.Problem(statusCode: 400,
+                title: "Invalid Tenant member", detail: e.Message);
+        }
+        catch (TenantMemberCreateConflictException e)
+        {
+            return Results.Problem(statusCode: 409,
+                title: "Tenant member already exists", detail: e.Message);
+        }
+        catch (DbUpdateException)
+        {
+            return Results.Problem(statusCode: 409, title: "Tenant member conflict");
+        }
+        catch (SqlException e) when (e.Number is 2601 or 2627 or 1205 or 3960)
+        {
+            return Results.Problem(statusCode: 409,
+                title: "Concurrent Tenant member creation");
+        }
+    }
 
     // FR-12D: direct UserRole matrix for one active tenant; never an
     // effective-permission or cross-tenant membership read.
