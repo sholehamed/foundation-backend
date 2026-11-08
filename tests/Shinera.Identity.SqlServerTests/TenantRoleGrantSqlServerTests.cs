@@ -1017,6 +1017,209 @@ public sealed class TenantRoleGrantSqlServerTests
         }
     }
 
+    [Fact]
+    public async Task First_login_requires_password_change_and_new_full_login()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "first.staff", "first.staff@example.test", "First", "Staff"));
+            Assert.True(await TenantFirstLoginWriter.CanIssueAsync(actor, db, default));
+            var issued = await TenantFirstLoginWriter.IssueAsync(actor, db, hasher, member.Id);
+            Assert.Equal(27, issued.TemporaryPassword.Length);
+            Assert.True(issued.ExpiresAtUtc > DateTime.UtcNow);
+            Assert.False((await db.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).IsActive);
+            Assert.False(await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberTemporaryCredentials] WHERE [PasswordHash] LIKE '%first.staff%'")
+                .SingleAsync() > 0);
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            var start = await TenantFirstLoginWriter.StartAsync(anonymous, hasher,
+                new TenantFirstLoginWriter.StartRequest(
+                    "tenant-role-grants", "first.staff", issued.TemporaryPassword));
+            Assert.True(start.RequiresPasswordChange);
+            Assert.Equal(64, start.Challenge.Length);
+            Assert.False((await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).IsActive);
+
+            var complete = new TenantFirstLoginWriter.CompleteRequest(
+                "tenant-role-grants", start.Challenge,
+                "New-Permanent-Strong-Passphrase-2026!");
+            await Assert.ThrowsAsync<FirstLoginValidationException>(() =>
+                TenantFirstLoginWriter.CompleteAsync(anonymous, hasher,
+                    complete with { TenantSlug = "other-role-grants" }));
+            await TenantFirstLoginWriter.CompleteAsync(anonymous, hasher, complete);
+            anonymous.ChangeTracker.Clear();
+            var active = await anonymous.Users.AsNoTracking().SingleAsync(x => x.Id == member.Id);
+            Assert.True(active.IsActive);
+            Assert.Equal(PasswordVerificationResult.Success,
+                hasher.VerifyHashedPassword(active, active.PasswordHash,
+                    "New-Permanent-Strong-Passphrase-2026!"));
+            Assert.Equal(PasswordVerificationResult.Failed,
+                hasher.VerifyHashedPassword(active, active.PasswordHash,
+                    issued.TemporaryPassword));
+            Assert.False(await anonymous.UserRoles.IgnoreQueryFilters(["tenant"])
+                .AnyAsync(x => x.UserId == member.Id));
+            await Assert.ThrowsAsync<FirstLoginValidationException>(() =>
+                TenantFirstLoginWriter.CompleteAsync(anonymous, hasher, complete));
+            await Assert.ThrowsAsync<FirstLoginValidationException>(() =>
+                TenantFirstLoginWriter.StartAsync(anonymous, hasher,
+                    new TenantFirstLoginWriter.StartRequest(
+                        "tenant-role-grants", "first.staff", issued.TemporaryPassword)));
+            var audit = await anonymous.Database.SqlQueryRaw<string>(
+                "SELECT [Action] AS [Value] FROM [dbo].[TenantMemberLifecycleAuditEntries]")
+                .ToArrayAsync();
+            Assert.Contains("temp_issued", audit);
+            Assert.Contains("temp_verified", audit);
+            Assert.Contains("temp_activated", audit);
+        });
+    }
+
+    [Fact]
+    public async Task Reissued_or_expired_temporary_password_revokes_prior_credentials_and_challenges()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "reissue.staff", "reissue.staff@example.test", "Reissue", "Staff"));
+            var first = await TenantFirstLoginWriter.IssueAsync(actor, db, hasher, member.Id);
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            var oldChallenge = await TenantFirstLoginWriter.StartAsync(anonymous, hasher,
+                new TenantFirstLoginWriter.StartRequest(
+                    "tenant-role-grants", "reissue.staff", first.TemporaryPassword));
+            var second = await TenantFirstLoginWriter.IssueAsync(actor, db, hasher, member.Id);
+            Assert.NotEqual(first.TemporaryPassword, second.TemporaryPassword);
+            await Assert.ThrowsAsync<FirstLoginValidationException>(() =>
+                TenantFirstLoginWriter.StartAsync(anonymous, hasher,
+                    new TenantFirstLoginWriter.StartRequest(
+                        "tenant-role-grants", "reissue.staff", first.TemporaryPassword)));
+            await Assert.ThrowsAsync<FirstLoginValidationException>(() =>
+                TenantFirstLoginWriter.CompleteAsync(anonymous, hasher,
+                    new TenantFirstLoginWriter.CompleteRequest(
+                        "tenant-role-grants", oldChallenge.Challenge,
+                        "My-Other-Strong-Passphrase-2026!")));
+
+            // Expire the replacement without waiting a real hour.
+            await db.Database.ExecuteSqlRawAsync("""
+                UPDATE [dbo].[TenantMemberTemporaryCredentials]
+                SET [ExpiresAtUtc]=DATEADD(HOUR,-2,[ExpiresAtUtc]),
+                    [CreatedAtUtc]=DATEADD(HOUR,-2,[CreatedAtUtc])
+                WHERE [RevokedAtUtc] IS NULL AND [UsedAtUtc] IS NULL
+                """);
+            await Assert.ThrowsAsync<FirstLoginValidationException>(() =>
+                TenantFirstLoginWriter.StartAsync(anonymous, hasher,
+                    new TenantFirstLoginWriter.StartRequest(
+                        "tenant-role-grants", "reissue.staff", second.TemporaryPassword)));
+            Assert.False((await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).IsActive);
+        });
+    }
+
+    [Fact]
+    public async Task Wrong_initial_password_is_throttled_and_never_issues_challenge()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "throttle.staff", "throttle.staff@example.test", "Throttle", "Staff"));
+            var issued = await TenantFirstLoginWriter.IssueAsync(actor, db, hasher, member.Id);
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            for (var attempt = 0; attempt < 5; attempt++)
+                await Assert.ThrowsAsync<FirstLoginValidationException>(() =>
+                    TenantFirstLoginWriter.StartAsync(anonymous, hasher,
+                        new TenantFirstLoginWriter.StartRequest(
+                            "tenant-role-grants", "throttle.staff",
+                            "WRONG-TEMP-PASSWORD-00000000")));
+            Assert.Equal(5, await anonymous.Database.SqlQueryRaw<int>(
+                "SELECT MAX([FailedAttempts]) AS [Value] FROM [dbo].[TenantMemberTemporaryCredentials]")
+                .SingleAsync());
+            await Assert.ThrowsAsync<FirstLoginValidationException>(() =>
+                TenantFirstLoginWriter.StartAsync(anonymous, hasher,
+                    new TenantFirstLoginWriter.StartRequest(
+                        "tenant-role-grants", "throttle.staff", issued.TemporaryPassword)));
+            Assert.Equal(0, await anonymous.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberFirstLoginChallenges]")
+                .SingleAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Failed_activation_audit_rolls_back_user_and_challenge()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "rollback.first", "rollback.first@example.test", "Rollback", "First"));
+            var issued = await TenantFirstLoginWriter.IssueAsync(actor, db, hasher, member.Id);
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            var start = await TenantFirstLoginWriter.StartAsync(anonymous, hasher,
+                new TenantFirstLoginWriter.StartRequest(
+                    "tenant-role-grants", "rollback.first", issued.TemporaryPassword));
+            await setup.Database.ExecuteSqlRawAsync(
+                "DROP TABLE [dbo].[TenantMemberLifecycleAuditEntries]");
+            await Assert.ThrowsAsync<SqlException>(() =>
+                TenantFirstLoginWriter.CompleteAsync(anonymous, hasher,
+                    new TenantFirstLoginWriter.CompleteRequest(
+                        "tenant-role-grants", start.Challenge,
+                        "Valid-Permanent-Strong-Passphrase-2026!")));
+            anonymous.ChangeTracker.Clear();
+            Assert.False((await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).IsActive);
+            Assert.Equal(0, await anonymous.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberFirstLoginChallenges] WHERE [UsedAtUtc] IS NOT NULL")
+                .SingleAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Temporary_password_issue_rejects_nonowner_foreign_owner_and_direct_deny()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "scoped.first", "scoped.first@example.test", "Scoped", "First"));
+            await Assert.ThrowsAsync<FirstLoginTargetException>(() =>
+                TenantFirstLoginWriter.IssueAsync(actor, db, hasher, actor.UserId!.Value));
+            await Assert.ThrowsAsync<FirstLoginTargetException>(() =>
+                TenantFirstLoginWriter.IssueAsync(actor, db, hasher, Guid.NewGuid()));
+            var permission = await setup.Permissions.SingleAsync(x =>
+                x.Code == TenantWorkspacePermissionCatalog.MembersIssueTempPassword);
+            setup.UserPermissions.Add(new UserPermission
+            {
+                TenantId = actor.ActiveTenantId!.Value,
+                UserId = actor.UserId!.Value,
+                PermissionId = permission.Id, IsGranted = false
+            });
+            await setup.SaveChangesAsync();
+            Assert.False(await TenantFirstLoginWriter.CanIssueAsync(actor, db, default));
+            await Assert.ThrowsAsync<FirstLoginDeniedException>(() =>
+                TenantFirstLoginWriter.IssueAsync(actor, db, hasher, member.Id));
+            Assert.Equal(0, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberTemporaryCredentials]")
+                .SingleAsync());
+        });
+    }
+
     private static Task<int> MemberAuditCountAsync(IdentityDbContext db) =>
         db.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberRoleAuditEntries]")
