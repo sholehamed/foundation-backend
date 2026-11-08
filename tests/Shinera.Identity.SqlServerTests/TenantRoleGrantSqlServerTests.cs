@@ -275,6 +275,177 @@ public sealed class TenantRoleGrantSqlServerTests
         });
     }
 
+
+    [Fact]
+    public async Task Owner_assigns_revokes_member_roles_and_effective_access_tracks_live_links()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, actor, ownerRole, ordinaryRole, foreignRole) =
+                await SeedAsync(setup, options);
+            await using var db = ctx;
+            var tenantId = actor.ActiveTenantId!.Value;
+            var member = new User(Guid.NewGuid(), tenantId, "staff-assignment",
+                "staff-assignment@example.test", "Staff", "Member", UserType.Tenant)
+            {
+                IsActive = true, NormalizedUserName = "STAFF-ASSIGNMENT",
+                NormalizedEmail = "STAFF-ASSIGNMENT@EXAMPLE.TEST",
+                PasswordHash = "fixture"
+            };
+            setup.Users.Add(member);
+            await setup.SaveChangesAsync();
+
+            var matrix = await TenantMemberRoleAssignmentWriter.ReadAsync(
+                actor, db, member.Id, default);
+            Assert.NotNull(matrix);
+            Assert.True(matrix.CanEdit);
+            Assert.False(matrix.Roles.Any(x => x.Id == ownerRole || x.Id == foreignRole));
+            Assert.Contains(matrix.Roles, x => x.Id == ordinaryRole && !x.Assigned);
+
+            var version = matrix.Version;
+            var granted = await TenantMemberRoleAssignmentWriter.ReplaceAsync(
+                actor, db, member.Id,
+                new TenantMemberRoleAssignmentWriter.ReplaceRequest(version, [ordinaryRole]));
+            Assert.NotEqual(version, granted);
+            Assert.Single(await db.UserRoles.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.UserId == member.Id)
+                .ToListAsync());
+            Assert.Equal(1, await MemberAuditCountAsync(db));
+
+            // A role granted to the member contributes to effective access
+            // as soon as it is assigned; no re-login / UI trust required.
+            var rolePermission = await setup.Permissions.SingleAsync(p =>
+                p.Code == TenantWorkspacePermissionCatalog.MembersRead);
+            setup.RolePermissions.Add(new RolePermission(
+                tenantId, ordinaryRole, rolePermission.Id));
+            await setup.SaveChangesAsync();
+            var staff = new TenantContext();
+            staff.InitializeTenant(member.Id, tenantId, [tenantId], [], tenantId);
+            await using var staffDb = new IdentityDbContext(options, staff);
+            Assert.True(await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                staff, staffDb, TenantWorkspacePermissionCatalog.MembersRead, default));
+
+            await Assert.ThrowsAsync<TenantMemberRoleConflictException>(() =>
+                TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id,
+                    new TenantMemberRoleAssignmentWriter.ReplaceRequest(version, [])));
+            Assert.Equal(1, await MemberAuditCountAsync(db));
+            var noChange = await TenantMemberRoleAssignmentWriter.ReplaceAsync(
+                actor, db, member.Id,
+                new TenantMemberRoleAssignmentWriter.ReplaceRequest(granted, [ordinaryRole]));
+            Assert.Equal(granted, noChange);
+            Assert.Equal(1, await MemberAuditCountAsync(db));
+
+            var revoked = await TenantMemberRoleAssignmentWriter.ReplaceAsync(
+                actor, db, member.Id,
+                new TenantMemberRoleAssignmentWriter.ReplaceRequest(granted, []));
+            Assert.NotEqual(granted, revoked);
+            Assert.False(await db.UserRoles.AsNoTracking()
+                .AnyAsync(x => x.TenantId == tenantId && x.UserId == member.Id));
+            Assert.False(await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                staff, staffDb, TenantWorkspacePermissionCatalog.MembersRead, default));
+            Assert.Equal(2, await MemberAuditCountAsync(db));
+
+            var audit = await db.Database.SqlQueryRaw<string>(
+                "SELECT [Action] AS [Value] FROM [dbo].[TenantMemberRoleAuditEntries]")
+                .ToListAsync();
+            Assert.Contains("grant", audit);
+            Assert.Contains("revoke", audit);
+            await Assert.ThrowsAsync<SqlException>(() => db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM [dbo].[TenantMemberRoleAuditEntries]"));
+            Assert.Equal(2, await MemberAuditCountAsync(db));
+        });
+    }
+
+    [Fact]
+    public async Task Member_roles_reject_self_owner_foreign_and_inactive_targets()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, actor, ownerRole, ordinaryRole, foreignRole) =
+                await SeedAsync(setup, options);
+            await using var db = ctx;
+            var tenantId = actor.ActiveTenantId!.Value;
+            var member = new User(Guid.NewGuid(), tenantId, "target-member",
+                "target-member@example.test", "Target", "Member", UserType.Tenant)
+            {
+                IsActive = true, NormalizedUserName = "TARGET-MEMBER",
+                NormalizedEmail = "TARGET-MEMBER@EXAMPLE.TEST", PasswordHash = "fixture"
+            };
+            setup.Users.Add(member);
+            await setup.SaveChangesAsync();
+            var version = Convert.ToBase64String((await db.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).RowVersion);
+            var req = new TenantMemberRoleAssignmentWriter.ReplaceRequest(
+                version, [ordinaryRole]);
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db,
+                    actor.UserId!.Value, req));
+            await Assert.ThrowsAsync<TenantMemberRoleValidationException>(() =>
+                TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id,
+                    new TenantMemberRoleAssignmentWriter.ReplaceRequest(version, [ownerRole])));
+            await Assert.ThrowsAsync<TenantMemberRoleValidationException>(() =>
+                TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id,
+                    new TenantMemberRoleAssignmentWriter.ReplaceRequest(version, [foreignRole])));
+            await Assert.ThrowsAsync<TenantMemberRoleValidationException>(() =>
+                TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id,
+                    new TenantMemberRoleAssignmentWriter.ReplaceRequest(version,
+                        [ordinaryRole, ordinaryRole])));
+
+            setup.UserRoles.Add(new UserRole(tenantId, member.Id, ownerRole));
+            await setup.SaveChangesAsync();
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id, req));
+            setup.UserRoles.Remove(await setup.UserRoles.SingleAsync(x =>
+                x.UserId == member.Id && x.RoleId == ownerRole));
+            await setup.SaveChangesAsync();
+
+            member.IsActive = false;
+            await setup.SaveChangesAsync();
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id, req));
+            Assert.Equal(0, await MemberAuditCountAsync(db));
+        });
+    }
+
+    [Fact]
+    public async Task Member_role_audit_failure_rolls_back_membership_and_user_rowversion()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, actor, _, ordinaryRole, _) = await SeedAsync(setup, options);
+            await using var db = ctx;
+            var tenantId = actor.ActiveTenantId!.Value;
+            var member = new User(Guid.NewGuid(), tenantId, "rollback-member",
+                "rollback-member@example.test", "Rollback", "Member", UserType.Tenant)
+            {
+                IsActive = true, NormalizedUserName = "ROLLBACK-MEMBER",
+                NormalizedEmail = "ROLLBACK-MEMBER@EXAMPLE.TEST", PasswordHash = "fixture"
+            };
+            setup.Users.Add(member);
+            await setup.SaveChangesAsync();
+            var version = Convert.ToBase64String((await db.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).RowVersion);
+            await setup.Database.ExecuteSqlRawAsync(
+                "DROP TABLE [dbo].[TenantMemberRoleAuditEntries]");
+            await Assert.ThrowsAsync<SqlException>(() =>
+                TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id,
+                    new TenantMemberRoleAssignmentWriter.ReplaceRequest(
+                        version, [ordinaryRole])));
+            db.ChangeTracker.Clear();
+            Assert.False(await db.UserRoles.AsNoTracking().AnyAsync(x =>
+                x.TenantId == tenantId && x.UserId == member.Id));
+            var currentVersion = Convert.ToBase64String((await db.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).RowVersion);
+            Assert.Equal(version, currentVersion);
+        });
+    }
+
+    private static Task<int> MemberAuditCountAsync(IdentityDbContext db) =>
+        db.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberRoleAuditEntries]")
+            .SingleAsync();
+
     private static async Task<int> AuditCountAsync(IdentityDbContext db) =>
         await db.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantRoleGrantAuditEntries]").SingleAsync();
