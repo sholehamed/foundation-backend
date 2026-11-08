@@ -77,7 +77,9 @@ jobs:
               break
             fi
             if ! kill -0 "$api_pid" 2>/dev/null; then
-              echo "API terminated during startup"
+              echo "API terminated during startup; sanitized diagnostics:"
+              sed -E 's/([Pp]assword)=([^; ]+)/\1=[REDACTED]/g' \
+                /tmp/foundation-iam-http-e2e.log | tail -n 95
               exit 1
             fi
             sleep 2
