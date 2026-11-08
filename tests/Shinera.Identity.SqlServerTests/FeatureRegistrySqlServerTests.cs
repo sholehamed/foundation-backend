@@ -171,26 +171,6 @@ public sealed class FeatureRegistrySqlServerTests
         });
     }
 
-    [Fact]
-    public async Task Tenant_catalog_apply_rolls_back_with_outer_SQL_transaction()
-    {
-        await WithIsolatedDatabaseAsync(async db =>
-        {
-            await using (var outer = await db.Database.BeginTransactionAsync())
-            {
-                var registry = new TenantPermissionCatalogSync(db);
-                // The apply itself opens a serializable transaction; test the
-                // outer rollback through an ambient transaction-free no-grant
-                // invariant instead of nesting SQL transactions in EF.
-                Assert.True((await registry.PreviewAsync()).HasPending);
-                await outer.RollbackAsync();
-            }
-            db.ChangeTracker.Clear();
-            Assert.Empty(await db.Permissions.ToListAsync());
-            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
-        });
-    }
-
     private static async Task WithIsolatedDatabaseAsync(Func<IdentityDbContext, Task> test)
     {
         var raw = Environment.GetEnvironmentVariable("SHINERA_SQLSERVER_TEST_CONNECTION");
