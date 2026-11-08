@@ -121,7 +121,9 @@ public static class TenantMemberInvitationWriter
         if (!sender.IsConfigured)
             throw new TenantInvitationDeliveryException();
 
-        var target = await TargetAsync(current, db, memberId, ct);
+        // First scope check is advisory; the email/slug must be retrieved
+        // AGAIN inside the transactional live target check below.
+        await TargetAsync(current, db, memberId, ct);
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var tokenHash = SHA256.HashData(Convert.FromHexString(token));
         var now = DateTime.UtcNow;
@@ -129,14 +131,14 @@ public static class TenantMemberInvitationWriter
         var inviteId = Guid.NewGuid();
 
         var strategy = db.Database.CreateExecutionStrategy();
-        await strategy.ExecuteAsync(async () =>
+        var target = await strategy.ExecuteAsync(async () =>
         {
             await using var tx = await db.Database.BeginTransactionAsync(
                 IsolationLevel.Serializable, ct);
             if (!await CanInviteAsync(current, db, ct))
                 throw new UnauthorizedAccessException("Tenant invite permission revoked.");
-            // Recheck target after acquiring the serializable write boundary.
-            await TargetAsync(current, db, memberId, ct);
+            // The recipient and Tenant host are authoritative at issuance.
+            var freshTarget = await TargetAsync(current, db, memberId, ct);
 
             var tenantId = current.ActiveTenantId!.Value;
             var actor = current.UserId!.Value;
@@ -155,6 +157,7 @@ public static class TenantMemberInvitationWriter
                 """, ct);
             await AuditAsync(db, tenantId, actor, memberId, "invite_issued", ct);
             await tx.CommitAsync(ct);
+            return freshTarget;
         });
 
         try
