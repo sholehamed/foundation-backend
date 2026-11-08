@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
+using Modules.System.Identity.Web.Util;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
@@ -33,6 +35,8 @@ public static class TenantWorkspace
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/roles", GetRoles)
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/roles/{{id:guid}}/permissions", GetRolePermissions)
+            .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/roles/{{id:guid}}/permissions", ReplaceRolePermissions)
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/groups", GetGroups)
             .RequireAuthorization().WithTags("Tenant Workspace");
@@ -215,8 +219,14 @@ public static class TenantWorkspace
             var allowed = await TenantWorkspacePermissionEvaluator.AllowsAsync(
                 current, db, definition.Key, ct);
             // Writable scope is a separate mandatory bound for write actions.
-            if (definition.Key == TenantWorkspacePermissionCatalog.BranchesManage)
+            if (definition.Key is TenantWorkspacePermissionCatalog.BranchesManage
+                or TenantWorkspacePermissionCatalog.RolesAssignPermissions)
                 allowed = allowed && current.WritableTenantIds.Contains(tenantId);
+            // IAM writes also require a live local Owner, independent of
+            // delegated read/group permissions.
+            if (definition.Key == TenantWorkspacePermissionCatalog.RolesAssignPermissions)
+                allowed = allowed && await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(
+                    current, db, ct);
             entries.Add(new UiAccessItem(
                 definition.Key, definition.Kind, definition.Route, allowed));
         }
@@ -307,7 +317,8 @@ public static class TenantWorkspace
     public sealed record TenantRolePermissionItem(
         string Code, string Name, string Kind, string Route, bool Registered, bool Granted);
     public sealed record TenantRolePermissionMatrix(
-        Guid RoleId, string RoleName, IReadOnlyList<TenantRolePermissionItem> Permissions);
+        Guid RoleId, string RoleName, IReadOnlyList<TenantRolePermissionItem> Permissions,
+        string Version, bool CanEdit);
 
     public static async Task<IResult> GetRolePermissions(
         ITenantContext current, IdentityDbContext db, HttpContext http,
@@ -322,7 +333,7 @@ public static class TenantWorkspace
         var role = await db.Roles.AsNoTracking()
             .Where(x => x.Id == id && x.TenantId == tenantId &&
                         x.Scope != RoleScope.System)
-            .Select(x => new { x.Id, x.Name })
+            .Select(x => new { x.Id, x.Name, x.RowVersion, x.IsActive, x.Scope, x.NormalizedName })
             .SingleOrDefaultAsync(ct);
         if (role is null) return Results.NotFound();
 
@@ -344,7 +355,58 @@ public static class TenantWorkspace
                 def.Key, def.Name, def.Kind, def.Route, p is not null,
                 p is not null && assigned.Contains(p.Id));
         }).ToArray();
-        return Results.Ok(new TenantRolePermissionMatrix(role.Id, role.Name, items));
+        var eligible = items.All(x => x.Registered);
+        var editable = eligible && await TenantRolePermissionGrantWriter.CanEditAsync(
+            current, db, id, ct);
+        return Results.Ok(new TenantRolePermissionMatrix(
+            role.Id, role.Name, items,
+            role.RowVersion is { Length: > 0 } ? Convert.ToBase64String(role.RowVersion) : "",
+            editable));
+    }
+
+
+    // FR-12B: only explicit, reviewed Tenant PAGE/ACTION codes are writable.
+    // The client supplies neither actor nor TenantId. Every mutation runs
+    // behind server-side Owner, scoped SQL CAS and append-only audit.
+    public static async Task<IResult> ReplaceRolePermissions(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        Guid id, TenantRolePermissionGrantWriter.ReplaceRequest request,
+        CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var version = await TenantRolePermissionGrantWriter.ReplaceAsync(
+                current, db, id, request, ct);
+            return Results.Ok(new { version });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (TenantRoleGrantMissingException) { return Results.NotFound(); }
+        catch (TenantRoleGrantValidationException error)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid Tenant role permission request", detail: error.Message);
+        }
+        catch (TenantRoleGrantConflictException error)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status409Conflict,
+                title: "Tenant role permissions changed", detail: error.Message);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status409Conflict,
+                title: "Tenant grant conflict; reload role permissions");
+        }
+        catch (DbUpdateException)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status409Conflict,
+                title: "Tenant grant state changed during save");
+        }
+        catch (SqlException error) when (error.Number is 1205 or 2601 or 2627 or 3960)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status409Conflict,
+                title: "Concurrent Tenant grant change; reload and retry");
+        }
     }
 
     public static async Task<IResult> GetGroups(
