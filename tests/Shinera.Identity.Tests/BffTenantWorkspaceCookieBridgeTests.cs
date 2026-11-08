@@ -80,6 +80,28 @@ public sealed class BffTenantWorkspaceCookieBridgeTests
     }
 
     [Fact]
+    public async Task Authenticated_cookie_permission_denial_is_403_while_missing_auth_is_401()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var cookie = await fixture.IssueCookieAsync();
+
+        // The endpoint has already passed RequireAuthorization; an application-
+        // level permission denial must not invoke the default bearer scheme's
+        // challenge when its principal came from the BFF Cookie bridge.
+        using var deniedCookie = await fixture.SendAsync(
+            "GET", "/api/tenant/workspace/denied", TenantHost, cookie);
+        Assert.Equal(HttpStatusCode.Forbidden, deniedCookie.StatusCode);
+
+        using var deniedBearer = await fixture.SendAsync(
+            "GET", "/api/tenant/workspace/denied", TenantHost, bearer: "valid");
+        Assert.Equal(HttpStatusCode.Forbidden, deniedBearer.StatusCode);
+
+        using var unauthenticated = await fixture.SendAsync(
+            "GET", "/api/tenant/workspace/denied", TenantHost);
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
+    }
+
+    [Fact]
     public async Task Bearer_explicitly_takes_precedence_over_cookie_without_csrf()
     {
         await using var fixture = await Fixture.StartAsync();
@@ -161,6 +183,10 @@ public sealed class BffTenantWorkspaceCookieBridgeTests
                 {
                     subject = http.User.FindFirst("sub")?.Value
                 })).RequireAuthorization();
+            // Mirrors TenantWorkspace's explicit permission-denied result.
+            app.MapGet("/api/tenant/workspace/denied",
+                () => Results.StatusCode(StatusCodes.Status403Forbidden))
+                .RequireAuthorization();
             app.MapGet("/api/system/private", () => Results.Ok())
                 .RequireAuthorization();
             app.MapGet("/api/tenant/workspace-other", () => Results.Ok())
