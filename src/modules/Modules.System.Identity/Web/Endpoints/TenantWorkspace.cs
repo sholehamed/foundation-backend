@@ -487,7 +487,7 @@ public static class TenantWorkspace
     {
         if (!configuration.GetValue<bool>("Identity:TenantFirstLogin:Enabled") ||
             string.IsNullOrWhiteSpace(slug) ||
-            !System.Text.RegularExpressions.Regex.IsMatch(slug,
+            !global::System.Text.RegularExpressions.Regex.IsMatch(slug,
                 @"\A[a-z0-9]+(?:-[a-z0-9]+)*\z") ||
             !http.Request.IsHttps)
             return false;
