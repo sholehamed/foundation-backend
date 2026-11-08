@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Hosting;
+using System.Net;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Http;
@@ -47,6 +49,14 @@ public static class TenantWorkspace
             .RequireAuthorization()
             .RequireRateLimiting("tenant-member-create")
             .WithTags("Tenant Workspace");
+        app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/invitations", InvitePendingMember)
+            .RequireAuthorization()
+            .RequireRateLimiting("tenant-member-invite")
+            .WithTags("Tenant Workspace");
+        app.MapPost($"/{backendPrefix.Trim('/')}/public/tenant-invitations/activate", ActivateInvitedMember)
+            .AllowAnonymous()
+            .RequireRateLimiting("tenant-invite-activate")
+            .WithTags("Tenant Activation");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/roles", GetMemberRoles)
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/roles", ReplaceMemberRoles)
@@ -250,7 +260,8 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.RolesUpdate
                 or TenantWorkspacePermissionCatalog.RolesChangeState
                 or TenantWorkspacePermissionCatalog.MembersAssignRoles
-                or TenantWorkspacePermissionCatalog.MembersCreate)
+                or TenantWorkspacePermissionCatalog.MembersCreate
+                or TenantWorkspacePermissionCatalog.MembersInvite)
                 allowed = allowed && current.WritableTenantIds.Contains(tenantId);
             // IAM writes also require a live local Owner, independent of
             // delegated read/group permissions.
@@ -299,7 +310,8 @@ public static class TenantWorkspace
                 current, db, TenantWorkspacePermissionCatalog.RolesChangeState, ct),
             canAssignMemberRoles = await TenantMemberRoleAssignmentWriter.CanManageAsync(
                 current, db, ct),
-            canCreateMembers = await TenantPendingMemberWriter.CanCreateAsync(current, db, ct)
+            canCreateMembers = await TenantPendingMemberWriter.CanCreateAsync(current, db, ct),
+            canInviteMembers = await TenantMemberInvitationWriter.CanInviteAsync(current, db, ct)
         });
     }
 
@@ -369,6 +381,56 @@ public static class TenantWorkspace
             return Results.Problem(statusCode: 409,
                 title: "Concurrent Tenant member creation");
         }
+    }
+
+    // FR-13B-2: SMTP relay acceptance is not proof of inbox delivery.
+    // No token enters an Owner API response. Missing relay -> fail closed 503.
+    public static async Task<IResult> InvitePendingMember(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        ITenantInvitationSender sender, Guid id, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var receipt = await TenantMemberInvitationWriter.InviteAsync(
+                current, db, sender, id, ct);
+            return Results.Ok(receipt);
+        }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
+        catch (TenantInvitationTargetException) { return Results.NotFound(); }
+        catch (TenantInvitationDeliveryException)
+        { return Results.Problem(statusCode: 503, title: "Invitation delivery unavailable"); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Tenant invitation conflict"); }
+        catch (SqlException e) when (e.Number is 1205 or 2601 or 2627 or 3960)
+        { return Results.Problem(statusCode: 409, title: "Tenant invitation conflict"); }
+    }
+
+    // Token possession is the ONLY activation authority, and the request uses
+    // no cookies or authenticated principal. Enforce real HTTPS except explicit
+    // Development loopback (disposable local test server).
+    public static async Task<IResult> ActivateInvitedMember(
+        HttpContext http, IHostEnvironment environment, IdentityDbContext db,
+        IPasswordHasher<User> hasher,
+        TenantMemberInvitationWriter.ActivateRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!http.Request.IsHttps &&
+            !(environment.IsDevelopment() &&
+              http.Connection.RemoteIpAddress is { } remote &&
+              IPAddress.IsLoopback(remote)))
+            return Results.Problem(statusCode: 400, title: "HTTPS required");
+        try
+        {
+            await TenantMemberInvitationWriter.ActivateAsync(db, hasher, request, ct);
+            return Results.Ok(new { activated = true });
+        }
+        catch (TenantInvitationValidationException)
+        { return Results.Problem(statusCode: 400, title: "Invalid or expired invitation"); }
+        catch (DbUpdateConcurrencyException)
+        { return Results.Problem(statusCode: 400, title: "Invalid or expired invitation"); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Account activation unavailable"); }
     }
 
     // FR-12D: direct UserRole matrix for one active tenant; never an

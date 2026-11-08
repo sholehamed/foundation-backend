@@ -52,6 +52,23 @@ namespace Modules.System.Identity
                             PermitLimit = 10, Window = TimeSpan.FromMinutes(1),
                             QueueLimit = 0, AutoReplenishment = true
                         }));
+                options.AddPolicy("tenant-member-invite", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        context.User.FindFirst("sub")?.Value ??
+                        "anonymous:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 5, Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
+                options.AddPolicy("tenant-invite-activate", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 5, Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
                 options.AddPolicy("identity-login", context =>
                     RateLimitPartition.GetFixedWindowLimiter(
                         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -85,6 +102,7 @@ namespace Modules.System.Identity
             var assembly = Assembly.GetExecutingAssembly();
             services.AddCustomCqrs<AppMappingProfile>(assembly); services.AddDataProtection();
             services.AddScoped<CaptchaService>();
+            services.AddSingleton<ITenantInvitationSender, SmtpTenantInvitationSender>();
             services.AddScoped<RefreshGrantValidator>();
             services.AddSingleton<ISystemTenantScope, DefaultSystemTenantScope>();
             services.AddScoped<IIdentityPrincipalFactory, IdentityPrincipalFactory>();

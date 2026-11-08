@@ -1,3 +1,10 @@
+## FR-13B-2 — secure Tenant staff invitation and activation (2026-11-09)
+
+- Separate [FR-13B-2 #74](https://github.com/sholehamed/foundation-backend/issues/74), continuing completed inactive member creation #72: owner-gated `TENANT.MEMBERS.INVITE` ACTION, hash-only 30-minute single-use SMTP invitation, SQL Server transactional issue/audit/submission + anonymous HTTPS password setup/activation; no Owner-visible token, no automatic role grants.
+- Backend dev PR uses default-OFF `Identity:TenantInvitations:Enabled`; SMTP secrets and deployment are NOT provisioned. New SQL migration and reviewed Tenant catalog Preview/Apply+Owner privileges are required before operator opt-in; no production migration or feature toggle changes.
+- Companion Angular public activation route and pending-member Invite UX plus cross-repo browser E2E still required; [detailed contract](development/FR-13B2-INVITATION-ACTIVATION.md). Production BFF/Cookie pilot remains OFF.
+- Do not interpret passing local SQL/HTTP tests as proven email delivery or a working staged end-to-end user journey.
+
 ## FR-13B-1 — Owner-controlled inactive Tenant member creation (2026-11-09)
 
 - [Issue #72](https://github.com/sholehamed/foundation-backend/issues/72): Add code-owned TENANT.MEMBERS.CREATE ACTION, owner-only live scoped POST /api/tenant/workspace/members, disabled User with random undisclosed password hash, zero role/group/user grants, 10/min authenticated-user rate limit, append-only TenantMemberLifecycleAuditEntries in SQL transaction. SQL migration and operator catalog Preview/Apply are NOT automatic.

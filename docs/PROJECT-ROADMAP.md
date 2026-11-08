@@ -1,3 +1,8 @@
+## FR-13B-2 — one-time staff invitation and account activation (2026-11-09)
+
+- [Issue #74](https://github.com/sholehamed/foundation-backend/issues/74): implement reviewed SMTP delivery, token-hash-only SQL storage, 30min TTL, one-time activation, secure password setup and append-only audit; never include token in Owner API. Detailed [FR-13B-2 design/acceptance](development/FR-13B2-INVITATION-ACTIVATION.md).
+- Next dependency: companion Angular activation page and member Invite controls, then true HTTPS/Chromium multi-user staging acceptance; gateway distributed rate-limit and real SMTP relay configuration still unresolved. No staging deployed / no Production rollout authorized.
+
 ## FR-13B-1 — begin real Tenant staff onboarding (2026-11-09)
 
 - [Issue #72](https://github.com/sholehamed/foundation-backend/issues/72): reviewed Owner-only inactive Tenant member create endpoint and Angular directory companion, SQL audit/validation/conflict testing. No invitation is sent and no account can log in. Refer to [FR-13B-1](development/FR-13B1-INACTIVE-TENANT-MEMBER-CREATE.md).
