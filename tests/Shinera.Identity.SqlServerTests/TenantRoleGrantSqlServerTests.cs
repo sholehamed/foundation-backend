@@ -673,6 +673,48 @@ public sealed class TenantRoleGrantSqlServerTests
     }
 
     [Fact]
+    public async Task Pending_member_rejects_extra_UI_links_and_direct_owner_deny()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, owner, _, _, _) = await SeedAsync(setup, options);
+            await using var db = ctx;
+            var create = await setup.Permissions.SingleAsync(p =>
+                p.Code == TenantWorkspacePermissionCatalog.MembersCreate);
+            var otherUi = await setup.UiResources.SingleAsync(u =>
+                u.Key == "tenant.workspace.groups");
+            setup.PermissionUiResources.Add(
+                new PermissionUiResource(create.Id, otherUi.Id));
+            await setup.SaveChangesAsync();
+            Assert.False(await TenantPendingMemberWriter.CanCreateAsync(
+                owner, db, default));
+
+            setup.PermissionUiResources.Remove(await setup.PermissionUiResources
+                .SingleAsync(x => x.PermissionId == create.Id &&
+                                  x.UiResourceId == otherUi.Id));
+            await setup.SaveChangesAsync();
+            Assert.True(await TenantPendingMemberWriter.CanCreateAsync(
+                owner, db, default));
+
+            setup.UserPermissions.Add(new UserPermission
+            {
+                TenantId = owner.ActiveTenantId!.Value,
+                UserId = owner.UserId!.Value,
+                PermissionId = create.Id,
+                IsGranted = false
+            });
+            await setup.SaveChangesAsync();
+            Assert.False(await TenantPendingMemberWriter.CanCreateAsync(
+                owner, db, default));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantPendingMemberWriter.CreateAsync(owner, db,
+                    new PasswordHasher<User>(),
+                    new TenantPendingMemberWriter.CreateRequest(
+                        "denied.staff", "denied@local.test", "Denied", "Staff")));
+        });
+    }
+
+    [Fact]
     public async Task Pending_member_audit_failure_rolls_back_new_user()
     {
         await WithDisposableDatabaseAsync(async (setup, options) =>
