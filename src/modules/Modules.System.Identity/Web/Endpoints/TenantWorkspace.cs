@@ -32,6 +32,8 @@ public static class TenantWorkspace
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/roles", GetRoles)
             .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/roles/{{id:guid}}/permissions", GetRolePermissions)
+            .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/groups", GetGroups)
             .RequireAuthorization().WithTags("Tenant Workspace");
     }
@@ -297,6 +299,52 @@ public static class TenantWorkspace
             .ToListAsync(ct);
         return Results.Ok(new DirectoryPage<WorkspaceRoleDto>(
             rows.Take(DirectoryPageSize).ToArray(), page, rows.Count > DirectoryPageSize));
+    }
+
+
+    // FR-12A: A read-only, local-role direct-grant matrix. These booleans are
+    // not a claim that the requesting user has a given effective permission.
+    public sealed record TenantRolePermissionItem(
+        string Code, string Name, string Kind, string Route, bool Registered, bool Granted);
+    public sealed record TenantRolePermissionMatrix(
+        Guid RoleId, string RoleName, IReadOnlyList<TenantRolePermissionItem> Permissions);
+
+    public static async Task<IResult> GetRolePermissions(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        Guid id, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.RolesRead, ct))
+            return Results.Forbid();
+        if (id == Guid.Empty) return Results.NotFound();
+        var tenantId = current.ActiveTenantId!.Value;
+        var role = await db.Roles.AsNoTracking()
+            .Where(x => x.Id == id && x.TenantId == tenantId &&
+                        x.Scope != RoleScope.System)
+            .Select(x => new { x.Id, x.Name })
+            .SingleOrDefaultAsync(ct);
+        if (role is null) return Results.NotFound();
+
+        var codes = TenantWorkspacePermissionCatalog.Definitions.Select(x => x.Key).ToArray();
+        var stored = await db.Permissions.AsNoTracking()
+            .Where(x => codes.Contains(x.Code))
+            .Select(x => new { x.Id, x.Code, x.IsActive })
+            .ToListAsync(ct);
+        var links = await db.RolePermissions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.RoleId == id)
+            .Select(x => x.PermissionId)
+            .ToListAsync(ct);
+        var assigned = links.ToHashSet();
+        var items = TenantWorkspacePermissionCatalog.Definitions.Select(def =>
+        {
+            var candidates = stored.Where(x => x.Code == def.Key).ToList();
+            var p = candidates.Count == 1 && candidates[0].IsActive ? candidates[0] : null;
+            return new TenantRolePermissionItem(
+                def.Key, def.Name, def.Kind, def.Route, p is not null,
+                p is not null && assigned.Contains(p.Id));
+        }).ToArray();
+        return Results.Ok(new TenantRolePermissionMatrix(role.Id, role.Name, items));
     }
 
     public static async Task<IResult> GetGroups(

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
+using Modules.System.Identity.Web.Endpoints;
 using Modules.System.Identity.Web.Util;
 using Xunit;
 
@@ -88,6 +89,86 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Empty(await db.UiResources.AsNoTracking().ToListAsync());
             Assert.Empty(await db.Menus.AsNoTracking().ToListAsync());
             Assert.Empty(await db.PermissionUiResources.AsNoTracking().ToListAsync());
+        });
+    }
+
+
+    [Fact]
+    public async Task Tenant_catalog_preview_apply_is_additive_idempotent_and_uses_real_SQL_migrations()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            var registry = new TenantPermissionCatalogSync(db);
+            var preview = await registry.PreviewAsync();
+            Assert.True(preview.CanApply);
+            Assert.True(preview.HasPending);
+            Assert.Equal(14, preview.Changes.Count); // module + resource + 4x(permission, UI, link)
+            Assert.Empty(await db.Permissions.AsNoTracking().ToListAsync());
+
+            var accepted = await registry.ApplyAsync(preview.Fingerprint);
+            Assert.True(accepted.CanApply);
+            Assert.Equal(4, await db.Permissions.CountAsync());
+            Assert.Equal(4, await db.UiResources.CountAsync());
+            Assert.Equal(4, await db.PermissionUiResources.CountAsync());
+            Assert.Single(await db.Modules.ToListAsync());
+            Assert.Single(await db.Resources.ToListAsync());
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+            Assert.Empty(await db.Menus.ToListAsync());
+
+            var stable = await registry.PreviewAsync();
+            Assert.True(stable.CanApply);
+            Assert.False(stable.HasPending);
+            Assert.NotEqual(preview.Fingerprint, stable.Fingerprint);
+            await registry.ApplyAsync(stable.Fingerprint);
+            Assert.Equal(4, await db.Permissions.CountAsync());
+
+            var p = await db.Permissions.SingleAsync(x =>
+                x.Code == TenantWorkspacePermissionCatalog.MembersRead);
+            p.Name = "Operator-changed display name";
+            await db.SaveChangesAsync();
+            var untouched = await registry.PreviewAsync();
+            Assert.True(untouched.CanApply);
+            Assert.False(untouched.HasPending);
+            await registry.ApplyAsync(untouched.Fingerprint);
+            Assert.Equal("Operator-changed display name", (await db.Permissions.SingleAsync(x =>
+                x.Code == TenantWorkspacePermissionCatalog.MembersRead)).Name);
+        });
+    }
+
+    [Fact]
+    public async Task Tenant_catalog_collision_and_stale_fingerprint_prevent_all_writes()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            var registry = new TenantPermissionCatalogSync(db);
+            var preview = await registry.PreviewAsync();
+            db.Permissions.Add(new Modules.System.Identity.Domain.Entities.Permission
+            {
+                Code = TenantWorkspacePermissionCatalog.GroupsRead,
+                Name = "Unrelated unmanaged definition", IsActive = false, RowVersion = [1]
+            });
+            await db.SaveChangesAsync();
+            var conflict = await registry.PreviewAsync();
+            Assert.False(conflict.CanApply);
+            Assert.Contains(conflict.Changes, x => x.State == "Conflict" &&
+                x.Key == TenantWorkspacePermissionCatalog.GroupsRead);
+            var stale = await registry.ApplyAsync(preview.Fingerprint);
+            Assert.False(stale.CanApply);
+            Assert.Empty(await db.Modules.ToListAsync());
+            Assert.Single(await db.Permissions.ToListAsync());
+
+            var disabled = await db.Permissions.SingleAsync();
+            db.Permissions.Remove(disabled);
+            await db.SaveChangesAsync();
+            var clean = await registry.PreviewAsync();
+            Assert.True(clean.CanApply);
+            Assert.True(clean.HasPending);
+            // Simulate a changed preview / request token: no writes occur.
+            var rejected = await registry.ApplyAsync(new string('A', 64));
+            Assert.True(rejected.CanApply);
+            Assert.NotEqual(new string('A', 64), rejected.Fingerprint);
+            Assert.Empty(await db.Modules.ToListAsync());
         });
     }
 
