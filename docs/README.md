@@ -38,3 +38,5 @@
 - [FR-07A — Bulk live System PAGE/ACTION access projection](development/FR-07A-BULK-SYSTEM-UI-ACCESS.md)
 
 - [FR-08A — System dashboard and Tenant Admin baseline](development/FR-08A-SYSTEM-ADMIN-DASHBOARD.md)
+
+- [FR-08B — Tenant Workspace read-only starter](development/FR-08B-TENANT-WORKSPACE-STARTER.md)
