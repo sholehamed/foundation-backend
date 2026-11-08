@@ -52,12 +52,15 @@ public static class TenantPendingMemberWriter
                 p.Resource.IsActive && p.Resource.Module != null &&
                 p.Resource.Module.Code == TenantPermissionCatalogSync.ModuleCode &&
                 p.Resource.Module.IsActive &&
-                db.PermissionUiResources.Count(l =>
+                // A permission linked to any additional/foreign UI must not
+                // authorize this new member-creation capability.
+                db.PermissionUiResources.Count(l => l.PermissionId == p.Id) == 1 &&
+                db.PermissionUiResources.Any(l =>
                     l.PermissionId == p.Id && l.UiResource != null &&
                     l.UiResource.IsActive && l.UiResource.ResourceId == p.ResourceId &&
                     l.UiResource.Key == "tenant.workspace.members.create" &&
                     l.UiResource.Type == UiResourceType.ACTION &&
-                    l.UiResource.Description == null) == 1)
+                    l.UiResource.Description == null))
             .Select(p => p.Id).ToListAsync(ct);
         if (registered.Count != 1) return false;
 
