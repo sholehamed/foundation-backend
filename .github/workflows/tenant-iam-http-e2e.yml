@@ -1,0 +1,93 @@
+name: Tenant IAM real HTTP + SQL E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tenant-iam-http-e2e.yml'
+      - 'src/**'
+      - 'tests/http/tenant_iam_chain_e2e.py'
+      - 'tests/Shinera.Identity.E2E.SqlMutator/**'
+  pull_request:
+    paths:
+      - '.github/workflows/tenant-iam-http-e2e.yml'
+      - 'src/**'
+      - 'tests/http/tenant_iam_chain_e2e.py'
+      - 'tests/Shinera.Identity.E2E.SqlMutator/**'
+
+permissions:
+  contents: read
+
+jobs:
+  tenant-iam-http-sqlserver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: 'CiOnly_BffSql2026!_NotProduction'
+        ports:
+          - 1433:1433
+    env:
+      ASPNETCORE_ENVIRONMENT: Development
+      DataBaseServer: '127.0.0.1,1433'
+      DataBaseUsername: sa
+      DataBasePassword: 'CiOnly_BffSql2026!_NotProduction'
+      DBNAME: 'Shinera_E2E_TenantIAM'
+      SHINERA_DEVELOPMENT_ADMIN_PASSWORD: 'CiOnly_TenantIAM_2026!_NotProduction'
+      SHINERA_E2E_DB_MUTATION: 'stale-jwt-ci-only'
+      Identity__E2E__Enabled: 'true'
+      Identity__E2E__CaptchaCode: 'ABCDE'
+      Identity__AllowInsecureHttpForE2E: 'true'
+      Identity__PlatformPermissions__BootstrapDevelopmentGrants: 'true'
+      Identity__TenantPermissions__EnableCatalogApply: 'true'
+      Identity__Bff__Enabled: 'false'
+      SHINERA_E2E_BASE_URL: 'http://127.0.0.1:5069'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore API and disposable fixture CLI
+        run: |
+          dotnet restore src/Web/Web.csproj
+          dotnet restore tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj
+      - name: Build API and disposable fixture CLI
+        run: |
+          dotnet build src/Web/Web.csproj -c Release --no-restore
+          dotnet build tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj -c Release --no-restore
+      - name: Signed JWT real HTTP Tenant role -> permission -> member -> revoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet run --project src/Web/Web.csproj --no-build -c Release --no-launch-profile \
+            --urls http://127.0.0.1:5069 > /tmp/foundation-iam-http-e2e.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 120); do
+            if curl --silent --fail --max-time 3 \
+                http://127.0.0.1:5069/api/system/Auth/captcha/new \
+                >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then
+              echo "API terminated during startup"
+              exit 1
+            fi
+            sleep 2
+          done
+          if [ "$ready" != "1" ]; then
+            echo "API did not become ready within the disposable test window"
+            exit 1
+          fi
+
+          # CLI is gated to disposable loopback SQL and E2E Development only.
+          dotnet run --project tests/Shinera.Identity.E2E.SqlMutator \
+            --no-build -c Release -- seed-tenant-iam
+          python3 tests/http/tenant_iam_chain_e2e.py
+          dotnet run --project tests/Shinera.Identity.E2E.SqlMutator \
+            --no-build -c Release -- assert-tenant-iam-audit
