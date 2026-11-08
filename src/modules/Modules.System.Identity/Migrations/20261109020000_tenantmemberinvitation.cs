@@ -24,6 +24,7 @@ public sealed class tenantmemberinvitation : Migration
                 TargetUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 IssuedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 TokenHash = table.Column<byte[]>(type: "varbinary(32)", maxLength: 32, nullable: false),
+                RecipientEmailHash = table.Column<byte[]>(type: "varbinary(32)", maxLength: 32, nullable: false),
                 CreatedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: false),
                 ExpiresAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: false),
                 SubmittedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: true),
