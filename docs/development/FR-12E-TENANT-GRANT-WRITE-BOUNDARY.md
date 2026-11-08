@@ -25,7 +25,7 @@ Anonymous public signup creates the initial Owner link only if a new Tenant, a n
 
 ## Tests and deployment
 - Guard tests cover Sync and Async SaveChanges, cross-target intent, post-disposal, system-context refusal, nested scope refusal, missing intent for five grant types, and fresh Owner provisioning.
-- Real SQL FR-12B and FR-12D tests still cover CAS, live permission effectiveness, audit rollback and identity/tenant checks. Additional tests should run the complete audited writers with the configured interceptor on SQL Server before a real deployment.
+- Real SQL FR-12B and FR-12D tests still cover CAS, live permission effectiveness, audit rollback and identity/tenant checks. The new real SQL test invokes both TenantWorkspace grant endpoint handlers against an IdentityDbContext with the production TenantSaveChangesInterceptor configured: direct UserRole/RolePermission inserts fail; the authorized handlers commit their grants and audit records successfully; the intent expires before the next write. This exercises endpoint wiring and storage enforcement, but is not yet a fully authenticated HTTP/browser E2E test.
 - No migrations, grants, role assignments, operational permission registration, login flows, or front-end routes changed here. No production deployment or browser E2E was performed.
 
 ## Residual work
