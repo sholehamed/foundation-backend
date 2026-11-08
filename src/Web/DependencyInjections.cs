@@ -74,6 +74,21 @@ namespace Server
 
             app.UseCors("Cors");
             app.UseMediaStorage(configuration);
+
+            // FR-12G pilot: BFF cookie is accepted ONLY on Tenant workspace
+            // APIs, and only with the exact host/session + CSRF security
+            // checks. Off by default; leave native bearer auth unchanged.
+            if (configuration.GetValue<bool>("Identity:Bff:TenantWorkspaceCookieBridge:Enabled"))
+            {
+                if (!configuration.GetValue<bool>("Identity:Bff:Enabled") ||
+                    app.Environment.IsProduction())
+                    throw new InvalidOperationException(
+                        "Tenant workspace BFF Cookie pilot requires an enabled BFF " +
+                        "and is not approved for Production before browser certification.");
+
+                app.UseMiddleware<BffTenantWorkspaceCookieBridgeMiddleware>();
+            }
+
             app.UseIdentityModule(configuration);
             app.MapBffEndpoints(configuration);
 
