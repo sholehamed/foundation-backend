@@ -1,3 +1,11 @@
+## FR-13A — operational staging prerequisites (2026-11-09)
+
+- New tracker: [FR-13 #70](https://github.com/sholehamed/foundation-backend/issues/70). The **staging environment is NOT provisioned** and Production BFF/UI/registry flags stay OFF.
+- This PR adds `scripts/staging/preflight.py`, a non-secret sample manifest, offline unit/CI tests and optional anonymous HTTPS/GET-only probes. The script cannot activate features, apply migrations/grants, or verify live deployment configurations without separate operator evidence.
+- The real disposable [FR-12G-C Chromium/HTTPS/Code+PKCE/BFF/SQL CI #42520612905](https://github.com/sholehamed/foundation-backend/actions/runs/42520612905) is GREEN on backend main `258039b25fb4653c98a179911d9d7f7dcecffd2e`, but it is NOT a staged deployment approval. Matching Frontend baseline is `1cbea70c5921148cba4b343a7fdd6f485d04f21b`.
+- Next: operator-approved staging infrastructure, SQL backup/migration/catalog inventory and grants, then FR-13B Tenant employee creation/invitation, full Owner->staff role->UI/API->revoke scenario.
+- [Staging runbook and gates](development/FR-13A-STAGING-READINESS.md).
+
 # Foundation Backend — Project State & Handoff
 
 ## FR-08B — Tenant Admin scoped workspace starter (2026-11-08)

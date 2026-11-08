@@ -13,6 +13,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
+      - name: FR-13A staging preflight (offline; no deployment/network)
+        run: |
+          python3 -m unittest discover -s scripts/staging -p 'test_*.py' -v
+          python3 scripts/staging/preflight.py --config scripts/staging/staging.example.json
       - name: Restore solution
         run: dotnet restore foundation-backend.slnx
       - name: Build solution

@@ -1,3 +1,13 @@
+## FR-13 — operational staging and Tenant Admin acceptance (2026-11-09)
+
+Tracked in [FR-13 #70](https://github.com/sholehamed/foundation-backend/issues/70).
+1. **FR-13A (current PR):** a fail-closed, read-only staging manifest checker, optional anonymous HTTPS probes, CI coverage and human staging rollout checklist. This does not create staging, migrate SQL, apply feature registry, grant permissions or enable Production BFF.
+2. **Staging deployment (unprovisioned):** operator-defined DNS/TLS/proxy/SQL/keyring/session store, backup and test restore, approved migrations, reviewed Registry Preview/Apply and role grants. Verify real deployed flags before opt-in browser tests.
+3. **FR-13B:** Tenant employee create/invite/activate and Tenant scoped menus, followed by System Admin -> Owner -> Staff -> role grant/revoke end-to-end UI+API+SQL audit. Do not reuse System Administrator write endpoints to manage tenant employees.
+4. **FR-13C:** audit UI, groups, missing System Admin mutations, multi-node BFF durability and explicit Production release gate.
+
+[Detailed FR-13A staging acceptance](development/FR-13A-STAGING-READINESS.md).
+
 # Foundation Backend — BFF implementation roadmap
 
 ## Identity UI ↔ BFF login contract v1 — 2026-11-06
