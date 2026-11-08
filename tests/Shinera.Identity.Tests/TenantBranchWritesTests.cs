@@ -9,6 +9,12 @@ using Xunit;
 
 public sealed class TenantBranchWritesTests
 {
+    private static void AssertForbidden(IResult result)
+    {
+        var response = Assert.IsType<StatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, response.StatusCode);
+    }
+
     [Fact]
     public async Task Local_owner_can_create_and_update_only_own_branch_and_preserve_main()
     {
@@ -66,18 +72,18 @@ public sealed class TenantBranchWritesTests
         var request = new TenantWorkspace.BranchWriteRequest("Extra", "Tehran", "Address", null);
 
         var readOnlyOwner = Current(tenantId, actor, canWrite: false);
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.CreateBranch(
+        AssertForbidden(await TenantWorkspace.CreateBranch(
             readOnlyOwner, db, new DefaultHttpContext(), request, default));
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.UpdateBranch(
+        AssertForbidden(await TenantWorkspace.UpdateBranch(
             readOnlyOwner, db, new DefaultHttpContext(), Guid.NewGuid(), request, default));
 
         var staff = Current(tenantId, staffId, canWrite: true);
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.CreateBranch(
+        AssertForbidden(await TenantWorkspace.CreateBranch(
             staff, db, new DefaultHttpContext(), request, default));
 
         var system = new TenantContext();
         system.InitializeSystem(Guid.NewGuid(), true);
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.CreateBranch(
+        AssertForbidden(await TenantWorkspace.CreateBranch(
             system, db, new DefaultHttpContext(), request, default));
         Assert.Empty(db.Branches);
     }
@@ -120,7 +126,7 @@ public sealed class TenantBranchWritesTests
         db.UserRoles.Remove(assignment);
         await db.SaveChangesAsync();
 
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.CreateBranch(
+        AssertForbidden(await TenantWorkspace.CreateBranch(
             current, db, new DefaultHttpContext(), request, default));
         Assert.Empty(db.Branches);
     }
