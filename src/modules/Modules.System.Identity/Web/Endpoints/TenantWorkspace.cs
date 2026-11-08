@@ -24,6 +24,8 @@ public static class TenantWorkspace
         app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/branches/{{id:guid}}", UpdateBranch)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/ui-access/me", GetCurrentUiAccess)
+            .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/admin-capabilities", GetAdministrationCapabilities)
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members", GetMembers)
@@ -110,7 +112,8 @@ public static class TenantWorkspace
         ITenantContext current, IdentityDbContext db, CancellationToken ct)
         => current.ActiveTenantId is Guid active &&
            current.WritableTenantIds.Contains(active) &&
-           await IsActiveLocalOwnerAsync(current, db, ct);
+           await TenantWorkspacePermissionEvaluator.AllowsAsync(
+               current, db, TenantWorkspacePermissionCatalog.BranchesManage, ct);
 
     private static Dictionary<string, string[]> ValidateBranch(BranchWriteRequest? request)
     {
@@ -188,33 +191,34 @@ public static class TenantWorkspace
         return Results.Ok(BranchDto(branch));
     }
 
-    // FR-09A: Until a tenant permission catalog is shipped, only a live, locally
-    // assigned Owner role may read administrative directories. Mere membership,
-    // tenant ReadScope/WriteScope, or an unrelated System role is not enough.
-    private static async Task<bool> IsActiveLocalOwnerAsync(
-        ITenantContext current, IdentityDbContext db, CancellationToken ct)
+    // FR-11A: Permission decisions are live, scoped and individually evaluated.
+    // The evaluated actor ID and tenant are never client-selected.
+    public sealed record UiAccessItem(string Key, string Kind, string Route, bool Allowed);
+
+    public static async Task<IResult> GetCurrentUiAccess(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        CancellationToken ct)
     {
+        http.Response.Headers.CacheControl = "no-store";
         if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
-            current.HomeTenantId != tenantId || current.UserId is not Guid actorId ||
-            !current.ReadableTenantIds.Contains(tenantId))
-            return false;
+            current.HomeTenantId != tenantId || !current.ReadableTenantIds.Contains(tenantId))
+            return Results.Forbid();
+        if (!await db.Tenants.AsNoTracking().AnyAsync(
+                t => t.Id == tenantId && t.IsActive, ct))
+            return Results.NotFound();
 
-        if (!await db.Tenants.AsNoTracking()
-            .AnyAsync(t => t.Id == tenantId && t.IsActive, ct))
-            return false;
-
-        if (!await db.Users.AsNoTracking().AnyAsync(u =>
-                u.Id == actorId && u.TenantId == tenantId &&
-                u.UserType == UserType.Tenant && u.IsActive, ct))
-            return false;
-
-        // Public signup historically seeded Owner with RoleScope=0. Accept this
-        // legacy value for this local role only; never accept a System-scoped role.
-        return await db.UserRoles.AsNoTracking().AnyAsync(ur =>
-            ur.TenantId == tenantId && ur.UserId == actorId &&
-            ur.Role.TenantId == tenantId &&
-            ur.Role.NormalizedName == "OWNER" && ur.Role.IsActive &&
-            ur.Role.Scope != RoleScope.System, ct);
+        var entries = new List<UiAccessItem>();
+        foreach (var definition in TenantWorkspacePermissionCatalog.Definitions)
+        {
+            var allowed = await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, definition.Key, ct);
+            // Writable scope is a separate mandatory bound for write actions.
+            if (definition.Key == TenantWorkspacePermissionCatalog.BranchesManage)
+                allowed = allowed && current.WritableTenantIds.Contains(tenantId);
+            entries.Add(new UiAccessItem(
+                definition.Key, definition.Kind, definition.Route, allowed));
+        }
+        return Results.Ok(new { entries });
     }
 
     public static async Task<IResult> GetAdministrationCapabilities(
@@ -227,9 +231,18 @@ public static class TenantWorkspace
             return Results.Forbid();
         if (!await db.Tenants.AsNoTracking().AnyAsync(t => t.Id == tenantId && t.IsActive, ct))
             return Results.NotFound();
+        var members = await TenantWorkspacePermissionEvaluator.AllowsAsync(
+            current, db, TenantWorkspacePermissionCatalog.MembersRead, ct);
+        var roles = await TenantWorkspacePermissionEvaluator.AllowsAsync(
+            current, db, TenantWorkspacePermissionCatalog.RolesRead, ct);
+        var groups = await TenantWorkspacePermissionEvaluator.AllowsAsync(
+            current, db, TenantWorkspacePermissionCatalog.GroupsRead, ct);
         return Results.Ok(new
         {
-            canViewAdministration = await IsActiveLocalOwnerAsync(current, db, ct),
+            canViewAdministration = members || roles || groups,
+            canViewMembers = members,
+            canViewRoles = roles,
+            canViewGroups = groups,
             canManageBranches = await CanManageBranchesAsync(current, db, ct)
         });
     }
@@ -246,7 +259,9 @@ public static class TenantWorkspace
         int page = 1, CancellationToken ct = default)
     {
         http.Response.Headers.CacheControl = "no-store";
-        if (!await IsActiveLocalOwnerAsync(current, db, ct)) return Results.Forbid();
+        if (!await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.MembersRead, ct))
+            return Results.Forbid();
         if (page < 1 || page > 1000) return Results.BadRequest();
 
         var tenantId = current.ActiveTenantId!.Value;
@@ -267,7 +282,9 @@ public static class TenantWorkspace
         int page = 1, CancellationToken ct = default)
     {
         http.Response.Headers.CacheControl = "no-store";
-        if (!await IsActiveLocalOwnerAsync(current, db, ct)) return Results.Forbid();
+        if (!await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.RolesRead, ct))
+            return Results.Forbid();
         if (page < 1 || page > 1000) return Results.BadRequest();
 
         var tenantId = current.ActiveTenantId!.Value;
@@ -287,7 +304,9 @@ public static class TenantWorkspace
         int page = 1, CancellationToken ct = default)
     {
         http.Response.Headers.CacheControl = "no-store";
-        if (!await IsActiveLocalOwnerAsync(current, db, ct)) return Results.Forbid();
+        if (!await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.GroupsRead, ct))
+            return Results.Forbid();
         if (page < 1 || page > 1000) return Results.BadRequest();
 
         var tenantId = current.ActiveTenantId!.Value;
