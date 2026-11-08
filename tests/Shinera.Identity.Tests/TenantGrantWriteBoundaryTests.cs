@@ -79,7 +79,7 @@ public sealed class TenantGrantWriteBoundaryTests
                     () => db.SaveChangesAsync());
                 db.ChangeTracker.Clear();
 
-                db.UserRoles.Add(new UserRole(tenant, member, role));
+                db.UserRoles.Add(new UserRole(tenant, member, role) { RowVersion = [1] });
                 await db.SaveChangesAsync();
             }
 
@@ -95,7 +95,7 @@ public sealed class TenantGrantWriteBoundaryTests
                 await Assert.ThrowsAsync<UnauthorizedAccessException>(
                     () => db.SaveChangesAsync());
                 db.ChangeTracker.Clear();
-                db.RolePermissions.Add(new RolePermission(tenant, role, permission));
+                db.RolePermissions.Add(new RolePermission(tenant, role, permission) { RowVersion = [1] });
                 await db.SaveChangesAsync();
             }
 
@@ -116,22 +116,22 @@ public sealed class TenantGrantWriteBoundaryTests
             var actorId = current.UserId!.Value;
             var tenant = new Tenant(tenantId, null, "Salon", "new-tenant", "salon.test")
             {
-                IsActive = true,
+                RowVersion = [1], IsActive = true,
             };
             var user = new User(actorId, tenantId, "owner", "owner@salon.test",
                 "Tenant", "Owner", UserType.Tenant)
             {
-                IsActive = true, NormalizedUserName = "OWNER",
+                RowVersion = [1], IsActive = true, NormalizedUserName = "OWNER",
                 NormalizedEmail = "OWNER@SALON.TEST", PasswordHash = "fixture",
             };
             var owner = new Role(tenantId, "Owner", "Provisioned")
             {
-                Scope = RoleScope.Tenant,
+                RowVersion = [1], Scope = RoleScope.Tenant,
             };
             db.Tenants.Add(tenant);
             db.Users.Add(user);
             db.Roles.Add(owner);
-            db.UserRoles.Add(new UserRole(tenantId, user.Id, owner.Id));
+            db.UserRoles.Add(new UserRole(tenantId, user.Id, owner.Id) { RowVersion = [1] });
             await db.SaveChangesAsync();
 
             db.ChangeTracker.Clear();
