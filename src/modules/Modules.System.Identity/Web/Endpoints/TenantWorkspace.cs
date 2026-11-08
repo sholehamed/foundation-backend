@@ -251,7 +251,7 @@ public static class TenantWorkspace
 
     public static async Task<IResult> GetCurrentUiAccess(
         ITenantContext current, IdentityDbContext db, HttpContext http,
-        IConfiguration configuration, CancellationToken ct)
+        CancellationToken ct)
     {
         http.Response.Headers.CacheControl = "no-store";
         if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
