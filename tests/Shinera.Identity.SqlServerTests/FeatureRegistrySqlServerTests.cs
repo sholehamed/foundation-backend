@@ -102,7 +102,7 @@ public sealed class FeatureRegistrySqlServerTests
             var preview = await registry.PreviewAsync();
             Assert.True(preview.CanApply);
             Assert.True(preview.HasPending);
-            Assert.Equal(29, preview.Changes.Count); // module + resource + 9x(permission, UI, link)
+            Assert.Equal(32, preview.Changes.Count); // module + resource + 10x(permission, UI, link)
             Assert.Empty(await db.Permissions.AsNoTracking().ToListAsync());
 
             var accepted = await registry.ApplyAsync(preview.Fingerprint);
