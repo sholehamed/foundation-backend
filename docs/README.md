@@ -44,3 +44,5 @@
 - [FR-13A — Staging readiness, read-only preflight and deployment gates](development/FR-13A-STAGING-READINESS.md)
 
 - [FR-13B-1 — Owner-created inactive Tenant employees, SQL audit and activation boundaries](development/FR-13B1-INACTIVE-TENANT-MEMBER-CREATE.md)
+
+- [FR-13B-2 — Secure one-time Tenant member invitation and activation](development/FR-13B2-INVITATION-ACTIVATION.md)
