@@ -34,3 +34,5 @@
 - [FR-05A — Nested System PAGE/ACTION UI Registry](development/FR-05A-NESTED-UI-REGISTRY.md)
 
 - [FR-06A — Live System UI key access endpoint, pilot route/action](development/FR-06A-LIVE-SYSTEM-UI-ACCESS.md)
+
+- [FR-07A — Bulk live System PAGE/ACTION access projection](development/FR-07A-BULK-SYSTEM-UI-ACCESS.md)

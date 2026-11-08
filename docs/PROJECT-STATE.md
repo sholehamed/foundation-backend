@@ -1,5 +1,13 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-07A — one-request System UI permission snapshot (2026-11-08)
+
+- Added SystemAdministrator-only `GET /api/System/UiAccess/me`, returning 80 code-owned live UI decisions (45 PAGE + 35 ACTION) with exact matching active metadata, current-user Master-scoped grants, direct deny precedence and no-store. Existing single-key endpoint retains compatibility; no caller-controlled grants or tenant identity.
+- Registered 26 previously missing CRUD/state/lock/sync/membership ACTIONs, all permission-linked and no new menus/grants. Admin/User sensitive actions default inactive. CI gates include updated Identity and disposable SQL Server Registry counts.
+- Companion Angular guards all 45 executable pages and uses reusable action controls with one request per navigation; rollout flag remains default-OFF until explicit Registry Apply/grants. API policies remain separately authoritative.
+- [Implementation/rollout reference](development/FR-07A-BULK-SYSTEM-UI-ACCESS.md).
+
+
 ## FR-06A — live System UI key checks (2026-11-07)
 
 - **First opt-in route/action pilot:** [FR-06A runbook](development/FR-06A-LIVE-SYSTEM-UI-ACCESS.md). New `GET /api/System/UiAccess/me/{key}` under live `SystemAdministrator` returns one current-user UI permission decision with no-store and no role/user/tenant parameters. It requires verified active root PAGE + optional child PAGE/ACTION, single correct PermissionUiResource link and live System master-role/direct/group grant, direct deny precedence. Unknown/disabled/misconfigured entries fail closed.
