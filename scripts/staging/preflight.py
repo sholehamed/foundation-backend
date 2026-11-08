@@ -20,6 +20,13 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def _valid_dns_name(value):
+    return (isinstance(value, str) and 1 <= len(value) <= 253 and all(
+        re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+        for label in value.split(".")
+    ))
+
+
 def _hostname(name, origin):
     if not isinstance(origin, str):
         raise PreflightError(f"{name} must be an HTTPS origin")
@@ -34,7 +41,7 @@ def _hostname(name, origin):
             not parsed.netloc or origin != f"https://{parsed.netloc}"):
         raise PreflightError(f"{name} must be an HTTPS origin without path, credentials, query or fragment")
     host = parsed.hostname.lower()
-    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", host):
+    if not _valid_dns_name(host):
         raise PreflightError(f"{name} contains an invalid hostname")
     if port is not None and port <= 0:
         raise PreflightError(f"{name} has invalid port")
@@ -49,8 +56,7 @@ def validate(config):
     if stage not in ("baseline", "tenant-bff-pilot"):
         raise PreflightError("stage must be baseline or tenant-bff-pilot")
     zone = config.get("tenant_base_domain")
-    if not isinstance(zone, str) or zone != zone.lower() or not re.fullmatch(
-            r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", zone):
+    if not isinstance(zone, str) or zone != zone.lower() or not _valid_dns_name(zone):
         raise PreflightError("tenant_base_domain must be a valid lowercase DNS suffix")
     if not (zone.startswith("staging.") or zone.endswith(".test") or zone.endswith(".localhost")):
         raise PreflightError("tenant_base_domain needs a dedicated staging.* or .test/.localhost zone")
