@@ -32,6 +32,10 @@ public static class TenantWorkspace
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members", GetMembers)
             .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/roles", GetMemberRoles)
+            .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/roles", ReplaceMemberRoles)
+            .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/roles", GetRoles)
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/roles", CreateRole)
@@ -229,14 +233,16 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.RolesAssignPermissions
                 or TenantWorkspacePermissionCatalog.RolesCreate
                 or TenantWorkspacePermissionCatalog.RolesUpdate
-                or TenantWorkspacePermissionCatalog.RolesChangeState)
+                or TenantWorkspacePermissionCatalog.RolesChangeState
+                or TenantWorkspacePermissionCatalog.MembersAssignRoles)
                 allowed = allowed && current.WritableTenantIds.Contains(tenantId);
             // IAM writes also require a live local Owner, independent of
             // delegated read/group permissions.
             if (definition.Key is TenantWorkspacePermissionCatalog.RolesAssignPermissions
                 or TenantWorkspacePermissionCatalog.RolesCreate
                 or TenantWorkspacePermissionCatalog.RolesUpdate
-                or TenantWorkspacePermissionCatalog.RolesChangeState)
+                or TenantWorkspacePermissionCatalog.RolesChangeState
+                or TenantWorkspacePermissionCatalog.MembersAssignRoles)
                 allowed = allowed && await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(
                     current, db, ct);
             entries.Add(new UiAccessItem(
@@ -273,7 +279,9 @@ public static class TenantWorkspace
             canUpdateRoles = await TenantRoleLifecycleWriter.CanWriteAsync(
                 current, db, TenantWorkspacePermissionCatalog.RolesUpdate, ct),
             canChangeRoleState = await TenantRoleLifecycleWriter.CanWriteAsync(
-                current, db, TenantWorkspacePermissionCatalog.RolesChangeState, ct)
+                current, db, TenantWorkspacePermissionCatalog.RolesChangeState, ct),
+            canAssignMemberRoles = await TenantMemberRoleAssignmentWriter.CanManageAsync(
+                current, db, ct)
         });
     }
 
@@ -306,6 +314,64 @@ public static class TenantWorkspace
             .ToListAsync(ct);
         return Results.Ok(new DirectoryPage<WorkspaceMemberDto>(
             rows.Take(DirectoryPageSize).ToArray(), page, rows.Count > DirectoryPageSize));
+    }
+
+
+    // FR-12D: direct UserRole matrix for one active tenant; never an
+    // effective-permission or cross-tenant membership read.
+    public static async Task<IResult> GetMemberRoles(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        Guid id, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.MembersRead, ct) ||
+            !await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.RolesRead, ct))
+            return Results.Forbid();
+        var matrix = await TenantMemberRoleAssignmentWriter.ReadAsync(
+            current, db, id, ct);
+        return matrix is null ? Results.NotFound() : Results.Ok(matrix);
+    }
+
+    public static async Task<IResult> ReplaceMemberRoles(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        Guid id, TenantMemberRoleAssignmentWriter.ReplaceRequest request,
+        CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var version = await TenantMemberRoleAssignmentWriter.ReplaceAsync(
+                current, db, id, request, ct);
+            return Results.Ok(new { version });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (TenantMemberRoleValidationException e)
+        {
+            return Results.Problem(statusCode: 400,
+                title: "Invalid Tenant member role request", detail: e.Message);
+        }
+        catch (TenantMemberRoleConflictException e)
+        {
+            return Results.Problem(statusCode: 409,
+                title: "Tenant member roles changed", detail: e.Message);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Problem(statusCode: 409,
+                title: "Tenant member role version conflict");
+        }
+        catch (DbUpdateException)
+        {
+            return Results.Problem(statusCode: 409,
+                title: "Tenant member role write conflict");
+        }
+        catch (SqlException e) when (e.Number is 1205 or 2601 or 2627 or 3960)
+        {
+            return Results.Problem(statusCode: 409,
+                title: "Concurrent Tenant member role assignment");
+        }
     }
 
     public static async Task<IResult> GetRoles(
