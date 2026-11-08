@@ -1,3 +1,10 @@
+## FR-13B-1 — Owner-controlled inactive Tenant member creation (2026-11-09)
+
+- [Issue #72](https://github.com/sholehamed/foundation-backend/issues/72): Add code-owned TENANT.MEMBERS.CREATE ACTION, owner-only live scoped POST /api/tenant/workspace/members, disabled User with random undisclosed password hash, zero role/group/user grants, 10/min authenticated-user rate limit, append-only TenantMemberLifecycleAuditEntries in SQL transaction. SQL migration and operator catalog Preview/Apply are NOT automatic.
+- FR-13B-1 intentionally **does not** invite, activate, email or grant login access; user remains IsActive=false. Separate secure one-time invitation/activation and live staff browser E2E are required before calling the Tenant Admin onboarding journey complete.
+- Tests: disposable SQL + existing Identity/Registry + FR-12F catalog count; PR CI must pass before merge. [Detailed acceptance](development/FR-13B1-INACTIVE-TENANT-MEMBER-CREATE.md).
+- Staging (FR-13A) remains unprovisioned; Production BFF/Registry/UI defaults unchanged.
+
 ## FR-13A — operational staging prerequisites (2026-11-09)
 
 - New tracker: [FR-13 #70](https://github.com/sholehamed/foundation-backend/issues/70). The **staging environment is NOT provisioned** and Production BFF/UI/registry flags stay OFF.
