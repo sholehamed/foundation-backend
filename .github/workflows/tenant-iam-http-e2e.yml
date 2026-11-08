@@ -58,6 +58,8 @@ jobs:
         run: |
           dotnet build src/Web/Web.csproj -c Release --no-restore
           dotnet build tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj -c Release --no-restore
+      - name: Initialize ephemeral database for integration job
+        run: dotnet run --project tests/Shinera.Identity.E2E.SqlMutator --no-build -c Release -- ensure-e2e-database
       - name: Signed JWT real HTTP Tenant role -> permission -> member -> revoke
         shell: bash
         run: |
