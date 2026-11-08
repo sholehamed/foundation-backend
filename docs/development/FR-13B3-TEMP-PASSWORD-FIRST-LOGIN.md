@@ -14,6 +14,10 @@ This is a parallel onboarding method, not a replacement for email invitations. R
 6. **No session/JWT from either step.** Response is only `{passwordChanged:true,requiresRelogin:true}`. Angular clears both input passwords and challenge, shows success and navigates to ordinary login. A completely fresh normal authentication with the permanent password is required. Existing `UserCredentialAuthenticator` already refuses users with `IsActive=false`.
 7. Owner may reissue the credential after in-person identity re-verification. All prior unused credentials and challenges are invalidated. Credentials for System, Owner, active staff or another Tenant are never issuable. Creating an inactive member does **not** implicitly send/reveal a temp password; email invitation remains an independent Owner-controlled action.
 
+## Known limitation: email is still mandatory for member creation
+
+This method **does not send** an email and works without an SMTP provider. However, the earlier FR-13B-1 `CreatePendingMember` API and User SQL model still currently require a valid employee email address when the Owner initially creates the member. Do not invent a placeholder email to bypass validation. Fully email-less staff creation needs a separate reviewed SQL/User/email-nullability migration and invitation guard: [FR-13B-3A #78](https://github.com/sholehamed/foundation-backend/issues/78). This implementation intentionally does not weaken existing signup/email-invitation contracts.
+
 ## Database / compatibility
 
 - Migration `20261109030000_tenantmemberfirstlogin` adds `TenantMemberTemporaryCredentials` (TenantId, TargetUserId, Owner, password hash, expiry, attempts, used/revoked timestamps) and `TenantMemberFirstLoginChallenges` (TenantId, target, credential FK, SHA-256 of random challenge, expiry, used/revoked timestamps). SQL Server only.
