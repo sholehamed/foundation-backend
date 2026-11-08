@@ -41,8 +41,10 @@ async function api(page: Page, method: string, path: string, body?: unknown,
 }
 
 async function login(page: Page, username: string): Promise<void> {
-  await page.goto(tenantHost + '/dashboard/members');
+  console.log('FR12G-C stage: opening Tenant dashboard');
+  await page.goto(tenantHost + '/dashboard/members', { waitUntil: 'domcontentloaded', timeout: 30000 });
   await expect(page).toHaveURL(/\/auth\/login/, { timeout: 30_000 });
+  console.log('FR12G-C stage: Tenant redirect to Identity via BFF');
   await page.getByRole('button', { name: /ورود امن از طریق سرویس هویت/ }).click();
 
   // This is the REAL OpenIddict authorization redirect through the
@@ -51,16 +53,21 @@ async function login(page: Page, username: string): Promise<void> {
     /identity\.shinera\.localhost:8443\/auth\/login/,
     { timeout: 30_000 },
   );
+  console.log('FR12G-C stage: Identity redirect arrived; checking interactive login');
   const fields = page.locator('app-custom-input input');
   await expect(fields).toHaveCount(2);
+  console.log('FR12G-C stage: Identity form visible, filling fixture credentials');
   await fields.nth(0).fill(username);
   await fields.nth(1).fill(password!);
   await page.locator('#captcha-code').fill('ABCDE');
+  console.log('FR12G-C stage: submitting Identity interactive login');
   await page.getByRole('button', { name: 'ورود', exact: true }).click();
+  console.log('FR12G-C stage: waiting for BFF OIDC callback to return to Tenant');
   await expect(page).toHaveURL(
     /e2e-http-ci\.shinera\.localhost:8443\/dashboard\/members/,
     { timeout: 45_000 },
   );
+  console.log('FR12G-C stage: returned to Tenant dashboard');
 }
 
 test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permissions and revocation', async ({
@@ -79,7 +86,9 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
   });
 
   try {
+    console.log('FR12G-C stage: owner login starts');
     await login(owner, 'e2e-tenant');
+    console.log('FR12G-C stage: owner login completed');
     const cookies = await ownerContext.cookies(tenantHost);
     const ticket = cookies.find(c => c.name === '__Host-Foundation.Bff');
     expect(ticket, 'Real secure BFF cookie must be present').toBeDefined();
@@ -87,6 +96,7 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
     expect(ticket!.httpOnly).toBe(true);
     expect(ticket!.domain).toBe('e2e-http-ci.shinera.localhost');
 
+    console.log('FR12G-C stage: validating Owner BFF session');
     const live = await api(owner, 'GET', '/bff/session');
     expect(live.status).toBe(200);
     expect(live.data.authenticated).toBe(true);
@@ -106,6 +116,7 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
     expect((await ownerContext.cookies(secondTenantHost)).some(
       c => c.name === '__Host-Foundation.Bff')).toBe(false);
 
+    console.log('FR12G-C stage: reading Tenant Members via BFF Cookie');
     const members = await api(owner, 'GET', '/api/tenant/workspace/members');
     expect(members.status).toBe(200);
     const staffRecord = members.data.items.find(
@@ -118,6 +129,7 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
     });
     expect(raw.status).toBe(400);
 
+    console.log('FR12G-C stage: creating audited Tenant role with CSRF');
     const created = await api(owner, 'POST', '/api/tenant/workspace/roles', {
       name: 'Browser BFF Reception', description: 'Real browser OIDC fixture',
     }, true);
@@ -145,7 +157,9 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
       }, true);
     expect(assigned.status).toBe(200);
 
+    console.log('FR12G-C stage: staff login starts');
     await login(staff, 'e2e-iam-staff');
+    console.log('FR12G-C stage: staff login completed');
     const staffAccess = await api(staff, 'GET', '/api/tenant/workspace/members');
     expect(staffAccess.status).toBe(200);
     const staffBffSession = await api(staff, 'GET', '/bff/session');
@@ -162,11 +176,13 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
 
     // Staff's existing genuine HttpOnly BFF cookie remains the same;
     // server-side live roles deny without staff logout/re-login.
+    console.log('FR12G-C stage: verifying live permission revoke on same Cookie');
     const forbidden = await api(staff, 'GET', '/api/tenant/workspace/members');
     expect(forbidden.status).toBe(403);
     const staffStillAuthenticated = await api(staff, 'GET', '/bff/session');
     expect(staffStillAuthenticated.status).toBe(200);
 
+    console.log('FR12G-C stage: revoking Owner BFF Cookie ticket');
     const ownerLogout = await api(owner, 'POST', '/bff/auth/logout', {}, true);
     expect(ownerLogout.status).toBe(204);
     expect((await api(owner, 'GET', '/bff/session')).status).toBe(401);
