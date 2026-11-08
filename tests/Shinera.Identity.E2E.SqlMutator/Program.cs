@@ -17,9 +17,10 @@ var isTenantFixture = args.Length == 1 && args[0] == "seed-tenant-iam";
 var isTenantAudit = args.Length == 1 && args[0] == "assert-tenant-iam-audit";
 var isRevoke = args.Length == 2 && args[0] == "revoke-seeded-superadmin";
 var isAuditCheck = args.Length == 3 && args[0] == "assert-denied-audit";
+Guid subject = Guid.Empty;
 var subjectValid = (isTenantFixture || isTenantAudit) ||
-    (args.Length >= 2 && Guid.TryParse(args[1], out var parsedSubject) &&
-     parsedSubject != Guid.Empty);
+    (args.Length >= 2 && Guid.TryParse(args[1], out subject) &&
+     subject != Guid.Empty);
 if (!(isRevoke || isAuditCheck || isTenantFixture || isTenantAudit) ||
     !subjectValid ||
     Environment.GetEnvironmentVariable("SHINERA_E2E_DB_MUTATION") != optIn ||
@@ -59,10 +60,10 @@ if (isTenantFixture)
     if (string.IsNullOrWhiteSpace(passwordForFixture) || passwordForFixture.Length < 12)
         throw new InvalidOperationException("Explicit CI-only fixture password required.");
 
-    var subject = new TenantContext();
+    var tenantContext = new TenantContext();
     var options = new DbContextOptionsBuilder<IdentityDbContext>()
         .UseSqlServer(connectionString).Options;
-    await using var db = new IdentityDbContext(options, subject);
+    await using var db = new IdentityDbContext(options, tenantContext);
     await using var tx = await db.Database.BeginTransactionAsync(
         IsolationLevel.Serializable);
     var tenant = await db.Tenants.SingleAsync(x =>
@@ -70,7 +71,7 @@ if (isTenantFixture)
     var owner = await db.Users.SingleAsync(x =>
         x.TenantId == tenant.Id && x.UserType == UserType.Tenant &&
         x.NormalizedUserName == "E2E-TENANT" && x.IsActive);
-    subject.InitializeTenant(owner.Id, tenant.Id, [tenant.Id], [tenant.Id], tenant.Id);
+    tenantContext.InitializeTenant(owner.Id, tenant.Id, [tenant.Id], [tenant.Id], tenant.Id);
     var ownerRole = await db.Roles.SingleOrDefaultAsync(x =>
         x.TenantId == tenant.Id && x.NormalizedName == "OWNER");
     if (ownerRole is null)
