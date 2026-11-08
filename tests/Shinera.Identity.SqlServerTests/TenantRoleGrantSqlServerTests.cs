@@ -901,6 +901,70 @@ public sealed class TenantRoleGrantSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Expired_invitation_cannot_activate_even_with_correct_email_token()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "expire.staff", "expire.staff@example.test", "Expire", "Staff"));
+            var sender = new FakeInvitationSender();
+            await TenantMemberInvitationWriter.InviteAsync(actor, db, sender, member.Id);
+            // Move BOTH clocks so the SQL ExpiresAtUtc > CreatedAtUtc
+            // constraint remains valid but the token is now expired.
+            await db.Database.ExecuteSqlRawAsync("""
+                UPDATE [dbo].[TenantMemberInvitations]
+                SET [CreatedAtUtc]=DATEADD(HOUR,-2,[CreatedAtUtc]),
+                    [ExpiresAtUtc]=DATEADD(HOUR,-2,[ExpiresAtUtc])
+                """);
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            await Assert.ThrowsAsync<TenantInvitationValidationException>(() =>
+                TenantMemberInvitationWriter.ActivateAsync(anonymous, hasher,
+                    new TenantMemberInvitationWriter.ActivateRequest(
+                        "tenant-role-grants", sender.Token, "P@ssword-For-St4ff!")));
+            Assert.False((await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).IsActive);
+        });
+    }
+
+    [Fact]
+    public async Task Explicit_Owner_deny_or_inactive_invite_ACTION_blocks_dispatch()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "deny.invite", "deny.invite@example.test", "Deny", "Invite"));
+            var invitePermission = await setup.Permissions.SingleAsync(x =>
+                x.Code == TenantWorkspacePermissionCatalog.MembersInvite);
+            setup.UserPermissions.Add(new UserPermission
+            {
+                TenantId = actor.ActiveTenantId!.Value, UserId = actor.UserId!.Value,
+                PermissionId = invitePermission.Id, IsGranted = false
+            });
+            await setup.SaveChangesAsync();
+            Assert.False(await TenantMemberInvitationWriter.CanInviteAsync(actor, db, default));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantMemberInvitationWriter.InviteAsync(actor, db,
+                    new FakeInvitationSender(), member.Id));
+            setup.UserPermissions.Remove(await setup.UserPermissions.SingleAsync(x =>
+                x.TenantId == actor.ActiveTenantId && x.UserId == actor.UserId &&
+                x.PermissionId == invitePermission.Id));
+            var ui = await setup.UiResources.SingleAsync(x =>
+                x.Key == "tenant.workspace.members.invite");
+            ui.IsActive = false;
+            await setup.SaveChangesAsync();
+            Assert.False(await TenantMemberInvitationWriter.CanInviteAsync(actor, db, default));
+        });
+    }
+
     private sealed class FakeInvitationSender : ITenantInvitationSender
     {
         public bool IsConfigured { get; set; } = true;
