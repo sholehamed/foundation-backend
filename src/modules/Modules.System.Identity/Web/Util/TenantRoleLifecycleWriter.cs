@@ -198,6 +198,13 @@ public static class TenantRoleLifecycleWriter
                 x.Scope == RoleScope.Tenant && x.NormalizedName != "OWNER", ct);
             if (role is null)
                 throw new UnauthorizedAccessException("Role is outside authorized scope.");
+            // A request normally has a fresh DbContext, but always compare
+            // against SQL's current RowVersion, not an earlier tracked role
+            // (e.g. after FR-12B updated its CAS token on the same context).
+            await db.Entry(role).ReloadAsync(ct);
+            if (role.TenantId != tenantId || role.Scope != RoleScope.Tenant ||
+                role.NormalizedName == "OWNER")
+                throw new UnauthorizedAccessException("Role is outside authorized scope.");
             if (role.RowVersion is null || !role.RowVersion.SequenceEqual(expected))
                 throw new TenantRoleLifecycleConflictException("Role changed; reload before saving.");
 
