@@ -10,6 +10,7 @@ public static class TenantWorkspacePermissionCatalog
     public const string RolesRead = "TENANT.ROLES.READ";
     public const string GroupsRead = "TENANT.GROUPS.READ";
     public const string BranchesManage = "TENANT.BRANCHES.MANAGE";
+    public const string RolesAssignPermissions = "TENANT.ROLES.ASSIGN-PERMISSIONS";
 
     public sealed record Definition(string Key, string Kind, string Route, string Name, string UiKey);
     public static IReadOnlyList<Definition> Definitions { get; } =
@@ -17,7 +18,8 @@ public static class TenantWorkspacePermissionCatalog
         new(MembersRead, "PAGE", "/dashboard/members", "View tenant members", "tenant.workspace.members"),
         new(RolesRead, "PAGE", "/dashboard/roles", "View tenant roles", "tenant.workspace.roles"),
         new(GroupsRead, "PAGE", "/dashboard/groups", "View tenant groups", "tenant.workspace.groups"),
-        new(BranchesManage, "ACTION", "/dashboard/branches", "Create/update tenant branches", "tenant.workspace.branches.manage")
+        new(BranchesManage, "ACTION", "/dashboard/branches", "Create/update tenant branches", "tenant.workspace.branches.manage"),
+        new(RolesAssignPermissions, "ACTION", "/dashboard/roles", "Assign tenant role permissions", "tenant.workspace.roles.assign-permissions")
     ];
 
     public static bool IsKnownKey(string key) =>
