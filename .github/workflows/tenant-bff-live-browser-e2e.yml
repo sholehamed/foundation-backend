@@ -48,7 +48,6 @@ jobs:
       Identity__Bff__SqlServer__Enabled: 'false'
       SHINERA_E2E_BASE_URL: 'http://127.0.0.1:5069'
       NO_PROXY: 'localhost,127.0.0.1,identity.shinera.localhost,e2e-http-ci.shinera.localhost,other.shinera.localhost'
-      no_proxy: 'localhost,127.0.0.1,identity.shinera.localhost,e2e-http-ci.shinera.localhost,other.shinera.localhost'
     steps:
       - uses: actions/checkout@v4
         with:
