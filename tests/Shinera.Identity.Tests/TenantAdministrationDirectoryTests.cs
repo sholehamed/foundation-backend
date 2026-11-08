@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Domain.Entities;
@@ -41,7 +42,7 @@ public sealed class TenantAdministrationDirectoryTests
         await db.SaveChangesAsync();
 
         var http = new DefaultHttpContext();
-        var permissions = await TenantWorkspace.GetAdministrationCapabilities(current, db, http, default);
+        var permissions = await TenantWorkspace.GetAdministrationCapabilities(current, db, http, new ConfigurationBuilder().Build(), default);
         Assert.IsAssignableFrom<IResult>(permissions);
         var members = Assert.IsType<Ok<TenantWorkspace.DirectoryPage<TenantWorkspace.WorkspaceMemberDto>>>(
             await TenantWorkspace.GetMembers(current, db, http));
@@ -87,7 +88,7 @@ public sealed class TenantAdministrationDirectoryTests
         system.InitializeSystem(Guid.NewGuid(), true);
         AssertForbidden(await TenantWorkspace.GetMembers(system, db, new DefaultHttpContext()));
         AssertForbidden(await TenantWorkspace.GetAdministrationCapabilities(
-            system, db, new DefaultHttpContext(), default));
+            system, db, new DefaultHttpContext(), new ConfigurationBuilder().Build(), default));
     }
 
     [Fact]
