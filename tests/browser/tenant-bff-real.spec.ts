@@ -40,7 +40,7 @@ async function api(page: Page, method: string, path: string, body?: unknown,
   }, { method, path, body, csrf });
 }
 
-async function login(page: Page, username: string): Promise<void> {
+async function login(page: Page, username: string, targetPath = '/dashboard/members'): Promise<void> {
   // Log only endpoint path + response code; never log credentials,
   // authorization parameters, cookies, code, code_verifier or state.
   page.on('response', response => {
@@ -70,7 +70,7 @@ async function login(page: Page, username: string): Promise<void> {
     }
   });
   console.log('FR12G-C stage: opening Tenant dashboard');
-  await page.goto(tenantHost + '/dashboard/members', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.goto(tenantHost + targetPath, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await expect(page).toHaveURL(/\/auth\/login/, { timeout: 30_000 });
   console.log('FR12G-C stage: Tenant redirect to Identity via BFF');
   await page.getByRole('button', { name: /ورود امن از طریق سرویس هویت/ }).click();
@@ -105,7 +105,7 @@ async function login(page: Page, username: string): Promise<void> {
       return 'unavailable';
     }
   }, { timeout: 45_000, intervals: [300, 500, 1000] })
-    .toBe('e2e-http-ci.shinera.localhost:8443/dashboard/members');
+    .toBe('e2e-http-ci.shinera.localhost:8443' + targetPath);
   console.log('FR12G-C stage: returned to Tenant dashboard');
 }
 
@@ -213,13 +213,25 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
       }, true);
     expect(revoked.status).toBe(200);
 
-    // Staff's existing genuine HttpOnly BFF cookie remains the same;
-    // server-side live roles deny without staff logout/re-login.
-    console.log('FR12G-C stage: verifying live permission revoke on same Cookie');
+    // IdentityBffSessionAccessValidator deliberately invalidates a previously
+    // issued BFF ticket whenever its role/permission fingerprint changes.
+    // The old cookie must be rejected immediately; do NOT weaken this to
+    // keeping a stale browser principal authenticated.
+    console.log('FR12G-C stage: verifying stale Staff BFF Cookie revocation');
+    const staleAccess = await api(staff, 'GET', '/api/tenant/workspace/members');
+    expect(staleAccess.status).toBe(401);
+    const staleSession = await api(staff, 'GET', '/bff/session');
+    expect(staleSession.status).toBe(401);
+
+    // Clear both app and Identity-host cookies to force fresh Code+PKCE login.
+    // With a newly issued valid ticket, the live Tenant permission evaluator
+    // must independently deny the now-revoked permission with HTTP 403.
+    await staffContext.clearCookies();
+    console.log('FR12G-C stage: Staff re-login after grant fingerprint revocation');
+    await login(staff, 'e2e-iam-staff', '/dashboard');
+    expect((await api(staff, 'GET', '/bff/session')).status).toBe(200);
     const forbidden = await api(staff, 'GET', '/api/tenant/workspace/members');
     expect(forbidden.status).toBe(403);
-    const staffStillAuthenticated = await api(staff, 'GET', '/bff/session');
-    expect(staffStillAuthenticated.status).toBe(200);
 
     console.log('FR12G-C stage: revoking Owner BFF Cookie ticket');
     const ownerLogout = await api(owner, 'POST', '/bff/auth/logout', {}, true);
