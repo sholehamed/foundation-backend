@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -577,6 +578,117 @@ public sealed class TenantRoleGrantSqlServerTests
                 tenantId, roleId, Guid.NewGuid()));
             await Assert.ThrowsAsync<UnauthorizedAccessException>(
                 () => db.SaveChangesAsync());
+        });
+    }
+
+
+    [Fact]
+    public async Task Pending_member_is_inactive_uncredentialed_unassigned_and_audited()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, owner, _, _, _) = await SeedAsync(setup, options);
+            await using var db = ctx;
+            var hasher = new PasswordHasher<User>();
+            Assert.True(await TenantPendingMemberWriter.CanCreateAsync(owner, db, default));
+            var response = await TenantWorkspace.CreatePendingMember(owner, db,
+                new DefaultHttpContext(), hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "  09121112233  ", "staff@local.test", "  Local ", " Staff "), default);
+            Assert.Equal(StatusCodes.Status200OK,
+                Assert.IsAssignableFrom<IStatusCodeHttpResult>(response).StatusCode);
+            var member = await db.Users.AsNoTracking().SingleAsync(x =>
+                x.TenantId == owner.ActiveTenantId && x.NormalizedUserName == "09121112233");
+            Assert.False(member.IsActive);
+            Assert.False(member.EmailConfirmed);
+            Assert.Equal(UserType.Tenant, member.UserType);
+            Assert.Equal(owner.ActiveTenantId, member.TenantId);
+            Assert.Equal("Local", member.FirstName);
+            Assert.Equal("Staff", member.LastName);
+            Assert.False(string.IsNullOrEmpty(member.PasswordHash));
+            Assert.Equal(PasswordVerificationResult.Failed,
+                hasher.VerifyHashedPassword(member, member.PasswordHash, "password"));
+            Assert.False(await db.UserRoles.AsNoTracking().AnyAsync(x => x.UserId == member.Id));
+            Assert.False(await db.UserGroups.AsNoTracking().AnyAsync(x => x.UserId == member.Id));
+            Assert.False(await db.UserPermissions.AsNoTracking().AnyAsync(x => x.UserId == member.Id));
+            var events = await db.Database.SqlQueryRaw<string>(
+                "SELECT [Action] AS [Value] FROM [dbo].[TenantMemberLifecycleAuditEntries]")
+                .ToArrayAsync();
+            Assert.Equal(["create_inactive"], events);
+            await Assert.ThrowsAsync<SqlException>(() => db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM [dbo].[TenantMemberLifecycleAuditEntries]"));
+        });
+    }
+
+    [Fact]
+    public async Task Pending_member_rejects_duplicates_invalid_inputs_missing_grants_and_nonowner()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, owner, _, _, _) = await SeedAsync(setup, options);
+            await using var db = ctx;
+            var hasher = new PasswordHasher<User>();
+            var valid = new TenantPendingMemberWriter.CreateRequest(
+                "staff.new", "staff.new@local.test", "First", "Last");
+            await Assert.ThrowsAsync<TenantMemberCreateValidationException>(() =>
+                TenantPendingMemberWriter.CreateAsync(owner, db, hasher,
+                    new TenantPendingMemberWriter.CreateRequest(
+                        "a", "bad", "First", "Last")));
+            await TenantPendingMemberWriter.CreateAsync(owner, db, hasher, valid);
+            await Assert.ThrowsAsync<TenantMemberCreateConflictException>(() =>
+                TenantPendingMemberWriter.CreateAsync(owner, db, hasher,
+                    new TenantPendingMemberWriter.CreateRequest(
+                        "staff.new", "alternate@local.test", "First", "Last")));
+            await Assert.ThrowsAsync<TenantMemberCreateConflictException>(() =>
+                TenantPendingMemberWriter.CreateAsync(owner, db, hasher,
+                    new TenantPendingMemberWriter.CreateRequest(
+                        "staff.other", "staff.new@local.test", "First", "Last")));
+
+            var staff = new User(Guid.NewGuid(), owner.ActiveTenantId!.Value,
+                "nonowner", "nonowner@local.test", "Not", "Owner", UserType.Tenant)
+            {
+                IsActive = true, NormalizedUserName = "NONOWNER",
+                NormalizedEmail = "NONOWNER@LOCAL.TEST", PasswordHash = "fixture"
+            };
+            setup.Users.Add(staff);
+            await setup.SaveChangesAsync();
+            var staffContext = new TenantContext();
+            staffContext.InitializeTenant(staff.Id, owner.ActiveTenantId.Value,
+                [owner.ActiveTenantId.Value], [owner.ActiveTenantId.Value],
+                owner.ActiveTenantId.Value);
+            await using var nonownerDb = new IdentityDbContext(options, staffContext);
+            Assert.False(await TenantPendingMemberWriter.CanCreateAsync(
+                staffContext, nonownerDb, default));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantPendingMemberWriter.CreateAsync(staffContext, nonownerDb, hasher, valid));
+
+            var action = await setup.UiResources.SingleAsync(x =>
+                x.Key == "tenant.workspace.members.create");
+            action.IsActive = false;
+            await setup.SaveChangesAsync();
+            Assert.False(await TenantPendingMemberWriter.CanCreateAsync(owner, db, default));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantPendingMemberWriter.CreateAsync(owner, db, hasher, valid));
+        });
+    }
+
+    [Fact]
+    public async Task Pending_member_audit_failure_rolls_back_new_user()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, owner, _, _, _) = await SeedAsync(setup, options);
+            await using var db = ctx;
+            await setup.Database.ExecuteSqlRawAsync(
+                "DROP TABLE [dbo].[TenantMemberLifecycleAuditEntries]");
+            await Assert.ThrowsAsync<SqlException>(() =>
+                TenantPendingMemberWriter.CreateAsync(owner, db, new PasswordHasher<User>(),
+                    new TenantPendingMemberWriter.CreateRequest(
+                        "no.audit", "no.audit@local.test", "No", "Audit")));
+            db.ChangeTracker.Clear();
+            Assert.False(await db.Users.AsNoTracking().AnyAsync(x =>
+                x.TenantId == owner.ActiveTenantId &&
+                x.NormalizedUserName == "NO.AUDIT"));
         });
     }
 
