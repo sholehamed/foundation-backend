@@ -1,4 +1,9 @@
 using System.Data;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Modules.System.Identity.Application.Services;
+using Modules.System.Identity.Domain.Entities;
+using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using Microsoft.Data.SqlClient;
 using Modules.System.Identity.Infrastructure.Persistence;
 
@@ -8,11 +13,17 @@ using Modules.System.Identity.Infrastructure.Persistence;
 const string optIn = "stale-jwt-ci-only";
 var databaseName = Environment.GetEnvironmentVariable("DBNAME") ?? "";
 var server = Environment.GetEnvironmentVariable("DataBaseServer") ?? "";
+var isEnsureDatabase = args.Length == 1 && args[0] == "ensure-e2e-database";
+var isTenantFixture = args.Length == 1 && args[0] == "seed-tenant-iam";
+var isTenantAudit = args.Length == 1 && args[0] == "assert-tenant-iam-audit";
 var isRevoke = args.Length == 2 && args[0] == "revoke-seeded-superadmin";
 var isAuditCheck = args.Length == 3 && args[0] == "assert-denied-audit";
-if (!(isRevoke || isAuditCheck) ||
-    !Guid.TryParse(args[1], out var subject) ||
-    subject == Guid.Empty ||
+Guid subject = Guid.Empty;
+var subjectValid = (isEnsureDatabase || isTenantFixture || isTenantAudit) ||
+    (args.Length >= 2 && Guid.TryParse(args[1], out subject) &&
+     subject != Guid.Empty);
+if (!(isRevoke || isAuditCheck || isEnsureDatabase || isTenantFixture || isTenantAudit) ||
+    !subjectValid ||
     Environment.GetEnvironmentVariable("SHINERA_E2E_DB_MUTATION") != optIn ||
     Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") != "Development" ||
     Environment.GetEnvironmentVariable("Identity__E2E__Enabled") != "true" ||
@@ -23,6 +34,8 @@ if (!(isRevoke || isAuditCheck) ||
         "The CI-only database mutator requires an explicit disposable Development database and valid subject.");
 }
 
+// All commands are gated to this disposable local prefix. The Tenant fixture
+// commands are intentionally test-only: no new Web API or production seed.
 var user = Environment.GetEnvironmentVariable("DataBaseUsername");
 var password = Environment.GetEnvironmentVariable("DataBasePassword");
 if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(password))
@@ -31,7 +44,7 @@ if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(password))
 var connectionString = new SqlConnectionStringBuilder
 {
     DataSource = server,
-    InitialCatalog = databaseName,
+    InitialCatalog = isEnsureDatabase ? "master" : databaseName,
     UserID = user,
     Password = password,
     Encrypt = SqlConnectionEncryptOption.Optional,
@@ -40,6 +53,143 @@ var connectionString = new SqlConnectionStringBuilder
 
 await using var connection = new SqlConnection(connectionString);
 await connection.OpenAsync();
+
+if (isEnsureDatabase)
+{
+    // Creating a database is never allowed by arbitrary user data. This
+    // invocation is unavailable from the HTTP runtime and restricted to a
+    // disposable Development SQL Server on loopback.
+    if (!databaseName.StartsWith("Shinera_E2E_", StringComparison.Ordinal) ||
+        databaseName.Length > 64 ||
+        databaseName.Any(c => !(char.IsAsciiLetterOrDigit(c) || c == '_')))
+        throw new InvalidOperationException("Invalid disposable SQL database name.");
+
+    await using var provision = new SqlCommand("""
+        IF DB_ID(@name) IS NULL
+        BEGIN
+            DECLARE @statement nvarchar(max) = N'CREATE DATABASE ' + QUOTENAME(@name);
+            EXEC sys.sp_executesql @statement;
+        END
+        """, connection);
+    provision.Parameters.Add("@name", SqlDbType.NVarChar, 128).Value = databaseName;
+    await provision.ExecuteNonQueryAsync();
+    Console.WriteLine("PASS: disposable Tenant IAM SQL database exists.");
+    return;
+}
+
+
+if (isTenantFixture)
+{
+    var passwordForFixture = Environment.GetEnvironmentVariable(
+        "SHINERA_DEVELOPMENT_ADMIN_PASSWORD");
+    if (string.IsNullOrWhiteSpace(passwordForFixture) || passwordForFixture.Length < 12)
+        throw new InvalidOperationException("Explicit CI-only fixture password required.");
+
+    var tenantContext = new TenantContext();
+    var options = new DbContextOptionsBuilder<IdentityDbContext>()
+        .UseSqlServer(connectionString).Options;
+    await using var db = new IdentityDbContext(options, tenantContext);
+    await using var tx = await db.Database.BeginTransactionAsync(
+        IsolationLevel.Serializable);
+    var tenant = await db.Tenants.SingleAsync(x =>
+        x.Slug == "e2e-http-ci" && x.IsActive);
+    var owner = await db.Users.SingleAsync(x =>
+        x.TenantId == tenant.Id && x.UserType == UserType.Tenant &&
+        x.NormalizedUserName == "E2E-TENANT" && x.IsActive);
+    tenantContext.InitializeTenant(owner.Id, tenant.Id, [tenant.Id], [tenant.Id], tenant.Id);
+    var ownerRole = await db.Roles.SingleOrDefaultAsync(x =>
+        x.TenantId == tenant.Id && x.NormalizedName == "OWNER");
+    if (ownerRole is null)
+    {
+        ownerRole = new Role(tenant.Id, "Owner", "Disposable E2E fixture Owner")
+            { Scope = RoleScope.Tenant };
+        db.Roles.Add(ownerRole);
+        await db.SaveChangesAsync();
+    }
+    if (ownerRole.Scope != RoleScope.Tenant || !ownerRole.IsActive ||
+        await db.Roles.CountAsync(x =>
+            x.TenantId == tenant.Id && x.NormalizedName == "OWNER") != 1)
+        throw new InvalidOperationException("Ambiguous fixture Owner definition.");
+    if (!await db.UserRoles.AnyAsync(x => x.UserId == owner.Id &&
+        x.TenantId == tenant.Id && x.RoleId == ownerRole.Id))
+    {
+        db.UserRoles.Add(new UserRole(tenant.Id, owner.Id, ownerRole.Id));
+        await db.SaveChangesAsync();
+    }
+
+    var staff = await db.Users.SingleOrDefaultAsync(x =>
+        x.TenantId == tenant.Id && x.NormalizedUserName == "E2E-IAM-STAFF");
+    if (staff is null)
+    {
+        staff = new User(tenant.Id, "e2e-iam-staff",
+            "e2e-iam-staff@example.test", "E2E", "Staff", UserType.Tenant)
+        {
+            IsActive = true,
+            EmailConfirmed = true,
+            NormalizedUserName = "E2E-IAM-STAFF",
+            NormalizedEmail = "E2E-IAM-STAFF@EXAMPLE.TEST",
+            SecurityStamp = Guid.NewGuid().ToString("N"),
+            ConcurrencyStamp = Guid.NewGuid().ToString("N")
+        };
+        staff.PasswordHash = new PasswordHasher<User>()
+            .HashPassword(staff, passwordForFixture);
+        db.Users.Add(staff);
+        await db.SaveChangesAsync();
+    }
+    if (!staff.IsActive || staff.UserType != UserType.Tenant ||
+        await db.UserRoles.AnyAsync(x => x.TenantId == tenant.Id &&
+            x.UserId == staff.Id))
+        throw new InvalidOperationException("Fixture staff must start without roles.");
+    await tx.CommitAsync();
+    Console.WriteLine("PASS: disposable Tenant IAM fixture provisioned (Owner and role-free staff).");
+    return;
+}
+
+if (isTenantAudit)
+{
+    await using var tenantLookup = new SqlCommand("""
+        SELECT [Id] FROM [dbo].[Tenants]
+        WHERE [Slug] = N'e2e-http-ci' AND [IsActive] = 1
+        """, connection);
+    if (await tenantLookup.ExecuteScalarAsync() is not Guid tenantId)
+        throw new InvalidOperationException("Disposable IAM Tenant not found.");
+
+    foreach (var (table, action, minimum) in new[]
+    {
+        ("TenantRoleChangeAuditEntries", "create", 1),
+        ("TenantRoleChangeAuditEntries", "state", 2),
+        ("TenantRoleGrantAuditEntries", "grant", 1),
+        ("TenantRoleGrantAuditEntries", "revoke", 1),
+        ("TenantMemberRoleAuditEntries", "grant", 1),
+        ("TenantMemberRoleAuditEntries", "revoke", 1)
+    })
+    {
+        var sql = $"SELECT COUNT_BIG(*) FROM [dbo].[{table}] " +
+                  "WHERE [TenantId] = @tenant AND [Action] = @action";
+        await using var check = new SqlCommand(sql, connection);
+        check.Parameters.Add("@tenant", SqlDbType.UniqueIdentifier).Value = tenantId;
+        check.Parameters.Add("@action", SqlDbType.NVarChar, 16).Value = action;
+        if (Convert.ToInt64(await check.ExecuteScalarAsync()) < minimum)
+            throw new InvalidOperationException(
+                $"Missing persisted Tenant IAM audit: {table}/{action}");
+    }
+
+    try
+    {
+        await using var update = new SqlCommand("""
+            UPDATE TOP (1) [dbo].[TenantMemberRoleAuditEntries]
+            SET [Action] = N'grant'
+            WHERE [TenantId] = @tenant
+            """, connection);
+        update.Parameters.Add("@tenant", SqlDbType.UniqueIdentifier).Value = tenantId;
+        await update.ExecuteNonQueryAsync();
+        throw new InvalidOperationException("SQL accepted tampering with member role audit.");
+    }
+    catch (SqlException e) when (e.Number == 51051) { }
+
+    Console.WriteLine("PASS: persisted Tenant IAM audit grants/revokes/state and immutable SQL trigger.");
+    return;
+}
 
 if (isAuditCheck)
 {

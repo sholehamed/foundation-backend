@@ -36,7 +36,7 @@ public static class IEndpointRouteBuilderExtensions
     {
         
         Guard.Against.AnonymousMethod(handler);
-        string actualClassName = handler.Target!.GetType().Name;
+        string actualClassName = handler.Method.DeclaringType?.Name ?? handler.Target?.GetType().Name ?? "Handler";
         var declaringTypeName = handler.Method.DeclaringType?.Name ?? "Unknown";
         var methodName = handler.Method.Name;
         var endpointName = $"{declaringTypeName}{methodName}";
@@ -56,7 +56,7 @@ public static class IEndpointRouteBuilderExtensions
        string displayName = "", Action<RouteHandlerBuilder>? configure = null)
     {
         Guard.Against.AnonymousMethod(handler);
-        string actualClassName = handler.Target!.GetType().Name;
+        string actualClassName = handler.Method.DeclaringType?.Name ?? handler.Target?.GetType().Name ?? "Handler";
         var declaringTypeName = handler.Method.DeclaringType?.Name ?? "Unknown";
         var methodName = handler.Method.Name;
         var endpointName = $"{declaringTypeName}{methodName}";
@@ -99,7 +99,7 @@ public static class IEndpointRouteBuilderExtensions
        string displayName = "", Action<RouteHandlerBuilder>? configure = null)
     {
         Guard.Against.AnonymousMethod(handler);
-        string actualClassName = handler.Target!.GetType().Name;
+        string actualClassName = handler.Method.DeclaringType?.Name ?? handler.Target?.GetType().Name ?? "Handler";
         var declaringTypeName = handler.Method.DeclaringType?.Name ?? "Unknown";
         var methodName = handler.Method.Name;
         var endpointName = $"{declaringTypeName}{methodName}";
@@ -121,7 +121,7 @@ public static class IEndpointRouteBuilderExtensions
        string displayName = "", Action<RouteHandlerBuilder>? configure = null)
     {
         Guard.Against.AnonymousMethod(handler);
-        string actualClassName = handler.Target!.GetType().Name;
+        string actualClassName = handler.Method.DeclaringType?.Name ?? handler.Target?.GetType().Name ?? "Handler";
         var declaringTypeName = handler.Method.DeclaringType?.Name ?? "Unknown";
         var methodName = handler.Method.Name;
         var endpointName = $"{declaringTypeName}{methodName}";
@@ -140,7 +140,7 @@ public static class IEndpointRouteBuilderExtensions
        string displayName = "", Action<RouteHandlerBuilder>? configure = null)
     {
         Guard.Against.AnonymousMethod(handler);
-        string actualClassName = handler.Target!.GetType().Name;
+        string actualClassName = handler.Method.DeclaringType?.Name ?? handler.Target?.GetType().Name ?? "Handler";
         var declaringTypeName = handler.Method.DeclaringType?.Name ?? "Unknown";
         var methodName = handler.Method.Name;
         var endpointName = $"{declaringTypeName}{methodName}";
@@ -158,7 +158,7 @@ public static class IEndpointRouteBuilderExtensions
        string displayName = "", Action<RouteHandlerBuilder>? configure = null)
     {
         Guard.Against.AnonymousMethod(handler);
-        string actualClassName = handler.Target!.GetType().Name;
+        string actualClassName = handler.Method.DeclaringType?.Name ?? handler.Target?.GetType().Name ?? "Handler";
         var declaringTypeName = handler.Method.DeclaringType?.Name ?? "Unknown";
         var methodName = handler.Method.Name;
         var endpointName = $"{declaringTypeName}{methodName}";
