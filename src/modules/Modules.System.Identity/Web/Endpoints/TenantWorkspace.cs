@@ -535,7 +535,7 @@ public static class TenantWorkspace
         try
         {
             var version = await TenantRolePermissionGrantWriter.ReplaceAsync(
-                current, db, id, request, ct);
+                current, db, id, request, ct, trustedWrites);
             return Results.Ok(new { version });
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
