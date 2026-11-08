@@ -125,6 +125,156 @@ public sealed class TenantRoleGrantSqlServerTests
         });
     }
 
+
+    [Fact]
+    public async Task Owner_can_create_edit_and_disable_role_with_audit_and_live_revocation()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = ctx;
+
+            var newRole = await TenantRoleLifecycleWriter.CreateAsync(actor, db,
+                new TenantRoleLifecycleWriter.CreateRequest("  Receptionist  ", "  Front desk  "));
+            Assert.Equal("Receptionist", newRole.Name);
+            Assert.True(newRole.IsActive);
+            Assert.False(newRole.IsOwner);
+            Assert.NotEqual("", newRole.Version);
+            Assert.Empty(await db.RolePermissions.AsNoTracking()
+                .Where(x => x.RoleId == newRole.Id).ToListAsync());
+
+            var initial = newRole.Version;
+            var renamed = await TenantRoleLifecycleWriter.UpdateAsync(actor, db, newRole.Id,
+                new TenantRoleLifecycleWriter.UpdateRequest(
+                    "Front Desk", "New description", initial));
+            Assert.Equal("Front Desk", renamed.Name);
+            Assert.NotEqual(initial, renamed.Version);
+
+            await Assert.ThrowsAsync<TenantRoleLifecycleConflictException>(() =>
+                TenantRoleLifecycleWriter.UpdateAsync(actor, db, newRole.Id,
+                    new TenantRoleLifecycleWriter.UpdateRequest("Stale Name", null, initial)));
+
+            var noChange = await TenantRoleLifecycleWriter.UpdateAsync(
+                actor, db, newRole.Id,
+                new TenantRoleLifecycleWriter.UpdateRequest(
+                    renamed.Name, "New description", renamed.Version));
+            Assert.Equal(renamed.Version, noChange.Version);
+
+            // FR-12B grants now work on a role created by FR-12C.
+            await TenantRolePermissionGrantWriter.ReplaceAsync(actor, db, newRole.Id,
+                new TenantRolePermissionGrantWriter.ReplaceRequest(renamed.Version,
+                    [TenantWorkspacePermissionCatalog.MembersRead]));
+            var versionAfterGrant = await GetVersionAsync(db, newRole.Id);
+            var user = new User(Guid.NewGuid(), actor.ActiveTenantId!.Value,
+                "staff-role", "staff-role@example.test", "Staff", "Member", UserType.Tenant)
+            {
+                IsActive = true, NormalizedUserName = "STAFF-ROLE",
+                NormalizedEmail = "STAFF-ROLE@EXAMPLE.TEST", PasswordHash = "fixture"
+            };
+            setup.Users.Add(user);
+            setup.UserRoles.Add(new UserRole(actor.ActiveTenantId!.Value, user.Id, newRole.Id));
+            await setup.SaveChangesAsync();
+
+            var staff = new TenantContext();
+            staff.InitializeTenant(user.Id, actor.ActiveTenantId.Value,
+                [actor.ActiveTenantId.Value], [], actor.ActiveTenantId.Value);
+            await using var staffDb = new IdentityDbContext(options, staff);
+            Assert.True(await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                staff, staffDb, TenantWorkspacePermissionCatalog.MembersRead, default));
+
+            var disabled = await TenantRoleLifecycleWriter.ChangeStateAsync(actor, db, newRole.Id,
+                new TenantRoleLifecycleWriter.ChangeStateRequest(false, versionAfterGrant));
+            Assert.False(disabled.IsActive);
+            Assert.False(await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                staff, staffDb, TenantWorkspacePermissionCatalog.MembersRead, default));
+            Assert.True(await db.RolePermissions.AsNoTracking()
+                .AnyAsync(x => x.RoleId == newRole.Id));
+
+            var enabled = await TenantRoleLifecycleWriter.ChangeStateAsync(actor, db, newRole.Id,
+                new TenantRoleLifecycleWriter.ChangeStateRequest(true, disabled.Version));
+            Assert.True(enabled.IsActive);
+            Assert.True(await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                staff, staffDb, TenantWorkspacePermissionCatalog.MembersRead, default));
+
+            var audit = await db.Database.SqlQueryRaw<string>(
+                "SELECT [Action] AS [Value] FROM [dbo].[TenantRoleChangeAuditEntries]")
+                .ToListAsync();
+            Assert.Equal(4, audit.Count); // create, update, disable, enable
+            Assert.Contains("create", audit);
+            Assert.Contains("update", audit);
+            Assert.Equal(2, audit.Count(x => x == "state"));
+            await Assert.ThrowsAsync<SqlException>(() => db.Database.ExecuteSqlRawAsync(
+                "DELETE FROM [dbo].[TenantRoleChangeAuditEntries]"));
+            Assert.Equal(4, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantRoleChangeAuditEntries]")
+                .SingleAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Role_lifecycle_protects_owner_cross_tenant_reserved_name_and_stale_state()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, actor, owner, otherRole, foreign) = await SeedAsync(setup, options);
+            await using var db = ctx;
+            await Assert.ThrowsAsync<TenantRoleLifecycleValidationException>(() =>
+                TenantRoleLifecycleWriter.CreateAsync(actor, db,
+                    new TenantRoleLifecycleWriter.CreateRequest("  oWnEr ", null)));
+            await Assert.ThrowsAsync<TenantRoleLifecycleValidationException>(() =>
+                TenantRoleLifecycleWriter.CreateAsync(actor, db,
+                    new TenantRoleLifecycleWriter.CreateRequest(" SUPERADMIN ", null)));
+
+            var role = await TenantRoleLifecycleWriter.CreateAsync(actor, db,
+                new TenantRoleLifecycleWriter.CreateRequest("Front desk", null));
+            await Assert.ThrowsAsync<TenantRoleLifecycleConflictException>(() =>
+                TenantRoleLifecycleWriter.CreateAsync(actor, db,
+                    new TenantRoleLifecycleWriter.CreateRequest("FRONT DESK", "duplicate")));
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantRoleLifecycleWriter.UpdateAsync(actor, db, owner,
+                    new TenantRoleLifecycleWriter.UpdateRequest("Renamed", null, role.Version)));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantRoleLifecycleWriter.ChangeStateAsync(actor, db, foreign,
+                    new TenantRoleLifecycleWriter.ChangeStateRequest(false, role.Version)));
+
+            var first = await TenantRoleLifecycleWriter.ChangeStateAsync(actor, db, role.Id,
+                new TenantRoleLifecycleWriter.ChangeStateRequest(false, role.Version));
+            await Assert.ThrowsAsync<TenantRoleLifecycleConflictException>(() =>
+                TenantRoleLifecycleWriter.ChangeStateAsync(actor, db, role.Id,
+                    new TenantRoleLifecycleWriter.ChangeStateRequest(true, role.Version)));
+
+            // An actor who joins the target role cannot alter it even if Owner
+            // permission remains otherwise valid.
+            setup.UserRoles.Add(new UserRole(actor.ActiveTenantId!.Value,
+                actor.UserId!.Value, otherRole));
+            await setup.SaveChangesAsync();
+            var version = await GetVersionAsync(db, otherRole);
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantRoleLifecycleWriter.ChangeStateAsync(actor, db, otherRole,
+                    new TenantRoleLifecycleWriter.ChangeStateRequest(false, version)));
+            Assert.False(first.IsActive);
+        });
+    }
+
+    [Fact]
+    public async Task Role_lifecycle_audit_failure_rolls_back_created_role()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = ctx;
+            await setup.Database.ExecuteSqlRawAsync(
+                "DROP TABLE [dbo].[TenantRoleChangeAuditEntries]");
+            await Assert.ThrowsAsync<SqlException>(() =>
+                TenantRoleLifecycleWriter.CreateAsync(actor, db,
+                    new TenantRoleLifecycleWriter.CreateRequest("NoAudit", null)));
+            db.ChangeTracker.Clear();
+            Assert.False(await db.Roles.AsNoTracking()
+                .AnyAsync(x => x.Name == "NoAudit"));
+        });
+    }
+
     private static async Task<int> AuditCountAsync(IdentityDbContext db) =>
         await db.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantRoleGrantAuditEntries]").SingleAsync();
