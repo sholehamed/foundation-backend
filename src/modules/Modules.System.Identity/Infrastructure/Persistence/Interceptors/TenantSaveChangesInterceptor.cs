@@ -111,6 +111,7 @@ public sealed class TenantSaveChangesInterceptor(
                 throw new UnauthorizedAccessException(
                     "Tenant group/user permission grants require a dedicated audited API.");
         }
+    }
 
     private bool IsNewSignupOwner(
         DbContext db, Guid tenantId, UserRole assignment)
@@ -136,6 +137,5 @@ public sealed class TenantSaveChangesInterceptor(
             e.State == EntityState.Added && e.Entity.Id == tenantId);
 
         return userAdded && ownerRoleAdded && tenantAdded;
-    }
     }
 }
