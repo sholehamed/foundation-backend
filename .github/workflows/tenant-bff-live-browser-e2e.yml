@@ -1,6 +1,6 @@
-name: FR-12G-C live HTTPS Angular + OpenIddict BFF Chromium
+name: FR-12G-C live HTTPS BFF browser E2E
 
-# Private repository token never enters untrusted PR jobs.
+# Secrets are never exposed to pull requests or unchecked branches.
 on:
   workflow_dispatch:
   push:
@@ -8,14 +8,9 @@ on:
     paths:
       - '.github/workflows/tenant-bff-live-browser-e2e.yml'
       - 'tests/browser/**'
-      - 'src/**'
 
 permissions:
   contents: read
-
-concurrency:
-  group: bff-live-browser-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   angular-identity-bff-live:
@@ -55,13 +50,11 @@ jobs:
       NO_PROXY: 'localhost,127.0.0.1,identity.shinera.localhost,e2e-http-ci.shinera.localhost,other.shinera.localhost'
       no_proxy: 'localhost,127.0.0.1,identity.shinera.localhost,e2e-http-ci.shinera.localhost,other.shinera.localhost'
     steps:
-      - name: Checkout Backend main without persisting credentials
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           path: backend
           persist-credentials: false
-      - name: Checkout private Frontend main with restricted read-only token
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: sholehamed/foundation-frontend
           ref: main
@@ -77,95 +70,24 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Build actual Angular BFF pilot assets
+      - name: Build Angular browser application
         run: |
           npm ci --prefix frontend --no-audit --no-fund
           npm --prefix frontend run build -- --configuration bff-pilot-e2e
           test -f frontend/dist/ShineraApp/browser/index.html
-      - name: Build Kestrel and disposable SQL fixture
+      - name: Build .NET API and SQL fixture CLI
         run: |
           dotnet restore backend/src/Web/Web.csproj
           dotnet restore backend/tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj
-          dotnet build backend/src/Web/Web.csproj -c Release --no-restore
-          dotnet build backend/tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj -c Release --no-restore
-      - name: Trust ephemeral CA and configure HTTPS-only local multi-host ingress
+          dotnet build backend/src/Web/Web.csproj --no-restore -c Release
+          dotnet build backend/tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj --no-restore -c Release
+      - name: Live HTTPS OIDC Chromium end-to-end
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/foundation-bff-e2e
-          cd /tmp/foundation-bff-e2e
-          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-            -keyout ca.key -out ca.crt -subj '/CN=Foundation CI disposable root' \
-            -addext 'basicConstraints=critical,CA:TRUE' \
-            -addext 'keyUsage=critical,keyCertSign,cRLSign' >/dev/null 2>&1
-          openssl req -new -nodes -newkey rsa:2048 \
-            -keyout server.key -out server.csr \
-            -subj '/CN=e2e-http-ci.shinera.localhost' >/dev/null 2>&1
-          cat > san.ext <<'EOF'
-          subjectAltName=DNS:e2e-http-ci.shinera.localhost,DNS:identity.shinera.localhost,DNS:other.shinera.localhost
-          basicConstraints=CA:FALSE
-          keyUsage=digitalSignature,keyEncipherment
-          extendedKeyUsage=serverAuth
-          EOF
-          openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
-            -CAcreateserial -days 1 -out server.crt -extfile san.ext >/dev/null 2>&1
-          sudo cp ca.crt /usr/local/share/ca-certificates/foundation-e2e-root.crt
-          sudo update-ca-certificates >/dev/null
-          printf '127.0.0.1 identity.shinera.localhost e2e-http-ci.shinera.localhost other.shinera.localhost\n' | sudo tee -a /etc/hosts >/dev/null
-          echo 'Ephemeral CA installed for the disposable local runner.'
-      - name: Create disposable SQL database before API startup
-        run: dotnet run --project backend/tests/Shinera.Identity.E2E.SqlMutator --no-build -c Release -- ensure-e2e-database
-      - name: Verify REAL HTTPS browser OIDC, BFF cookie, role/permission and revocation
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 backend/tests/browser/https_bff_reverse_proxy.py \
-            --angular-root frontend/dist/ShineraApp/browser \
-            --cert /tmp/foundation-bff-e2e/server.crt \
-            --key /tmp/foundation-bff-e2e/server.key \
-            >/tmp/foundation-https-proxy.log 2>&1 &
-          proxy_pid=$!
-          dotnet run --project backend/src/Web/Web.csproj -c Release \
-            --no-build --no-launch-profile --urls http://127.0.0.1:5069 \
-            >/tmp/foundation-api-live-bff.log 2>&1 &
-          api_pid=$!
-          trap 'kill "$proxy_pid" "$api_pid" 2>/dev/null || true' EXIT
-          ready=0
-          for i in $(seq 1 150); do
-            if curl --silent --fail --max-time 3 \
-              --resolve identity.shinera.localhost:8443:127.0.0.1 \
-              https://identity.shinera.localhost:8443/api/system/Auth/captcha/new \
-              >/dev/null 2>&1; then
-              ready=1
-              break
-            fi
-            if ! kill -0 "$api_pid" 2>/dev/null || ! kill -0 "$proxy_pid" 2>/dev/null; then
-              echo "::error::Disposable API or HTTPS ingress exited during startup."
-              tail -n 75 /tmp/foundation-api-live-bff.log | sed -E 's/([Pp]assword)=([^; ]+)/\1=[REDACTED]/g'
-              tail -n 35 /tmp/foundation-https-proxy.log
-              exit 1
-            fi
-            sleep 2
-          done
-          test "$ready" = 1 || { echo "::error::HTTPS API never became ready"; exit 1; }
-
-          dotnet run --project backend/tests/Shinera.Identity.E2E.SqlMutator \
-            -c Release --no-build -- seed-tenant-iam
-
-          # Existing non-BFF bearer test populates the reviewed Tenant
-          # permission registry and proves its SQL audit on this same DB.
-          python3 backend/tests/http/tenant_iam_chain_e2e.py
-
-          cp backend/tests/browser/tenant-bff-real.spec.ts frontend/e2e/tenant-bff-real.spec.ts
-          cp backend/tests/browser/playwright.bff-real.config.ts frontend/playwright.bff-real.config.ts
-          cd frontend
-          npx playwright install --with-deps chromium
-          npx playwright test --config playwright.bff-real.config.ts
-      - name: Upload sanitized failure evidence
+        run: bash backend/tests/browser/run_live_https_bff.sh
+      - name: Upload failed browser test traces
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: fr-12g-c-live-browser-failure
-          path: |
-            frontend/test-results/
+          path: frontend/test-results/
           if-no-files-found: ignore
