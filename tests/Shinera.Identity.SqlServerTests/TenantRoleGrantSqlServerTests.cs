@@ -490,7 +490,7 @@ public sealed class TenantRoleGrantSqlServerTests
             actionUi.IsActive = false;
             await setup.SaveChangesAsync();
             Assert.False(await TenantMemberRoleAssignmentWriter.CanManageAsync(actor, db, default));
-            Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
                 TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id,
                     new TenantMemberRoleAssignmentWriter.ReplaceRequest(token, [])));
         });
