@@ -226,6 +226,7 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
     // Clear both app and Identity-host cookies to force fresh Code+PKCE login.
     // With a newly issued valid ticket, the live Tenant permission evaluator
     // must independently deny the now-revoked permission with HTTP 403.
+    // A valid BFF Cookie must NOT be challenged as a missing Bearer token.
     await staffContext.clearCookies();
     console.log('FR12G-C stage: Staff re-login after grant fingerprint revocation');
     await login(staff, 'e2e-iam-staff', '/dashboard');
