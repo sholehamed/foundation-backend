@@ -143,9 +143,9 @@ public sealed class BffTenantWorkspaceCookieBridgeTests
                     IssuedUtc = DateTimeOffset.UtcNow,
                     ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(30)
                 };
-                props.Items[BffDefaults.LoginContextProperty] = "tenant";
-                props.Items[BffDefaults.TenantProperty] = "tenant-a";
-                props.Items[BffDefaults.CallbackUriProperty] =
+                props.Items[".bff.login_context"] = "tenant";
+                props.Items[".bff.tenant"] = "tenant-a";
+                props.Items[".bff.callback_uri"] =
                     "https://" + TenantHost + "/signin-oidc";
                 await context.SignInAsync(BffDefaults.CookieScheme, principal, props);
                 return Results.NoContent();
