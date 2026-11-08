@@ -1,5 +1,11 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-08A — System Administrator dashboard (2026-11-08)
+
+- PR/CI pending: [FR-08A contract and Tenant Admin baseline](development/FR-08A-SYSTEM-ADMIN-DASHBOARD.md). Protected dashboard endpoint preserves legacy properties and adds active/inactive business tenant counts (Master excluded), UserType statistics, groups/modules and latest six business records. No synthetic revenue, migrations, BFF or permission changes.
+- Angular companion enhances system landing dashboard with true data, responsive UI and failed/retry states. Tenant Admin /dashboard remains a separate future scoped slice.
+
+
 ## FR-07A — one-request System UI permission snapshot (2026-11-08)
 
 - Added SystemAdministrator-only `GET /api/System/UiAccess/me`, returning 80 code-owned live UI decisions (45 PAGE + 35 ACTION) with exact matching active metadata, current-user Master-scoped grants, direct deny precedence and no-store. Existing single-key endpoint retains compatibility; no caller-controlled grants or tenant identity.

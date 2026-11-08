@@ -1,41 +1,75 @@
-﻿using Modules.System.Identity.Application.Abstractions;
+using Microsoft.EntityFrameworkCore;
+using Modules.System.Identity.Application.Abstractions;
+using Modules.System.Identity.Domain.Entities;
+using Modules.System.Identity.Infrastructure.Persistence;
 
-namespace Modules.System.Identity.Application.Features.Dashboard
+namespace Modules.System.Identity.Application.Features.Dashboard;
+
+/// <summary>
+/// Platform overview for an authorized SystemAdministrator. Tenant totals
+/// exclude the platform's Master Tenant; no tenant-specific membership data
+/// or financial/subscription assumptions are inferred.
+/// </summary>
+public sealed class SuperDashboardQuery : IQuery<SuperDashboardDto>;
+
+public sealed record RecentTenantDto(
+    Guid Id,
+    string Name,
+    string Slug,
+    bool IsActive,
+    DateTime CreatedAt);
+
+public sealed record SuperDashboardDto
 {
-    public class SuperDashboardQuery : IQuery<SuperDashboardDto>
-    {
-    }
-    public record SuperDashboardDto
-    {
-        public int TotalTenants { get; set; }
-        public int ActiveTenants { get; set; }
-        public int TotalUsers { get; set; }
-        public int TotalRoles { get; set; }
-        public int TotalPermissions { get; set; }
-    }
-    public class SuperDashboardQueryHandler : IQueryHandler<SuperDashboardQuery, SuperDashboardDto>
-    {
-        private readonly IIdentityDbContext _context;
+    public int TotalTenants { get; init; }
+    public int ActiveTenants { get; init; }
+    public int InactiveTenants { get; init; }
+    public int TotalUsers { get; init; }
+    public int ActiveUsers { get; init; }
+    public int SystemUsers { get; init; }
+    public int TenantUsers { get; init; }
+    public int TotalRoles { get; init; }
+    public int TotalPermissions { get; init; }
+    public int TotalGroups { get; init; }
+    public int TotalModules { get; init; }
+    public IReadOnlyList<RecentTenantDto> RecentTenants { get; init; } = [];
+}
 
-        public SuperDashboardQueryHandler(IIdentityDbContext context)
+public sealed class SuperDashboardQueryHandler(IIdentityDbContext db)
+    : IQueryHandler<SuperDashboardQuery, SuperDashboardDto>
+{
+    public async Task<SuperDashboardDto> Handle(
+        SuperDashboardQuery request, CancellationToken cancellationToken)
+    {
+        // This handler is exposed ONLY behind the live SystemAdministrator
+        // policy. Normal tenant endpoints must never run cross-tenant queries.
+        var tenants = db.Tenants.AsNoTracking()
+            .Where(x => x.Id != DefaultSeedData.MasterTenant.Id);
+        var users = db.Users.AsNoTracking();
+        var roles = db.Roles.AsNoTracking();
+
+        var totalTenants = await tenants.CountAsync(cancellationToken);
+        var activeTenants = await tenants.CountAsync(x => x.IsActive, cancellationToken);
+
+        return new SuperDashboardDto
         {
-            _context = context;
-        }
-
-        public async Task<SuperDashboardDto> Handle(SuperDashboardQuery request, CancellationToken cancellationToken)
-        {
-            SuperDashboardDto result = new SuperDashboardDto();
-            var tenants = _context.Tenants.AsNoTracking();
-            var roles = _context.Roles.AsNoTracking();
-            var users = _context.Users.AsNoTracking();
-            var permissions = _context.Permissions.AsNoTracking();
-            result.TotalTenants = await tenants.Select(x => 1).CountAsync();
-            result.ActiveTenants = await tenants.Where(x => x.IsActive).Select(x => 1).CountAsync();
-            result.TotalUsers = await users.Select(x => 1).CountAsync();
-            result.TotalRoles = await roles.Select(x => 1).CountAsync();
-            result.TotalPermissions = await permissions.Select(x => 1).CountAsync();
-            return result;
-
-        }
+            TotalTenants = totalTenants,
+            ActiveTenants = activeTenants,
+            InactiveTenants = totalTenants - activeTenants,
+            TotalUsers = await users.CountAsync(cancellationToken),
+            ActiveUsers = await users.CountAsync(x => x.IsActive, cancellationToken),
+            SystemUsers = await users.CountAsync(x => x.UserType == UserType.System, cancellationToken),
+            TenantUsers = await users.CountAsync(x => x.UserType == UserType.Tenant, cancellationToken),
+            TotalRoles = await roles.CountAsync(cancellationToken),
+            TotalPermissions = await db.Permissions.AsNoTracking().CountAsync(cancellationToken),
+            TotalGroups = await db.Groups.AsNoTracking().CountAsync(cancellationToken),
+            TotalModules = await db.Modules.AsNoTracking().CountAsync(cancellationToken),
+            RecentTenants = await tenants
+                .OrderByDescending(x => x.CreatedAt)
+                .ThenByDescending(x => x.Id)
+                .Select(x => new RecentTenantDto(x.Id, x.Name, x.Slug, x.IsActive, x.CreatedAt))
+                .Take(6)
+                .ToListAsync(cancellationToken),
+        };
     }
 }
