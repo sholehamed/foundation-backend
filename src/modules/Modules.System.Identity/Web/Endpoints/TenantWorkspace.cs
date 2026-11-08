@@ -6,6 +6,7 @@ using Modules.System.Identity.Web.Util;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
+using Modules.System.Identity.Infrastructure.Persistence.Interceptors;
 
 namespace Modules.System.Identity.Web.Endpoints;
 
@@ -337,13 +338,13 @@ public static class TenantWorkspace
     public static async Task<IResult> ReplaceMemberRoles(
         ITenantContext current, IdentityDbContext db, HttpContext http,
         Guid id, TenantMemberRoleAssignmentWriter.ReplaceRequest request,
-        CancellationToken ct)
+        TrustedTenantWriteScope trustedWrites, CancellationToken ct)
     {
         http.Response.Headers.CacheControl = "no-store";
         try
         {
             var version = await TenantMemberRoleAssignmentWriter.ReplaceAsync(
-                current, db, id, request, ct);
+                current, db, id, request, ct, trustedWrites);
             return Results.Ok(new { version });
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
@@ -528,13 +529,13 @@ public static class TenantWorkspace
     public static async Task<IResult> ReplaceRolePermissions(
         ITenantContext current, IdentityDbContext db, HttpContext http,
         Guid id, TenantRolePermissionGrantWriter.ReplaceRequest request,
-        CancellationToken ct)
+        TrustedTenantWriteScope trustedWrites, CancellationToken ct)
     {
         http.Response.Headers.CacheControl = "no-store";
         try
         {
             var version = await TenantRolePermissionGrantWriter.ReplaceAsync(
-                current, db, id, request, ct);
+                current, db, id, request, ct, trustedWrites);
             return Results.Ok(new { version });
         }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }

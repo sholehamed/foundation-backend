@@ -17,6 +17,55 @@ public sealed class TrustedTenantWriteScope(ILogger<TrustedTenantWriteScope> log
     private Guid? _platformActor;
 
     private PlatformGrantIntent? _grantIntent;
+    private TenantGrantIntent? _tenantGrantIntent;
+
+    private sealed record TenantGrantIntent(
+        Guid TenantId, Guid ActorId, string Kind, Guid TargetId,
+        HashSet<Guid> RelatedIds);
+
+    /// <summary>
+    /// This is a narrow storage-layer intent, NOT a substitute for the live
+    /// Owner, target, permission, version and SQL audit checks in the writer.
+    /// It prevents ordinary TenantDbContext.SaveChanges calls from silently
+    /// creating/rewriting UserRole and RolePermission links.
+    /// </summary>
+    public IDisposable BeginTenantGrantMutation(
+        ITenantContext subject, Guid targetId, string kind,
+        IReadOnlyCollection<Guid> relatedIds)
+    {
+        if (subject.IsSystemContext ||
+            subject.UserId is not Guid actor || actor == Guid.Empty ||
+            subject.ActiveTenantId is not Guid tenantId || tenantId == Guid.Empty ||
+            subject.HomeTenantId != tenantId ||
+            !subject.WritableTenantIds.Contains(tenantId) ||
+            !subject.ReadableTenantIds.Contains(tenantId) ||
+            targetId == Guid.Empty || targetId == actor ||
+            kind is not ("UserRole" or "RolePermission") ||
+            relatedIds.Count == 0 || relatedIds.Any(id => id == Guid.Empty) ||
+            relatedIds.Distinct().Count() != relatedIds.Count ||
+            _tenantGrantIntent is not null || _platformActor is not null ||
+            IsBootstrap)
+            throw new UnauthorizedAccessException(
+                "An explicit, non-nested, writable Tenant grant scope is required.");
+
+        _tenantGrantIntent = new TenantGrantIntent(
+            tenantId, actor, kind, targetId, relatedIds.ToHashSet());
+        return new GuardedScope(() => _tenantGrantIntent = null);
+    }
+
+    internal bool AllowsTenantGrantMutation(object entity) =>
+        _tenantGrantIntent is { } intent && entity switch
+        {
+            UserRole ur => intent.Kind == "UserRole" &&
+                ur.TenantId == intent.TenantId &&
+                ur.UserId == intent.TargetId &&
+                intent.RelatedIds.Contains(ur.RoleId),
+            RolePermission rp => intent.Kind == "RolePermission" &&
+                rp.TenantId == intent.TenantId &&
+                rp.RoleId == intent.TargetId &&
+                intent.RelatedIds.Contains(rp.PermissionId),
+            _ => false
+        };
 
     private sealed record PlatformGrantIntent(PlatformGrantMutationKind Kind, Guid TargetId, Guid? RelatedId);
 
