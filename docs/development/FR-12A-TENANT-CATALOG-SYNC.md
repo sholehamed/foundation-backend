@@ -14,5 +14,10 @@ The existing **SystemAdministrator** FeatureRegistry endpoint group adds:
 
 Security gates: SystemAdministrator endpoint policy **plus live System SuperAdmin role + active System user**, fail closed on inactive/missing/foreign owned or duplicate metadata. Apply must be approved by an operator against a reviewed SQL snapshot. Deployment flag should be disabled immediately after an approved sync.
 
+## Read-only role permission matrix
+- `GET /api/tenant/workspace/roles/{id:guid}/permissions` requires a live `TENANT.ROLES.READ` decision. Uses a strict `Role.Id + active TenantId` lookup; foreign or System role IDs return 404.
+- Returns `{roleId,roleName,permissions:[{code,name,kind,route,registered,granted}]}` for the four catalog entries. `registered` means the global Permission row exists once and is active; `granted` means this Tenant Role has a matching direct RolePermission record. This is **not** the user's effective permission and does not account for UserPermission deny or group inheritance.
+- The API is read-only with no-store; it never assigns/revokes permissions. Edit/Grant endpoints need durable tenant grant audit, anti-escalation, and concurrency controls before activation.
+
 ## Next slice
-GET tenant role-specific permission matrix (owned role, Tenant Roles.Read) will display registered/unregistered definitions; edits are intentionally excluded until a durable tenant grant audit + anti-escalation + concurrent-write contract is implemented and tested on disposable real SQL Server. No broad tenant CRUD, grant controls or BFF cutover yet. Track in backend issue #44.
+Audited, anti-escalation-controlled role grants, additional resource scopes and real browser E2E. No broad tenant CRUD, grant controls or BFF cutover yet. Track in backend issue #44.
