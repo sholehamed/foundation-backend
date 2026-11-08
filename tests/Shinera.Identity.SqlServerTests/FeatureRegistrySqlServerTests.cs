@@ -121,7 +121,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.False(stable.HasPending);
             Assert.NotEqual(preview.Fingerprint, stable.Fingerprint);
             await registry.ApplyAsync(stable.Fingerprint);
-            Assert.Equal(4, await db.Permissions.CountAsync());
+            Assert.Equal(5, await db.Permissions.CountAsync());
 
             var p = await db.Permissions.SingleAsync(x =>
                 x.Code == TenantWorkspacePermissionCatalog.MembersRead);
