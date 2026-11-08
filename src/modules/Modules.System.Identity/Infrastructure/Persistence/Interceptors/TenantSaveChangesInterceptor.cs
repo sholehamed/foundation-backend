@@ -2,6 +2,7 @@ using Domain.SharedKernel.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Modules.System.Identity.Application.Abstractions;
+using Modules.System.Identity.Domain.Entities;
 
 namespace Modules.System.Identity.Infrastructure.Persistence.Interceptors;
 
@@ -79,6 +80,62 @@ public sealed class TenantSaveChangesInterceptor(
             {
                 throw new UnauthorizedAccessException("Write denied outside the authorized tenant scope.");
             }
+
+            // FR-12E: tenant write scope alone is NOT grant-management
+            // authorization. A target-bound grant intent is required for
+            // ordinary Tenant UserRole/RolePermission changes.
+            if (entry.Entity is UserRole or RolePermission)
+            {
+                if (entry.State == EntityState.Modified)
+                    throw new UnauthorizedAccessException(
+                        "Tenant grant links are immutable; revoke and assign.");
+
+                // Public signup is the only allowed un-audited Owner
+                // bootstrap. Both the owner user and Owner role must be NEW
+                // in this exact SaveChanges, with the server-provisioned new
+                // Tenant. Existing Tenant accounts cannot forge this path.
+                if (entry.State == EntityState.Added &&
+                    entry.Entity is UserRole initial &&
+                    IsNewSignupOwner(context, targetTenant, initial))
+                    continue;
+
+                if (!trustedWrites.AllowsTenantGrantMutation(entry.Entity))
+                    throw new UnauthorizedAccessException(
+                        "Tenant grant mutation requires a reviewed, target-bound operation.");
+            }
+
+            // No Tenant UserPermission / GroupRole / UserGroup audit/write
+            // endpoints exist yet. Never let a generic CRUD handler use
+            // WritableTenantIds to create an unreviewed privilege path.
+            if (entry.Entity is UserPermission or GroupRole or UserGroup)
+                throw new UnauthorizedAccessException(
+                    "Tenant group/user permission grants require a dedicated audited API.");
         }
+
+    private bool IsNewSignupOwner(
+        DbContext db, Guid tenantId, UserRole assignment)
+    {
+        if (tenant.UserId != assignment.UserId ||
+            tenant.HomeTenantId != tenantId ||
+            tenant.ActiveTenantId != tenantId ||
+            !tenant.ReadableTenantIds.Contains(tenantId))
+            return false;
+
+        var userAdded = db.ChangeTracker.Entries<User>().Any(e =>
+            e.State == EntityState.Added &&
+            e.Entity.Id == assignment.UserId &&
+            e.Entity.TenantId == tenantId &&
+            e.Entity.UserType == UserType.Tenant);
+        var ownerRoleAdded = db.ChangeTracker.Entries<Role>().Any(e =>
+            e.State == EntityState.Added &&
+            e.Entity.Id == assignment.RoleId &&
+            e.Entity.TenantId == tenantId &&
+            e.Entity.Scope == RoleScope.Tenant &&
+            e.Entity.NormalizedName == "OWNER");
+        var tenantAdded = db.ChangeTracker.Entries<Tenant>().Any(e =>
+            e.State == EntityState.Added && e.Entity.Id == tenantId);
+
+        return userAdded && ownerRoleAdded && tenantAdded;
+    }
     }
 }
