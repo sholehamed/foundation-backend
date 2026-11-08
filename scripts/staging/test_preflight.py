@@ -61,6 +61,16 @@ class PreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(PreflightError, "dedicated"):
             validate(config)
 
+    def test_invalid_dns_labels_rejected(self):
+        config = sample()
+        config["tenant_base_domain"] = "staging..shinera.ir"
+        with self.assertRaisesRegex(PreflightError, "valid lowercase DNS"):
+            validate(config)
+        config = sample()
+        config["system_origin"] = "https://-system.staging.shinera.ir"
+        with self.assertRaisesRegex(PreflightError, "invalid hostname"):
+            validate(config)
+
     def test_http_rejected(self):
         config = sample()
         config["tenant_origin"] = "http://demo.staging.shinera.ir"
