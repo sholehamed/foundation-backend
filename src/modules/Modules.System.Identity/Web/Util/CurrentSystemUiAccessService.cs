@@ -7,104 +7,185 @@ using OpenIddict.Abstractions;
 
 namespace Modules.System.Identity.Web.Util;
 
+public sealed record CurrentUiAccessEntry(
+    string Key, string? Route, string Type, bool Allowed);
+
+public sealed record CurrentUiAccessSnapshot(
+    int SchemaVersion, IReadOnlyList<CurrentUiAccessEntry> Entries);
+
 /// <summary>
-/// Live System-only UI affordance decision for one reviewed code-owned key.
-/// This cannot authorize APIs. Never trust client-supplied permission, role,
-/// resource, subject or tenant identifiers; only the stable UI key is accepted.
-/// A missing/inactive/misconfigured catalog, disabled user or direct deny always
-/// yields false; no superadmin implicit blanket grant.
+/// A bounded-query, live System-only UI projection. This is NEVER an API
+/// authorization decision: protected endpoints must still enforce policies.
+/// Reads code-owned keys, reconciled UI metadata, active Master-scope grants
+/// and deny overrides in one database snapshot request for the whole page.
 /// </summary>
 public sealed class CurrentSystemUiAccessService(IIdentityDbContext db)
 {
     public async Task<bool> IsAllowedAsync(
         ClaimsPrincipal principal, string key, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(key)) return false;
+        var result = await GetSnapshotAsync(principal, ct);
+        return result?.Entries.SingleOrDefault(x =>
+            string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase))?.Allowed == true;
+    }
+
+    public async Task<CurrentUiAccessSnapshot?> GetSnapshotAsync(
+        ClaimsPrincipal principal, CancellationToken ct = default)
+    {
         if (principal.Identity?.IsAuthenticated != true ||
             !principal.HasClaim("account_type", "system") ||
             principal.HasClaim(c => c.Type is "tenant_id" or "tenant") ||
-            !Guid.TryParse(principal.FindFirstValue(OpenIddictConstants.Claims.Subject), out var userId) ||
-            string.IsNullOrWhiteSpace(key))
-            return false;
+            !Guid.TryParse(principal.FindFirstValue(OpenIddictConstants.Claims.Subject),
+                out var userId))
+            return null;
 
-        var feature = FeatureRegistryDefinitions.Features.SingleOrDefault(x =>
-            string.Equals(x.PageKey, key, StringComparison.OrdinalIgnoreCase));
-        var element = feature is null
-            ? FeatureRegistryDefinitions.UiElements.SingleOrDefault(x =>
-                string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase))
-            : null;
+        var now = DateTime.UtcNow;
+        var master = DefaultSeedData.MasterTenant.Id;
+        var account = await db.Users.AsNoTracking().AnyAsync(x =>
+            x.Id == userId && x.UserType == UserType.System && x.TenantId == null &&
+            x.IsActive && (!x.IsLockedOut || x.LockoutEndUtc <= now), ct);
+        var tenant = await db.Tenants.AsNoTracking()
+            .AnyAsync(x => x.Id == master && x.IsActive, ct);
+        if (!account || !tenant) return null;
 
-        if (feature is null && element is null)
-            return false;
+        var features = FeatureRegistryDefinitions.Features;
+        var children = FeatureRegistryDefinitions.UiElements;
 
-        var owner = feature ?? FeatureRegistryDefinitions.Features.Single(x =>
-            x.PageKey == element!.FeatureKey);
+        // Code-owned entries only; no untrusted catalog key can introduce a
+        // new executable UI capability. Preflight duplicate definitions fail
+        // closed rather than promoting one arbitrary row.
+        var descriptors = features.Select(x =>
+                new Descriptor(x.PageKey, x.PageKey, x.ResourceCode,
+                    x.ModuleCode, x.Route, UiResourceType.PAGE, x.ReadPermission))
+            .Concat(children.Select(x =>
+            {
+                var owner = features.Single(f => f.PageKey == x.FeatureKey);
+                return new Descriptor(x.Key, x.FeatureKey, owner.ResourceCode,
+                    owner.ModuleCode, x.Route, x.Type, x.PermissionCode);
+            }))
+            .ToArray();
 
-        // A child is never available when its owning PAGE is unavailable.
-        if (!await MatchesCatalogAsync(owner, owner.PageKey, owner.ReadPermission,
-                UiResourceType.PAGE, owner.Route, ct))
-            return false;
+        if (descriptors.GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Any(g => g.Count() != 1))
+            return null;
 
-        var evaluator = new EffectivePermissionEvaluator(db);
-        if (!await evaluator.HasPermissionAsync(userId,
-                DefaultSeedData.MasterTenant.Id, UserType.System, owner.ReadPermission, ct))
-            return false;
+        var keys = descriptors.Select(x => x.Key).ToArray();
+        var codes = descriptors.Select(x => x.PermissionCode).Distinct().ToArray();
 
-        if (element is null)
-            return true;
-
-        if (!await MatchesCatalogAsync(owner, element.Key, element.PermissionCode,
-                element.Type, element.Route, ct))
-            return false;
-
-        return await evaluator.HasPermissionAsync(userId,
-            DefaultSeedData.MasterTenant.Id, UserType.System, element.PermissionCode, ct);
-    }
-
-    private async Task<bool> MatchesCatalogAsync(
-        FeatureRegistryDefinitions.Feature feature,
-        string key, string permissionCode,
-        UiResourceType expectedType, string? expectedRoute, CancellationToken ct)
-    {
-        // Reject historical duplicate UI keys rather than trusting First().
-        var rows = await db.UiResources.AsNoTracking()
-            .Where(x => x.Key == key)
+        var uiRows = await db.UiResources.AsNoTracking()
+            .Where(x => keys.Contains(x.Key))
             .Select(x => new
             {
-                x.Id, x.ResourceId, x.IsActive, x.Type, x.Description
-            }).Take(2).ToListAsync(ct);
-        if (rows.Count != 1)
-            return false;
+                x.Id, x.Key, x.ResourceId, x.IsActive, x.Type, x.Description
+            }).ToListAsync(ct);
+        var ids = uiRows.Select(x => x.Id).ToArray();
 
-        var ui = rows[0];
-        if (!ui.IsActive || ui.Type != expectedType ||
-            !string.Equals(ui.Description, expectedRoute, StringComparison.Ordinal))
-            return false;
-
-        var resources = await db.Resources.AsNoTracking()
-            .Where(x => x.Id == ui.ResourceId && x.IsActive &&
-                x.Code == feature.ResourceCode &&
-                x.ModuleId != Guid.Empty && x.Module!.IsActive &&
-                x.Module.Code == feature.ModuleCode)
-            .Select(x => x.Id).Take(2).ToListAsync(ct);
-        if (resources.Count != 1)
-            return false;
-
-        // UI keys with multiple permissions could allow an unrelated grant.
-        // The exact single active code-owned link is required. A legacy
-        // ResourceId=null platform permission is accepted as already supported
-        // by the Registry, but a foreign ResourceId is never accepted.
         var links = await db.PermissionUiResources.AsNoTracking()
-            .Where(x => x.UiResourceId == ui.Id)
+            .Where(x => ids.Contains(x.UiResourceId))
+            .Select(x => new { x.UiResourceId, x.PermissionId })
+            .ToListAsync(ct);
+
+        var permissions = await db.Permissions.AsNoTracking()
+            .Where(x => codes.Contains(x.Code))
+            .Select(x => new { x.Id, x.Code, x.IsActive, x.ResourceId })
+            .ToListAsync(ct);
+
+        var resourceIds = uiRows.Select(x => x.ResourceId).Distinct().ToArray();
+        var resources = await db.Resources.AsNoTracking()
+            .Where(x => resourceIds.Contains(x.Id))
             .Select(x => new
             {
-                x.PermissionId,
-                x.Permission!.Code,
-                x.Permission.IsActive,
-                x.Permission.ResourceId
-            }).Take(2).ToListAsync(ct);
+                x.Id, x.Code, x.IsActive,
+                ModuleCode = x.Module!.Code, ModuleActive = x.Module.IsActive
+            }).ToListAsync(ct);
 
-        return links.Count == 1 && links[0].IsActive &&
-            string.Equals(links[0].Code, permissionCode, StringComparison.Ordinal) &&
-            (links[0].ResourceId is null || links[0].ResourceId == ui.ResourceId);
+        var direct = await db.UserPermissions.IgnoreQueryFilters(["tenant"])
+            .AsNoTracking().Where(x => x.TenantId == master &&
+                x.UserId == userId && x.Permission.IsActive)
+            .Select(x => new { x.PermissionId, x.IsGranted }).ToListAsync(ct);
+        var denied = direct.Where(x => !x.IsGranted)
+            .Select(x => x.PermissionId).ToHashSet();
+        var allowed = direct.Where(x => x.IsGranted)
+            .Select(x => x.PermissionId).ToHashSet();
+
+        var roles = (await db.UserRoles.IgnoreQueryFilters(["tenant"])
+            .AsNoTracking().Where(x =>
+                x.UserId == userId && x.TenantId == master &&
+                x.Role.TenantId == master && x.Role.IsActive)
+            .Select(x => x.RoleId).ToListAsync(ct)).ToHashSet();
+
+        var groups = await db.UserGroups.IgnoreQueryFilters(["tenant"])
+            .AsNoTracking().Where(x => x.UserId == userId &&
+                x.TenantId == master && x.Group.TenantId == master &&
+                x.Group.IsActive)
+            .Select(x => x.GroupId).ToListAsync(ct);
+
+        if (groups.Count > 0)
+            roles.UnionWith(await db.GroupRoles.IgnoreQueryFilters(["tenant"])
+                .AsNoTracking().Where(x =>
+                    x.TenantId == master && groups.Contains(x.GroupId) &&
+                    x.Group!.TenantId == master && x.Group.IsActive &&
+                    x.Role!.TenantId == master && x.Role.IsActive)
+                .Select(x => x.RoleId).ToListAsync(ct));
+
+        if (roles.Count > 0)
+            allowed.UnionWith(await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                .AsNoTracking().Where(x =>
+                    x.TenantId == master && roles.Contains(x.RoleId) &&
+                    x.Role!.TenantId == master && x.Role.IsActive &&
+                    x.Permission!.IsActive)
+                .Select(x => x.PermissionId).Distinct().ToListAsync(ct));
+
+        allowed.ExceptWith(denied);
+
+        // Duplicates, missing catalog rows, wrong Resource/Module, inactive UI
+        // or multiple unexpected links must not become an allowed affordance.
+        var structurallyValid = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var d in descriptors)
+        {
+            var matches = uiRows.Where(x =>
+                string.Equals(x.Key, d.Key, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (matches.Length != 1)
+            {
+                structurallyValid[d.Key] = false;
+                continue;
+            }
+
+            var item = matches[0];
+            var owners = resources.Where(x => x.Id == item.ResourceId &&
+                x.IsActive && x.ModuleActive &&
+                string.Equals(x.Code, d.ResourceCode, StringComparison.Ordinal) &&
+                string.Equals(x.ModuleCode, d.ModuleCode, StringComparison.Ordinal))
+                .ToArray();
+            var matchedPermission = permissions.Where(x =>
+                string.Equals(x.Code, d.PermissionCode, StringComparison.Ordinal) &&
+                x.IsActive &&
+                (x.ResourceId == null || x.ResourceId == item.ResourceId)).ToArray();
+            var itemLinks = links.Where(x => x.UiResourceId == item.Id).ToArray();
+
+            structurallyValid[d.Key] =
+                item.IsActive &&
+                item.Type == d.Type &&
+                string.Equals(item.Description, d.Route, StringComparison.Ordinal) &&
+                owners.Length == 1 &&
+                matchedPermission.Length == 1 &&
+                itemLinks.Length == 1 &&
+                itemLinks[0].PermissionId == matchedPermission[0].Id &&
+                allowed.Contains(matchedPermission[0].Id);
+        }
+
+        var entries = descriptors.Select(d =>
+        {
+            var rootAllowed = structurallyValid.TryGetValue(d.FeatureKey, out var root) && root;
+            return new CurrentUiAccessEntry(d.Key, d.Route, d.Type.ToString(),
+                rootAllowed && structurallyValid.GetValueOrDefault(d.Key));
+        }).OrderBy(x => x.Key, StringComparer.Ordinal).ToArray();
+
+        return new CurrentUiAccessSnapshot(2, entries);
     }
+
+    private sealed record Descriptor(
+        string Key, string FeatureKey, string ResourceCode, string ModuleCode,
+        string? Route, UiResourceType Type, string PermissionCode);
 }

@@ -151,3 +151,8 @@ Additional subordinate PAGE route templates and named ACTION metadata use existi
 ## FR-06A — live UI read/action hints (2026-11-07)
 
 A SystemAdministrator-only, no-store `UiAccess/me/{key}` checks live persisted UI permission links and effective current-user grants, using code-owned keys. This is **UI behavior only**: it does not replace API authorization, and an opt-in Angular pilot controls the Roles permissions page and save button. The default is OFF; registry activation and grants need separate reviewed rollout. See [runbook](../development/FR-06A-LIVE-SYSTEM-UI-ACCESS.md).
+
+
+## FR-07A — System bulk UI permission snapshot
+
+A SystemAdministrator-only, live-DB `UiAccess/me` returns code-owned PAGE/ACTION permissions for the current principal in one bounded query batch. 26 missing CRUD/state ACTION descriptors are added. No server authorization policy, BFF flag or grants change; client UI enforcement is opt-in pending a reviewed Registry/role grant rollout. See [FR-07A](../development/FR-07A-BULK-SYSTEM-UI-ACCESS.md).

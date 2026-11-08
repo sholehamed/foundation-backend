@@ -29,9 +29,9 @@ public sealed class FeatureRegistrySqlServerTests
             await registry.ApplyAsync();
             Assert.Equal(13, await db.Resources.CountAsync());
             Assert.Equal(13, await db.Menus.CountAsync());
-            Assert.Equal(54, await db.UiResources.CountAsync());
-            Assert.Equal(54, await db.PermissionUiResources.CountAsync());
-            Assert.Equal(41, FeatureRegistryDefinitions.UiElements.Count);
+            Assert.Equal(80, await db.UiResources.CountAsync());
+            Assert.Equal(80, await db.PermissionUiResources.CountAsync());
+            Assert.Equal(67, FeatureRegistryDefinitions.UiElements.Count);
             foreach (var descriptor in FeatureRegistryDefinitions.UiElements)
             {
                 var item = await db.UiResources.AsNoTracking().SingleAsync(x =>
@@ -60,7 +60,7 @@ public sealed class FeatureRegistrySqlServerTests
                 x.Id == preservedId);
             Assert.Equal("Operator-owned title", result.Title);
             Assert.False(result.IsActive);
-            Assert.Equal(54, await db.UiResources.CountAsync());
+            Assert.Equal(80, await db.UiResources.CountAsync());
             Assert.Equal(13, await db.Menus.CountAsync());
         });
     }
@@ -76,7 +76,7 @@ public sealed class FeatureRegistrySqlServerTests
                     new DefaultEndpointDataSource([]));
                 Assert.True((await registry.PreviewAsync()).CanApply);
                 await registry.ApplyAsync();
-                Assert.Equal(54, await db.UiResources.CountAsync());
+                Assert.Equal(80, await db.UiResources.CountAsync());
                 Assert.Equal(13, await db.Menus.CountAsync());
                 await transaction.RollbackAsync();
             }

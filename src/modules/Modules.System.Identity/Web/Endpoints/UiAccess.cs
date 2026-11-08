@@ -13,7 +13,18 @@ public sealed class UiAccess : EndpointGroupBase
     {
         app.MapGroup(this)
             .RequireAuthorization("SystemAdministrator")
+            .MapGet(GetMyUiAccessSnapshot, "me")
             .MapGet(GetMyUiAccess, "me/{key}");
+    }
+
+    public static async Task<IResult> GetMyUiAccessSnapshot(
+        HttpContext http, IIdentityDbContext db,
+        CancellationToken cancellationToken)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        var result = await new CurrentSystemUiAccessService(db)
+            .GetSnapshotAsync(http.User, cancellationToken);
+        return result is null ? Results.Forbid() : Results.Ok(result);
     }
 
     public static async Task<IResult> GetMyUiAccess(

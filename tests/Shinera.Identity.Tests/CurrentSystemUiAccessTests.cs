@@ -143,6 +143,125 @@ public sealed class CurrentSystemUiAccessTests
         Assert.False(await evaluator.IsAllowedAsync(Principal(user), "system.roles"));
     }
 
+    [Fact]
+    public async Task Snapshot_contains_all_13_roots_32_pages_9_actions_and_fails_closed_without_grants()
+    {
+        await using var db = await DbAsync();
+        await RegisterAsync(db);
+        var user = NewUser();
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var service = new CurrentSystemUiAccessService(db);
+        var snapshot = await service.GetSnapshotAsync(Principal(user));
+        Assert.NotNull(snapshot);
+        Assert.Equal(2, snapshot.SchemaVersion);
+        Assert.Equal(80, snapshot.Entries.Count);
+        Assert.Equal(45, snapshot.Entries.Count(x => x.Type == "PAGE"));
+        Assert.Equal(35, snapshot.Entries.Count(x => x.Type == "ACTION"));
+        Assert.All(snapshot.Entries, x => Assert.False(x.Allowed));
+        Assert.Equal(80, snapshot.Entries.Select(x => x.Key)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Contains(snapshot.Entries, x => x.Key == "system.roles.permissions" &&
+            x.Route == "/system/roles/:roleId/permissions" && !x.Allowed);
+        Assert.Contains(snapshot.Entries, x => x.Key == "system.roles.action.assign-permissions" &&
+            x.Route is null && !x.Allowed);
+    }
+
+    [Fact]
+    public async Task Bulk_projection_honors_grants_direct_denies_and_disabled_catalog_without_stale_cache()
+    {
+        await using var db = await DbAsync();
+        await RegisterAsync(db);
+        var user = NewUser();
+        db.Users.Add(user);
+        var read = await db.Permissions.SingleAsync(x => x.Code == "ROLES.READ");
+        var write = await db.Permissions.SingleAsync(x => x.Code == "ROLES.ASSIGN-PERMISSIONS");
+        var role = new Role(Master, "bulk-reader", null) { IsActive = true, RowVersion = [1] };
+        db.Roles.Add(role);
+        db.UserRoles.Add(new UserRole(Master, user.Id, role.Id) { RowVersion = [1] });
+        db.RolePermissions.AddRange(
+            new RolePermission(Master, role.Id, read.Id) { RowVersion = [1] },
+            new RolePermission(Master, role.Id, write.Id) { RowVersion = [1] });
+        await db.SaveChangesAsync();
+
+        var access = new CurrentSystemUiAccessService(db);
+        async Task<bool> Allowed(string key)
+        {
+            var snapshot = await access.GetSnapshotAsync(Principal(user));
+            Assert.NotNull(snapshot);
+            return snapshot.Entries.Single(x => x.Key == key).Allowed;
+        }
+
+        Assert.True(await Allowed("system.roles"));
+        Assert.True(await Allowed("system.roles.permissions"));
+        Assert.True(await Allowed("system.roles.action.assign-permissions"));
+        Assert.False(await Allowed("system.users"));
+        Assert.False(await Allowed("system.users.create")); // inactive metadata
+
+        var denied = new UserPermission(Guid.NewGuid())
+        {
+            RowVersion = [1], TenantId = Master, UserId = user.Id,
+            PermissionId = write.Id, IsGranted = false
+        };
+        db.UserPermissions.Add(denied);
+        await db.SaveChangesAsync();
+        Assert.True(await Allowed("system.roles"));
+        Assert.False(await Allowed("system.roles.permissions"));
+        Assert.False(await Allowed("system.roles.action.assign-permissions"));
+
+        db.UserPermissions.Remove(denied);
+        await db.SaveChangesAsync();
+        Assert.True(await Allowed("system.roles.permissions"));
+
+        var child = await db.UiResources.SingleAsync(x => x.Key == "system.roles.permissions");
+        child.IsActive = false;
+        await db.SaveChangesAsync();
+        Assert.False(await Allowed("system.roles.permissions"));
+        Assert.True(await Allowed("system.roles"));
+
+        child.IsActive = true;
+        var root = await db.UiResources.SingleAsync(x => x.Key == "system.roles");
+        root.IsActive = false;
+        await db.SaveChangesAsync();
+        Assert.False(await Allowed("system.roles.permissions"));
+        Assert.False(await Allowed("system.roles"));
+    }
+
+    [Fact]
+    public async Task Bulk_projection_rejects_extra_permission_links_and_wrong_tenant_principals()
+    {
+        await using var db = await DbAsync();
+        await RegisterAsync(db);
+        var user = NewUser();
+        db.Users.Add(user);
+        var read = await db.Permissions.SingleAsync(x => x.Code == "ROLES.READ");
+        var unrelated = await db.Permissions.SingleAsync(x => x.Code == "USERS.READ");
+        db.UserPermissions.Add(new UserPermission(Guid.NewGuid())
+        {
+            RowVersion = [1], TenantId = Master, UserId = user.Id,
+            PermissionId = read.Id, IsGranted = true
+        });
+        await db.SaveChangesAsync();
+        var service = new CurrentSystemUiAccessService(db);
+        Assert.True((await service.GetSnapshotAsync(Principal(user)))!
+            .Entries.Single(x => x.Key == "system.roles").Allowed);
+
+        var ui = await db.UiResources.SingleAsync(x => x.Key == "system.roles");
+        db.PermissionUiResources.Add(new PermissionUiResource(unrelated.Id, ui.Id) { RowVersion = [1] });
+        await db.SaveChangesAsync();
+        Assert.False((await service.GetSnapshotAsync(Principal(user)))!
+            .Entries.Single(x => x.Key == "system.roles").Allowed);
+
+        var tenantActor = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim(OpenIddictConstants.Claims.Subject, user.Id.ToString()),
+            new Claim("account_type", "tenant"),
+            new Claim("tenant_id", Master.ToString())
+        ], "test"));
+        Assert.Null(await service.GetSnapshotAsync(tenantActor));
+        Assert.Null(await service.GetSnapshotAsync(new ClaimsPrincipal(new ClaimsIdentity())));
+    }
+
     private static ClaimsPrincipal Principal(User user) => new(
         new ClaimsIdentity([
             new(OpenIddictConstants.Claims.Subject, user.Id.ToString()),
