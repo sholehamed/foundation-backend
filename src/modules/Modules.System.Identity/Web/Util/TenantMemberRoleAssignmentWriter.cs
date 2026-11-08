@@ -32,6 +32,25 @@ public static class TenantMemberRoleAssignmentWriter
             !current.WritableTenantIds.Contains(tenantId))
             return false;
 
+        // FR-12D is a NEW elevation-capable write path. Unlike legacy Owner
+        // read compatibility, it must not activate before the explicitly
+        // reviewed code-owned ACTION has been applied to the SQL catalog.
+        var registered = await db.Permissions.AsNoTracking()
+            .Where(p => p.Code == TenantWorkspacePermissionCatalog.MembersAssignRoles &&
+                p.IsActive && p.ResourceId != null && p.Resource != null &&
+                p.Resource.Code == TenantPermissionCatalogSync.ResourceCode &&
+                p.Resource.IsActive && p.Resource.Module != null &&
+                p.Resource.Module.Code == TenantPermissionCatalogSync.ModuleCode &&
+                p.Resource.Module.IsActive &&
+                db.PermissionUiResources.Any(l =>
+                    l.PermissionId == p.Id && l.UiResource != null &&
+                    l.UiResource.IsActive && l.UiResource.ResourceId == p.ResourceId &&
+                    l.UiResource.Key == "tenant.workspace.members.assign-roles" &&
+                    l.UiResource.Type == UiResourceType.ACTION &&
+                    l.UiResource.Description == null))
+            .Select(p => p.Id).ToListAsync(ct);
+        if (registered.Count != 1) return false;
+
         // Owner status is an additional mandatory gate; a direct explicit
         // user DENY for either PAGE or ACTION blocks writes even for Owner.
         return await TenantWorkspacePermissionEvaluator.AllowsAsync(
