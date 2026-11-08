@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -539,10 +540,16 @@ public sealed class TenantRoleGrantSqlServerTests
             // The previously-reviewed SQL writers still operate and audit,
             // but only through their precise temporary storage intents.
             var roleVersion = await GetVersionAsync(db, roleId);
-            var nextRoleVersion = await TenantRolePermissionGrantWriter.ReplaceAsync(
-                actor, db, roleId,
+            // Invoke the REAL endpoint handler, not only the service:
+            // the HTTP binding must supply the scoped write grant.
+            var roleResponse = await TenantWorkspace.ReplaceRolePermissions(
+                actor, db, new DefaultHttpContext(), roleId,
                 new TenantRolePermissionGrantWriter.ReplaceRequest(roleVersion,
-                    [TenantWorkspacePermissionCatalog.MembersRead]), default, trusted);
+                    [TenantWorkspacePermissionCatalog.MembersRead]),
+                trusted, default);
+            Assert.Equal(StatusCodes.Status200OK,
+                Assert.IsAssignableFrom<IStatusCodeHttpResult>(roleResponse).StatusCode);
+            var nextRoleVersion = await GetVersionAsync(db, roleId);
             Assert.NotEqual(roleVersion, nextRoleVersion);
             Assert.Equal(1, await AuditCountAsync(db));
             Assert.True(await db.RolePermissions.AsNoTracking().AnyAsync(x =>
@@ -551,10 +558,14 @@ public sealed class TenantRoleGrantSqlServerTests
 
             var memberVersion = Convert.ToBase64String((await db.Users.AsNoTracking()
                 .SingleAsync(x => x.Id == member.Id)).RowVersion);
-            var nextMemberVersion = await TenantMemberRoleAssignmentWriter.ReplaceAsync(
-                actor, db, member.Id,
+            var memberResponse = await TenantWorkspace.ReplaceMemberRoles(
+                actor, db, new DefaultHttpContext(), member.Id,
                 new TenantMemberRoleAssignmentWriter.ReplaceRequest(
-                    memberVersion, [roleId]), default, trusted);
+                    memberVersion, [roleId]), trusted, default);
+            Assert.Equal(StatusCodes.Status200OK,
+                Assert.IsAssignableFrom<IStatusCodeHttpResult>(memberResponse).StatusCode);
+            var nextMemberVersion = Convert.ToBase64String((await db.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).RowVersion);
             Assert.NotEqual(memberVersion, nextMemberVersion);
             Assert.Equal(1, await MemberAuditCountAsync(db));
             Assert.True(await db.UserRoles.AsNoTracking().AnyAsync(x =>
