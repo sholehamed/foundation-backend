@@ -444,6 +444,58 @@ public sealed class TenantRoleGrantSqlServerTests
         });
     }
 
+
+    [Fact]
+    public async Task Inactive_role_cannot_be_newly_granted_but_can_be_revoked_and_registry_must_be_reviewed()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (ctx, actor, _, roleId, _) = await SeedAsync(setup, options);
+            await using var db = ctx;
+            var tenantId = actor.ActiveTenantId!.Value;
+            var member = new User(Guid.NewGuid(), tenantId, "inactive-target",
+                "inactive-target@example.test", "Inactive", "Role", UserType.Tenant)
+            {
+                IsActive = true, NormalizedUserName = "INACTIVE-TARGET",
+                NormalizedEmail = "INACTIVE-TARGET@EXAMPLE.TEST", PasswordHash = "fixture"
+            };
+            setup.Users.Add(member);
+            var inactiveRole = await setup.Roles.SingleAsync(x => x.Id == roleId);
+            inactiveRole.IsActive = false;
+            await setup.SaveChangesAsync();
+
+            var token = Convert.ToBase64String((await db.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).RowVersion);
+            await Assert.ThrowsAsync<TenantMemberRoleConflictException>(() =>
+                TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id,
+                    new TenantMemberRoleAssignmentWriter.ReplaceRequest(token, [roleId])));
+
+            // A historical inactive membership can be retained or revoked,
+            // but not added. Create only through the unscoped test seed.
+            setup.UserRoles.Add(new UserRole(tenantId, member.Id, roleId));
+            await setup.SaveChangesAsync();
+            var matrix = await TenantMemberRoleAssignmentWriter.ReadAsync(
+                actor, db, member.Id, default);
+            Assert.NotNull(matrix);
+            Assert.Contains(matrix.Roles, x => x.Id == roleId &&
+                !x.IsActive && x.Assigned);
+            await TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id,
+                new TenantMemberRoleAssignmentWriter.ReplaceRequest(token, []));
+            Assert.Equal(1, await MemberAuditCountAsync(db));
+
+            // Owner fallback on a missing catalog definition must never open
+            // this NEW privilege-changing operation.
+            var actionUi = await setup.UiResources.SingleAsync(x =>
+                x.Key == "tenant.workspace.members.assign-roles");
+            actionUi.IsActive = false;
+            await setup.SaveChangesAsync();
+            Assert.False(await TenantMemberRoleAssignmentWriter.CanManageAsync(actor, db, default));
+            Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id,
+                    new TenantMemberRoleAssignmentWriter.ReplaceRequest(token, [])));
+        });
+    }
+
     private static Task<int> MemberAuditCountAsync(IdentityDbContext db) =>
         db.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberRoleAuditEntries]")
