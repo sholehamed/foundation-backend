@@ -145,6 +145,11 @@ class PreflightTests(unittest.TestCase):
             probe(sample("tenant-bff-pilot"), opener)
         self.assertEqual(len(opener.urls), 1)
 
+    def test_malformed_discovery_issuer_rejected(self):
+        opener = FakeOpener([FakeResponse(200, {}, b'{"issuer":42}')])
+        with self.assertRaisesRegex(PreflightError, "issuer does not match"):
+            probe(sample("tenant-bff-pilot"), opener)
+
     def test_bff_302_fails_not_interpreted_as_success(self):
         c = sample("tenant-bff-pilot")
         opener = FakeOpener([
