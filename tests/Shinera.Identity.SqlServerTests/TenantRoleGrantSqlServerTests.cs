@@ -965,6 +965,39 @@ public sealed class TenantRoleGrantSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Invitation_does_not_activate_if_registered_member_email_changed()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "email.swap", "original@example.test", "Email", "Change"));
+            var sender = new FakeInvitationSender();
+            await TenantMemberInvitationWriter.InviteAsync(actor, db, sender, member.Id);
+
+            var changed = await setup.Users.SingleAsync(x => x.Id == member.Id);
+            changed.Email = "new-owner@example.test";
+            changed.NormalizedEmail = "NEW-OWNER@EXAMPLE.TEST";
+            await setup.SaveChangesAsync();
+
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            await Assert.ThrowsAsync<TenantInvitationValidationException>(() =>
+                TenantMemberInvitationWriter.ActivateAsync(anonymous, hasher,
+                    new TenantMemberInvitationWriter.ActivateRequest(
+                        "tenant-role-grants", sender.Token, "P@ssword-For-St4ff!")));
+            anonymous.ChangeTracker.Clear();
+            Assert.False((await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).IsActive);
+            Assert.Equal(0, await anonymous.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberInvitations] WHERE [UsedAtUtc] IS NOT NULL")
+                .SingleAsync());
+        });
+    }
+
     private sealed class FakeInvitationSender : ITenantInvitationSender
     {
         public bool IsConfigured { get; set; } = true;
