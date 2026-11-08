@@ -1,5 +1,11 @@
 # Foundation Backend — Project State & Handoff
 
+## FR-08B — Tenant Admin scoped workspace starter (2026-11-08)
+
+- PR/CI pending: [Tenant Workspace read contract](development/FR-08B-TENANT-WORKSPACE-STARTER.md). Existing read-only /api/tenant/workspace adds real branchesCount, and new GET /api/tenant/workspace/branches reads only current ActiveTenantId without caller-provided tenant identifiers. Requires authenticated tenant context, readable active tenant. No TenantAdministrator policy or mutation permissions claimed yet.
+- Angular companion retains /dashboard after login and introduces read-only Business and Branches pages under tenantSessionGuard. Billing state is still pending_activation placeholder; requested plans are not paid/activated. No SystemAdministrator routes or production database changes.
+
+
 ## FR-08A — System Administrator dashboard (2026-11-08)
 
 - PR/CI pending: [FR-08A contract and Tenant Admin baseline](development/FR-08A-SYSTEM-ADMIN-DASHBOARD.md). Protected dashboard endpoint preserves legacy properties and adds active/inactive business tenant counts (Master excluded), UserType statistics, groups/modules and latest six business records. No synthetic revenue, migrations, BFF or permission changes.

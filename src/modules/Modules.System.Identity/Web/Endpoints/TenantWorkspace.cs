@@ -14,13 +14,18 @@ public static class TenantWorkspace
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace", Get)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/branches", GetBranches)
+            .RequireAuthorization()
+            .WithTags("Tenant Workspace");
     }
 
     private static async Task<IResult> Get(
         ITenantContext current,
         IdentityDbContext db,
+        HttpContext http,
         CancellationToken cancellationToken)
     {
+        http.Response.Headers.CacheControl = "no-store";
         if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
             !current.ReadableTenantIds.Contains(tenantId))
             return Results.Forbid();
@@ -42,9 +47,42 @@ public static class TenantWorkspace
             .Where(b => b.TenantId == tenantId && b.IsMain)
             .Select(b => new { b.Id, b.Name, b.City, b.Address })
             .SingleOrDefaultAsync(cancellationToken);
+        var branchesCount = await db.Branches.AsNoTracking()
+            .CountAsync(b => b.TenantId == tenantId, cancellationToken);
         return Results.Ok(new {
-            tenant, profile, mainBranch,
+            tenant, profile, mainBranch, branchesCount,
+            // This is still a placeholder, NOT a confirmed paid subscription.
             subscriptionStatus = "pending_activation"
         });
     }
+    /// <summary>Read-only owned branch summary; no tenant ID is accepted from the client.</summary>
+    public sealed record WorkspaceBranchDto(
+        Guid Id, string Name, string City, string Address, string? Phone, bool IsMain);
+
+    public static async Task<IResult> GetBranches(
+        ITenantContext current,
+        IdentityDbContext db,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
+            !current.ReadableTenantIds.Contains(tenantId))
+            return Results.Forbid();
+
+        if (!await db.Tenants.AsNoTracking()
+            .AnyAsync(t => t.Id == tenantId && t.IsActive, cancellationToken))
+            return Results.NotFound();
+
+        var branches = await db.Branches.AsNoTracking()
+            .Where(b => b.TenantId == tenantId)
+            .OrderByDescending(b => b.IsMain)
+            .ThenBy(b => b.Name)
+            .Select(b => new WorkspaceBranchDto(
+                b.Id, b.Name, b.City, b.Address, b.Phone, b.IsMain))
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(branches);
+    }
 }
+
