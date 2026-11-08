@@ -123,8 +123,9 @@ public static class TenantRolePermissionGrantWriter
             var uis = await db.UiResources.AsNoTracking()
                 .Where(x => x.IsActive && x.ResourceId == definitions[0].ResourceId)
                 .Select(x => new { x.Id, x.Key, x.Type, x.Description }).ToListAsync(ct);
+            var definitionIds = definitions.Select(p => p.Id).ToArray();
             var uiLinks = await db.PermissionUiResources.AsNoTracking()
-                .Where(x => definitions.Select(p => p.Id).Contains(x.PermissionId))
+                .Where(x => definitionIds.Contains(x.PermissionId))
                 .Select(x => new { x.PermissionId, x.UiResourceId }).ToListAsync(ct);
 
             foreach (var d in TenantWorkspacePermissionCatalog.Definitions)

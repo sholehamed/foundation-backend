@@ -102,14 +102,14 @@ public sealed class FeatureRegistrySqlServerTests
             var preview = await registry.PreviewAsync();
             Assert.True(preview.CanApply);
             Assert.True(preview.HasPending);
-            Assert.Equal(14, preview.Changes.Count); // module + resource + 4x(permission, UI, link)
+            Assert.Equal(17, preview.Changes.Count); // module + resource + 5x(permission, UI, link)
             Assert.Empty(await db.Permissions.AsNoTracking().ToListAsync());
 
             var accepted = await registry.ApplyAsync(preview.Fingerprint);
             Assert.True(accepted.CanApply);
-            Assert.Equal(4, await db.Permissions.CountAsync());
-            Assert.Equal(4, await db.UiResources.CountAsync());
-            Assert.Equal(4, await db.PermissionUiResources.CountAsync());
+            Assert.Equal(5, await db.Permissions.CountAsync());
+            Assert.Equal(5, await db.UiResources.CountAsync());
+            Assert.Equal(5, await db.PermissionUiResources.CountAsync());
             Assert.Single(await db.Modules.ToListAsync());
             Assert.Single(await db.Resources.ToListAsync());
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
