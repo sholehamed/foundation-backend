@@ -396,8 +396,11 @@ public sealed class TenantRoleGrantSqlServerTests
             await setup.SaveChangesAsync();
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
                 TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id, req));
-            setup.UserRoles.Remove(await setup.UserRoles.SingleAsync(x =>
-                x.UserId == member.Id && x.RoleId == ownerRole));
+            // The seed DbContext has no Tenant read scope; bypass its read
+            // filter explicitly for this fixture cleanup, never in the API.
+            setup.UserRoles.Remove(await setup.UserRoles.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.TenantId == tenantId &&
+                    x.UserId == member.Id && x.RoleId == ownerRole));
             await setup.SaveChangesAsync();
 
             member.IsActive = false;
