@@ -40,3 +40,5 @@
 - [FR-08A — System dashboard and Tenant Admin baseline](development/FR-08A-SYSTEM-ADMIN-DASHBOARD.md)
 
 - [FR-08B — Tenant Workspace read-only starter](development/FR-08B-TENANT-WORKSPACE-STARTER.md)
+
+- [FR-13A — Staging readiness, read-only preflight and deployment gates](development/FR-13A-STAGING-READINESS.md)
