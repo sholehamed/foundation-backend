@@ -734,6 +734,192 @@ public sealed class TenantRoleGrantSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Invitation_token_is_hash_only_and_activation_is_single_use()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db,
+                hasher, new TenantPendingMemberWriter.CreateRequest(
+                    "invite.staff", "invite.staff@example.test", "Invite", "Staff"));
+            var sender = new FakeInvitationSender();
+            Assert.True(await TenantMemberInvitationWriter.CanInviteAsync(actor, db, default));
+            var submitted = await TenantMemberInvitationWriter.InviteAsync(
+                actor, db, sender, member.Id);
+            Assert.Equal("submitted", submitted.Status);
+            Assert.Equal("invite.staff@example.test", sender.Recipient);
+            Assert.Equal("tenant-role-grants", sender.Slug);
+            Assert.Equal(64, sender.Token?.Length);
+            Assert.True(await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberInvitations] WHERE DATALENGTH([TokenHash])=32")
+                .SingleAsync() == 1);
+            Assert.Equal(0, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberInvitations] WHERE [SubmittedAtUtc] IS NULL")
+                .SingleAsync());
+
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            var activation = new TenantMemberInvitationWriter.ActivateRequest(
+                "tenant-role-grants", sender.Token, "P@ssword-For-St4ff!");
+            await Assert.ThrowsAsync<TenantInvitationValidationException>(() =>
+                TenantMemberInvitationWriter.ActivateAsync(anonymous, hasher,
+                    activation with { TenantSlug = "other-role-grants" }));
+            await TenantMemberInvitationWriter.ActivateAsync(anonymous, hasher, activation);
+            anonymous.ChangeTracker.Clear();
+            var user = await anonymous.Users.AsNoTracking().SingleAsync(x => x.Id == member.Id);
+            Assert.True(user.IsActive);
+            Assert.True(user.EmailConfirmed);
+            Assert.Equal(PasswordVerificationResult.Success,
+                hasher.VerifyHashedPassword(user, user.PasswordHash, "P@ssword-For-St4ff!"));
+            Assert.False(await anonymous.UserRoles.IgnoreQueryFilters(["tenant"])
+                .AnyAsync(x => x.UserId == member.Id));
+            Assert.False(await anonymous.UserPermissions.IgnoreQueryFilters(["tenant"])
+                .AnyAsync(x => x.UserId == member.Id));
+            await Assert.ThrowsAsync<TenantInvitationValidationException>(() =>
+                TenantMemberInvitationWriter.ActivateAsync(anonymous, hasher, activation));
+            var actions = await anonymous.Database.SqlQueryRaw<string>(
+                "SELECT [Action] AS [Value] FROM [dbo].[TenantMemberLifecycleAuditEntries]")
+                .ToArrayAsync();
+            Assert.Contains("invite_issued", actions);
+            Assert.Contains("invite_submitted", actions);
+            Assert.Contains("invite_activated", actions);
+        });
+    }
+
+    [Fact]
+    public async Task Invitation_transport_failure_never_creates_usable_token()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "fail.staff", "fail.staff@example.test", "Fail", "Staff"));
+            var missing = new FakeInvitationSender { IsConfigured = false };
+            await Assert.ThrowsAsync<TenantInvitationDeliveryException>(() =>
+                TenantMemberInvitationWriter.InviteAsync(actor, db, missing, member.Id));
+            Assert.Null(missing.Token);
+            Assert.Equal(0, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberInvitations]").SingleAsync());
+
+            var failed = new FakeInvitationSender { Fail = true };
+            await Assert.ThrowsAsync<TenantInvitationDeliveryException>(() =>
+                TenantMemberInvitationWriter.InviteAsync(actor, db, failed, member.Id));
+            Assert.NotNull(failed.Token);
+            Assert.Equal(1, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberInvitations] WHERE [RevokedAtUtc] IS NOT NULL AND [SubmittedAtUtc] IS NULL")
+                .SingleAsync());
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            await Assert.ThrowsAsync<TenantInvitationValidationException>(() =>
+                TenantMemberInvitationWriter.ActivateAsync(anonymous, hasher,
+                    new TenantMemberInvitationWriter.ActivateRequest(
+                        "tenant-role-grants", failed.Token, "P@ssword-For-St4ff!")));
+            Assert.False((await db.Users.AsNoTracking().SingleAsync(x => x.Id == member.Id)).IsActive);
+        });
+    }
+
+    [Fact]
+    public async Task Resending_invitation_revokes_old_token_and_blocks_owner_target()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "resend.staff", "resend.staff@example.test", "Resend", "Staff"));
+            var original = new FakeInvitationSender();
+            await TenantMemberInvitationWriter.InviteAsync(actor, db, original, member.Id);
+            var resend = new FakeInvitationSender();
+            await TenantMemberInvitationWriter.InviteAsync(actor, db, resend, member.Id);
+            Assert.NotEqual(original.Token, resend.Token);
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            await Assert.ThrowsAsync<TenantInvitationValidationException>(() =>
+                TenantMemberInvitationWriter.ActivateAsync(anonymous, hasher,
+                    new TenantMemberInvitationWriter.ActivateRequest(
+                        "tenant-role-grants", original.Token, "P@ssword-For-St4ff!")));
+            await Assert.ThrowsAsync<TenantInvitationTargetException>(() =>
+                TenantMemberInvitationWriter.InviteAsync(actor, db, resend,
+                    actor.UserId!.Value));
+        });
+    }
+
+    [Fact]
+    public async Task Invitation_issue_audit_failure_rolls_back_token_and_never_sends()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "audit.staff", "audit.staff@example.test", "Audit", "Staff"));
+            await setup.Database.ExecuteSqlRawAsync(
+                "DROP TABLE [dbo].[TenantMemberLifecycleAuditEntries]");
+            var sender = new FakeInvitationSender();
+            await Assert.ThrowsAsync<SqlException>(() =>
+                TenantMemberInvitationWriter.InviteAsync(actor, db, sender, member.Id));
+            Assert.Null(sender.Token);
+            db.ChangeTracker.Clear();
+            Assert.Equal(0, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberInvitations]").SingleAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Invitation_activation_audit_failure_rolls_back_active_state_and_token_use()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "rollback.inv", "rollback.inv@example.test", "Rollback", "Invite"));
+            var sender = new FakeInvitationSender();
+            await TenantMemberInvitationWriter.InviteAsync(actor, db, sender, member.Id);
+            await setup.Database.ExecuteSqlRawAsync(
+                "DROP TABLE [dbo].[TenantMemberLifecycleAuditEntries]");
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            await Assert.ThrowsAsync<SqlException>(() =>
+                TenantMemberInvitationWriter.ActivateAsync(anonymous, hasher,
+                    new TenantMemberInvitationWriter.ActivateRequest(
+                        "tenant-role-grants", sender.Token, "P@ssword-For-St4ff!")));
+            anonymous.ChangeTracker.Clear();
+            Assert.False((await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).IsActive);
+            Assert.Equal(0, await anonymous.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberInvitations] WHERE [UsedAtUtc] IS NOT NULL")
+                .SingleAsync());
+        });
+    }
+
+    private sealed class FakeInvitationSender : ITenantInvitationSender
+    {
+        public bool IsConfigured { get; set; } = true;
+        public bool Fail { get; set; }
+        public string? Token { get; private set; }
+        public string? Recipient { get; private set; }
+        public string? Slug { get; private set; }
+
+        public Task SendAsync(string recipientEmail, string tenantSlug, string token,
+            CancellationToken cancellationToken)
+        {
+            Recipient = recipientEmail;
+            Slug = tenantSlug;
+            Token = token;
+            if (Fail) throw new InvalidOperationException("Fake SMTP unavailable");
+            return Task.CompletedTask;
+        }
+    }
+
     private static Task<int> MemberAuditCountAsync(IdentityDbContext db) =>
         db.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberRoleAuditEntries]")
