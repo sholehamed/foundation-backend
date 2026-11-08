@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
+using Modules.System.Identity.Infrastructure.Persistence.Interceptors;
 using Modules.System.Identity.Web.Endpoints;
 
 namespace Modules.System.Identity.Web.Util;
@@ -62,7 +63,8 @@ public static class TenantRolePermissionGrantWriter
 
     public static async Task<string> ReplaceAsync(
         ITenantContext current, IdentityDbContext db, Guid roleId,
-        ReplaceRequest? request, CancellationToken ct = default)
+        ReplaceRequest? request, CancellationToken ct = default,
+        TrustedTenantWriteScope? intentScope = null)
     {
         // No InMemory/provider fallback: audit+CAS must be atomic real SQL.
         if (!db.Database.IsSqlServer())
@@ -177,10 +179,15 @@ public static class TenantRolePermissionGrantWriter
             if (changed != 1)
                 throw new TenantRoleGrantConflictException("Role version changed.");
 
-            foreach (var id in additions)
-                db.RolePermissions.Add(new RolePermission(tenantId, roleId, id));
-            db.RolePermissions.RemoveRange(removals);
-            await db.SaveChangesAsync(ct);
+            using (var intent = intentScope?.BeginTenantGrantMutation(
+                current, roleId, "RolePermission",
+                additions.Concat(removals.Select(x => x.PermissionId)).ToArray()))
+            {
+                foreach (var id in additions)
+                    db.RolePermissions.Add(new RolePermission(tenantId, roleId, id));
+                db.RolePermissions.RemoveRange(removals);
+                await db.SaveChangesAsync(ct);
+            }
 
             foreach (var id in additions)
                 await WriteAuditAsync(db, tenantId, actor, roleId, id, desired[id], "grant", ct);
