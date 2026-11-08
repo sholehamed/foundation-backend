@@ -8,6 +8,12 @@ using Xunit;
 
 public sealed class TenantRolePermissionMatrixTests
 {
+    private static void AssertForbidden(IResult result)
+    {
+        var response = Assert.IsType<StatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, response.StatusCode);
+    }
+
     [Fact]
     public async Task Owner_reads_only_local_role_grants_and_registration_state()
     {
@@ -77,7 +83,7 @@ public sealed class TenantRolePermissionMatrixTests
             { Scope = RoleScope.Tenant, RowVersion = [1] };
         db.Roles.Add(role);
         await db.SaveChangesAsync();
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetRolePermissions(
+        AssertForbidden(await TenantWorkspace.GetRolePermissions(
             current, db, new DefaultHttpContext(), role.Id, default));
     }
 
