@@ -162,16 +162,18 @@ public static class TenantMemberRoleAssignmentWriter
             if (requested.Any(id => !ordinary.ContainsKey(id)))
                 throw new TenantMemberRoleValidationException(
                     "Role IDs must be ordinary roles in the active Tenant.");
-            if (requested.Any(id => !ordinary[id].IsActive))
-                throw new TenantMemberRoleConflictException(
-                    "Inactive roles may be revoked but not newly assigned.");
-
             var ordinaryIds = ordinary.Keys.ToArray();
             var existing = await db.UserRoles
                 .Where(x => x.TenantId == tenantId && x.UserId == userId &&
                             ordinaryIds.Contains(x.RoleId)).ToListAsync(ct);
             var old = existing.Select(x => x.RoleId).ToHashSet();
             var additions = requested.Except(old).ToArray();
+            // Inactive direct memberships may be retained or revoked.
+            // A new inactive membership is never granted, even if a client
+            // submits an obsolete role list from a stale UI.
+            if (additions.Any(id => !ordinary[id].IsActive))
+                throw new TenantMemberRoleConflictException(
+                    "Cannot newly assign inactive Tenant roles.");
             var removals = existing.Where(x => !requested.Contains(x.RoleId)).ToArray();
             if (additions.Length == 0 && removals.Length == 0)
             {
