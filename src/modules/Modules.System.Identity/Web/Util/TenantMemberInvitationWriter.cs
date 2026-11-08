@@ -10,9 +10,9 @@ using Modules.System.Identity.Web.Endpoints;
 
 namespace Modules.System.Identity.Web.Util;
 
-public sealed class TenantInvitationValidationException : Exception;
-public sealed class TenantInvitationTargetException : Exception;
-public sealed class TenantInvitationDeliveryException : Exception;
+public sealed class TenantInvitationValidationException : Exception { }
+public sealed class TenantInvitationTargetException : Exception { }
+public sealed class TenantInvitationDeliveryException : Exception { }
 
 /// <summary>
 /// FR-13B-2. A token exists only in memory between random generation and the
@@ -172,7 +172,16 @@ public static class TenantMemberInvitationWriter
 
         // This means accepted by configured mail transport, NOT delivered into
         // recipient's inbox. If persistence fails, activation stays disabled.
-        await UpdateDeliveryAsync(db, inviteId, submitted: true, ct);
+        try
+        {
+            await UpdateDeliveryAsync(db, inviteId, submitted: true, ct);
+        }
+        catch (Exception)
+        {
+            // SMTP may have accepted the message, but its token remains
+            // unusable unless the SQL submission CAS committed successfully.
+            throw new TenantInvitationDeliveryException();
+        }
         return new SubmissionReceipt(expiry, "submitted");
     }
 
@@ -278,7 +287,7 @@ public static class TenantMemberInvitationWriter
                 u.Id == invite.TargetUserId && u.TenantId == invite.TenantId &&
                 u.UserType == UserType.Tenant && !u.IsActive && !u.EmailConfirmed, ct);
             if (user is null ||
-                await db.UserRoles.AsNoTracking().AnyAsync(ur =>
+                await db.UserRoles.IgnoreQueryFilters(["tenant"]).AsNoTracking().AnyAsync(ur =>
                     ur.TenantId == invite.TenantId && ur.UserId == user.Id &&
                     ur.Role.TenantId == invite.TenantId &&
                     ur.Role.NormalizedName == "OWNER" &&
