@@ -12,6 +12,12 @@ public sealed class TenantWorkspacePermissionEvaluatorTests
     private const string Members = TenantWorkspacePermissionCatalog.MembersRead;
     private const string Branches = TenantWorkspacePermissionCatalog.BranchesManage;
 
+    private static void AssertForbidden(IResult result)
+    {
+        var response = Assert.IsType<StatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, response.StatusCode);
+    }
+
     [Fact]
     public async Task Direct_tenant_role_grant_allows_page_and_branch_write_but_foreign_role_cannot()
     {
@@ -40,7 +46,7 @@ public sealed class TenantWorkspacePermissionEvaluatorTests
 
         Assert.False(await TenantWorkspacePermissionEvaluator.AllowsAsync(current, db, Members, default));
         Assert.True(await TenantWorkspacePermissionEvaluator.AllowsAsync(current, db, Branches, default));
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetMembers(
+        AssertForbidden(await TenantWorkspace.GetMembers(
             current, db, new DefaultHttpContext()));
         Assert.IsType<Ok<TenantWorkspace.WorkspaceBranchDto>>(await TenantWorkspace.CreateBranch(
             current, db, new DefaultHttpContext(),
@@ -77,7 +83,7 @@ public sealed class TenantWorkspacePermissionEvaluatorTests
         await db.SaveChangesAsync();
 
         Assert.False(await TenantWorkspacePermissionEvaluator.AllowsAsync(current, db, Branches, default));
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.CreateBranch(
+        AssertForbidden(await TenantWorkspace.CreateBranch(
             current, db, new DefaultHttpContext(),
             new TenantWorkspace.BranchWriteRequest("Denied", "City", "Street", null), default));
         db.UserPermissions.Remove(deny);
@@ -183,7 +189,7 @@ public sealed class TenantWorkspacePermissionEvaluatorTests
 
         var system = new TenantContext();
         system.InitializeSystem(Guid.NewGuid(), true);
-        Assert.IsType<ForbidHttpResult>(
+        AssertForbidden(
             await TenantWorkspace.GetCurrentUiAccess(system, db, new DefaultHttpContext(), default));
     }
 

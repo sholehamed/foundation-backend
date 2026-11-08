@@ -13,6 +13,14 @@ namespace Modules.System.Identity.Web.Endpoints;
 /// <summary>Read the workspace owned by the authenticated tenant; never trust a client TenantId.</summary>
 public static class TenantWorkspace
 {
+    // Authentication is already enforced by each endpoint's RequireAuthorization.
+    // Explicit permission denials must be 403 for BOTH native bearer and the
+    // opt-in BFF Cookie bridge. Results.Forbid() delegates to the default
+    // OpenIddict bearer scheme and can issue 401 for a valid Cookie principal
+    // that supplied no Authorization header (misleading re-login prompts).
+    private static IResult DeniedAfterAuthentication() =>
+        Results.StatusCode(StatusCodes.Status403Forbidden);
+
     public static void Map(WebApplication app, string backendPrefix)
     {
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace", Get)
@@ -62,7 +70,7 @@ public static class TenantWorkspace
         http.Response.Headers.CacheControl = "no-store";
         if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
             !current.ReadableTenantIds.Contains(tenantId))
-            return Results.Forbid();
+            return DeniedAfterAuthentication();
 
         var tenant = await db.Tenants.AsNoTracking()
             .Where(t => t.Id == tenantId && t.IsActive)
@@ -102,7 +110,7 @@ public static class TenantWorkspace
         http.Response.Headers.CacheControl = "no-store";
         if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
             !current.ReadableTenantIds.Contains(tenantId))
-            return Results.Forbid();
+            return DeniedAfterAuthentication();
 
         if (!await db.Tenants.AsNoTracking()
             .AnyAsync(t => t.Id == tenantId && t.IsActive, cancellationToken))
@@ -169,7 +177,7 @@ public static class TenantWorkspace
         BranchWriteRequest request, CancellationToken ct)
     {
         http.Response.Headers.CacheControl = "no-store";
-        if (!await CanManageBranchesAsync(current, db, ct)) return Results.Forbid();
+        if (!await CanManageBranchesAsync(current, db, ct)) return DeniedAfterAuthentication();
         var errors = ValidateBranch(request);
         if (errors.Count > 0) return Results.ValidationProblem(errors);
 
@@ -191,7 +199,7 @@ public static class TenantWorkspace
         Guid id, BranchWriteRequest request, CancellationToken ct)
     {
         http.Response.Headers.CacheControl = "no-store";
-        if (!await CanManageBranchesAsync(current, db, ct)) return Results.Forbid();
+        if (!await CanManageBranchesAsync(current, db, ct)) return DeniedAfterAuthentication();
         if (id == Guid.Empty) return Results.NotFound();
 
         // The exact active tenant is a predicate, not merely an EF query filter.
@@ -219,7 +227,7 @@ public static class TenantWorkspace
         http.Response.Headers.CacheControl = "no-store";
         if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
             current.HomeTenantId != tenantId || !current.ReadableTenantIds.Contains(tenantId))
-            return Results.Forbid();
+            return DeniedAfterAuthentication();
         if (!await db.Tenants.AsNoTracking().AnyAsync(
                 t => t.Id == tenantId && t.IsActive, ct))
             return Results.NotFound();
@@ -259,7 +267,7 @@ public static class TenantWorkspace
         http.Response.Headers.CacheControl = "no-store";
         if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
             !current.ReadableTenantIds.Contains(tenantId))
-            return Results.Forbid();
+            return DeniedAfterAuthentication();
         if (!await db.Tenants.AsNoTracking().AnyAsync(t => t.Id == tenantId && t.IsActive, ct))
             return Results.NotFound();
         var members = await TenantWorkspacePermissionEvaluator.AllowsAsync(
@@ -301,7 +309,7 @@ public static class TenantWorkspace
         http.Response.Headers.CacheControl = "no-store";
         if (!await TenantWorkspacePermissionEvaluator.AllowsAsync(
                 current, db, TenantWorkspacePermissionCatalog.MembersRead, ct))
-            return Results.Forbid();
+            return DeniedAfterAuthentication();
         if (page < 1 || page > 1000) return Results.BadRequest();
 
         var tenantId = current.ActiveTenantId!.Value;
@@ -329,7 +337,7 @@ public static class TenantWorkspace
                 current, db, TenantWorkspacePermissionCatalog.MembersRead, ct) ||
             !await TenantWorkspacePermissionEvaluator.AllowsAsync(
                 current, db, TenantWorkspacePermissionCatalog.RolesRead, ct))
-            return Results.Forbid();
+            return DeniedAfterAuthentication();
         var matrix = await TenantMemberRoleAssignmentWriter.ReadAsync(
             current, db, id, ct);
         return matrix is null ? Results.NotFound() : Results.Ok(matrix);
@@ -347,7 +355,7 @@ public static class TenantWorkspace
                 current, db, id, request, ct, trustedWrites);
             return Results.Ok(new { version });
         }
-        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
         catch (TenantMemberRoleValidationException e)
         {
             return Results.Problem(statusCode: 400,
@@ -382,7 +390,7 @@ public static class TenantWorkspace
         http.Response.Headers.CacheControl = "no-store";
         if (!await TenantWorkspacePermissionEvaluator.AllowsAsync(
                 current, db, TenantWorkspacePermissionCatalog.RolesRead, ct))
-            return Results.Forbid();
+            return DeniedAfterAuthentication();
         if (page < 1 || page > 1000) return Results.BadRequest();
 
         var tenantId = current.ActiveTenantId!.Value;
@@ -415,7 +423,7 @@ public static class TenantWorkspace
         {
             return Results.Ok(await TenantRoleLifecycleWriter.CreateAsync(current, db, request, ct));
         }
-        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
         catch (TenantRoleLifecycleValidationException e)
         { return Results.Problem(statusCode: 400, title: "Invalid Tenant role", detail: e.Message); }
         catch (TenantRoleLifecycleConflictException e)
@@ -435,7 +443,7 @@ public static class TenantWorkspace
         {
             return Results.Ok(await TenantRoleLifecycleWriter.UpdateAsync(current, db, id, request, ct));
         }
-        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
         catch (TenantRoleLifecycleValidationException e)
         { return Results.Problem(statusCode: 400, title: "Invalid Tenant role", detail: e.Message); }
         catch (TenantRoleLifecycleConflictException e)
@@ -457,7 +465,7 @@ public static class TenantWorkspace
         {
             return Results.Ok(await TenantRoleLifecycleWriter.ChangeStateAsync(current, db, id, request, ct));
         }
-        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
         catch (TenantRoleLifecycleValidationException e)
         { return Results.Problem(statusCode: 400, title: "Invalid Tenant role", detail: e.Message); }
         catch (TenantRoleLifecycleConflictException e)
@@ -485,7 +493,7 @@ public static class TenantWorkspace
         http.Response.Headers.CacheControl = "no-store";
         if (!await TenantWorkspacePermissionEvaluator.AllowsAsync(
                 current, db, TenantWorkspacePermissionCatalog.RolesRead, ct))
-            return Results.Forbid();
+            return DeniedAfterAuthentication();
         if (id == Guid.Empty) return Results.NotFound();
         var tenantId = current.ActiveTenantId!.Value;
         var role = await db.Roles.AsNoTracking()
@@ -538,7 +546,7 @@ public static class TenantWorkspace
                 current, db, id, request, ct, trustedWrites);
             return Results.Ok(new { version });
         }
-        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
         catch (TenantRoleGrantMissingException) { return Results.NotFound(); }
         catch (TenantRoleGrantValidationException error)
         {
@@ -574,7 +582,7 @@ public static class TenantWorkspace
         http.Response.Headers.CacheControl = "no-store";
         if (!await TenantWorkspacePermissionEvaluator.AllowsAsync(
                 current, db, TenantWorkspacePermissionCatalog.GroupsRead, ct))
-            return Results.Forbid();
+            return DeniedAfterAuthentication();
         if (page < 1 || page > 1000) return Results.BadRequest();
 
         var tenantId = current.ActiveTenantId!.Value;

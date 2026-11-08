@@ -8,6 +8,12 @@ using Xunit;
 
 public sealed class TenantWorkspaceReadTests
 {
+    private static void AssertForbidden(IResult result)
+    {
+        var response = Assert.IsType<StatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, response.StatusCode);
+    }
+
     [Fact]
     public async Task Returns_only_the_authenticated_active_tenants_branches()
     {
@@ -54,12 +60,12 @@ public sealed class TenantWorkspaceReadTests
 
         var system = new TenantContext();
         system.InitializeSystem(Guid.NewGuid(), isSuperAdmin: true);
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetBranches(
+        AssertForbidden(await TenantWorkspace.GetBranches(
             system, db, new DefaultHttpContext(), default));
 
         var unreadable = new TenantContext();
         unreadable.InitializeTenant(Guid.NewGuid(), owned, [], [], owned);
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetBranches(
+        AssertForbidden(await TenantWorkspace.GetBranches(
             unreadable, db, new DefaultHttpContext(), default));
 
         var absent = Guid.NewGuid();

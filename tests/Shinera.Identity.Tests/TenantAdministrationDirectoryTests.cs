@@ -8,6 +8,12 @@ using Xunit;
 
 public sealed class TenantAdministrationDirectoryTests
 {
+    private static void AssertForbidden(IResult result)
+    {
+        var response = Assert.IsType<StatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, response.StatusCode);
+    }
+
     [Fact]
     public async Task Owner_sees_only_own_member_role_and_group_records()
     {
@@ -73,14 +79,14 @@ public sealed class TenantAdministrationDirectoryTests
         db.UserRoles.Add(new UserRole(tenantId, ownerId, role.Id) { RowVersion = [1] });
         await db.SaveChangesAsync();
 
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetMembers(current, db, new DefaultHttpContext()));
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetRoles(current, db, new DefaultHttpContext()));
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetGroups(current, db, new DefaultHttpContext()));
+        AssertForbidden(await TenantWorkspace.GetMembers(current, db, new DefaultHttpContext()));
+        AssertForbidden(await TenantWorkspace.GetRoles(current, db, new DefaultHttpContext()));
+        AssertForbidden(await TenantWorkspace.GetGroups(current, db, new DefaultHttpContext()));
 
         var system = new TenantContext();
         system.InitializeSystem(Guid.NewGuid(), true);
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetMembers(system, db, new DefaultHttpContext()));
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetAdministrationCapabilities(
+        AssertForbidden(await TenantWorkspace.GetMembers(system, db, new DefaultHttpContext()));
+        AssertForbidden(await TenantWorkspace.GetAdministrationCapabilities(
             system, db, new DefaultHttpContext(), default));
     }
 
@@ -106,11 +112,11 @@ public sealed class TenantAdministrationDirectoryTests
             await TenantWorkspace.GetMembers(current, db, new DefaultHttpContext()));
         db.UserRoles.Remove(assignment);
         await db.SaveChangesAsync();
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetMembers(current, db, new DefaultHttpContext()));
+        AssertForbidden(await TenantWorkspace.GetMembers(current, db, new DefaultHttpContext()));
         db.UserRoles.Add(new UserRole(tenantId, actorId, role.Id) { RowVersion = [1] });
         tenant.IsActive = false;
         await db.SaveChangesAsync();
-        Assert.IsType<ForbidHttpResult>(await TenantWorkspace.GetMembers(current, db, new DefaultHttpContext()));
+        AssertForbidden(await TenantWorkspace.GetMembers(current, db, new DefaultHttpContext()));
     }
 
     private static TenantContext Current(Guid tenantId, Guid userId)
