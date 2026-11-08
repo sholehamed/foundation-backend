@@ -11,9 +11,9 @@ using Modules.System.Identity.Web.Endpoints;
 
 namespace Modules.System.Identity.Web.Util;
 
-public sealed class FirstLoginDeniedException : Exception;
-public sealed class FirstLoginValidationException : Exception;
-public sealed class FirstLoginTargetException : Exception;
+public sealed class FirstLoginDeniedException : Exception { }
+public sealed class FirstLoginValidationException : Exception { }
+public sealed class FirstLoginTargetException : Exception { }
 
 /// <summary>
 /// FR-13B-3: separate initial credential from the User's real password.
