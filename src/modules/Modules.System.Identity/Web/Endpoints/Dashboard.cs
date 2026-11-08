@@ -14,8 +14,9 @@ namespace Modules.System.Identity.Web.Endpoints
             ;
         }
 
-        public async Task<Ok<SuperDashboardDto>> GetSuperDashboard(IDispatcher sender, CancellationToken cancellationToken)
+        public async Task<Ok<SuperDashboardDto>> GetSuperDashboard(HttpContext context, IDispatcher sender, CancellationToken cancellationToken)
         {
+            context.Response.Headers.CacheControl = "no-store";
             var res = await sender.Query(new SuperDashboardQuery(), cancellationToken);
             return TypedResults.Ok(res);
         }
