@@ -92,7 +92,9 @@ async function login(page: Page, username: string): Promise<void> {
   // Angular submits the form and then assigns a new browser URL on success.
   // Do not let Playwright's implicit full-navigation wait hide the actual
   // HTTP/redirect failure behind the test-wide timeout.
-  await page.getByRole('button', { name: 'ورود', exact: true })
+  // The visual icon inside the login submit button contributes its ligature
+  // text to the accessible name. Select by form role, not exact label text.
+  await page.locator('form button[type="submit"]')
     .click({ noWaitAfter: true, timeout: 10000 });
   console.log('FR12G-C stage: form submitted; checking live OIDC callback');
   await expect.poll(() => {
