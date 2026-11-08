@@ -34,6 +34,12 @@ public static class TenantWorkspace
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/roles", GetRoles)
             .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/roles", CreateRole)
+            .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/roles/{{id:guid}}", UpdateRole)
+            .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPatch($"/{backendPrefix.Trim('/')}/tenant/workspace/roles/{{id:guid}}/state", ChangeRoleState)
+            .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/roles/{{id:guid}}/permissions", GetRolePermissions)
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/roles/{{id:guid}}/permissions", ReplaceRolePermissions)
@@ -220,11 +226,17 @@ public static class TenantWorkspace
                 current, db, definition.Key, ct);
             // Writable scope is a separate mandatory bound for write actions.
             if (definition.Key is TenantWorkspacePermissionCatalog.BranchesManage
-                or TenantWorkspacePermissionCatalog.RolesAssignPermissions)
+                or TenantWorkspacePermissionCatalog.RolesAssignPermissions
+                or TenantWorkspacePermissionCatalog.RolesCreate
+                or TenantWorkspacePermissionCatalog.RolesUpdate
+                or TenantWorkspacePermissionCatalog.RolesChangeState)
                 allowed = allowed && current.WritableTenantIds.Contains(tenantId);
             // IAM writes also require a live local Owner, independent of
             // delegated read/group permissions.
-            if (definition.Key == TenantWorkspacePermissionCatalog.RolesAssignPermissions)
+            if (definition.Key is TenantWorkspacePermissionCatalog.RolesAssignPermissions
+                or TenantWorkspacePermissionCatalog.RolesCreate
+                or TenantWorkspacePermissionCatalog.RolesUpdate
+                or TenantWorkspacePermissionCatalog.RolesChangeState)
                 allowed = allowed && await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(
                     current, db, ct);
             entries.Add(new UiAccessItem(
@@ -255,14 +267,21 @@ public static class TenantWorkspace
             canViewMembers = members,
             canViewRoles = roles,
             canViewGroups = groups,
-            canManageBranches = await CanManageBranchesAsync(current, db, ct)
+            canManageBranches = await CanManageBranchesAsync(current, db, ct),
+            canCreateRoles = await TenantRoleLifecycleWriter.CanWriteAsync(
+                current, db, TenantWorkspacePermissionCatalog.RolesCreate, ct),
+            canUpdateRoles = await TenantRoleLifecycleWriter.CanWriteAsync(
+                current, db, TenantWorkspacePermissionCatalog.RolesUpdate, ct),
+            canChangeRoleState = await TenantRoleLifecycleWriter.CanWriteAsync(
+                current, db, TenantWorkspacePermissionCatalog.RolesChangeState, ct)
         });
     }
 
     public sealed record DirectoryPage<T>(IReadOnlyList<T> Items, int Page, bool HasNext);
     public sealed record WorkspaceMemberDto(
         Guid Id, string UserName, string Email, string? FirstName, string? LastName, bool IsActive);
-    public sealed record WorkspaceRoleDto(Guid Id, string Name, string? Description, bool IsActive);
+    public sealed record WorkspaceRoleDto(
+        Guid Id, string Name, string? Description, bool IsActive, bool IsOwner, string Version);
     public sealed record WorkspaceGroupDto(Guid Id, string Name, string? Description, bool IsActive);
     private const int DirectoryPageSize = 20;
 
@@ -305,12 +324,84 @@ public static class TenantWorkspace
             .OrderBy(r => r.Name).ThenBy(r => r.Id)
             .Skip((page - 1) * DirectoryPageSize)
             .Take(DirectoryPageSize + 1)
-            .Select(r => new WorkspaceRoleDto(r.Id, r.Name, r.Description, r.IsActive))
+            .Select(r => new { r.Id, r.Name, r.Description, r.IsActive,
+                r.NormalizedName, r.RowVersion })
             .ToListAsync(ct);
         return Results.Ok(new DirectoryPage<WorkspaceRoleDto>(
-            rows.Take(DirectoryPageSize).ToArray(), page, rows.Count > DirectoryPageSize));
+            rows.Take(DirectoryPageSize)
+                .Select(r => new WorkspaceRoleDto(r.Id, r.Name, r.Description, r.IsActive,
+                    r.NormalizedName == "OWNER", r.RowVersion is { Length: > 0 }
+                        ? Convert.ToBase64String(r.RowVersion) : ""))
+                .ToArray(), page, rows.Count > DirectoryPageSize));
     }
 
+
+
+    // FR-12C: write only role metadata/state, not assignments, from the live
+    // Tenant Owner and matching explicit action grant; audit atomically.
+    public static async Task<IResult> CreateRole(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        TenantRoleLifecycleWriter.CreateRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            return Results.Ok(await TenantRoleLifecycleWriter.CreateAsync(current, db, request, ct));
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (TenantRoleLifecycleValidationException e)
+        { return Results.Problem(statusCode: 400, title: "Invalid Tenant role", detail: e.Message); }
+        catch (TenantRoleLifecycleConflictException e)
+        { return Results.Problem(statusCode: 409, title: "Tenant role already exists", detail: e.Message); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Tenant role changed during write"); }
+        catch (SqlException e) when (e.Number is 2601 or 2627 or 1205 or 3960)
+        { return Results.Problem(statusCode: 409, title: "Tenant role conflict"); }
+    }
+
+    public static async Task<IResult> UpdateRole(
+        ITenantContext current, IdentityDbContext db, HttpContext http, Guid id,
+        TenantRoleLifecycleWriter.UpdateRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            return Results.Ok(await TenantRoleLifecycleWriter.UpdateAsync(current, db, id, request, ct));
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (TenantRoleLifecycleValidationException e)
+        { return Results.Problem(statusCode: 400, title: "Invalid Tenant role", detail: e.Message); }
+        catch (TenantRoleLifecycleConflictException e)
+        { return Results.Problem(statusCode: 409, title: "Tenant role version conflict", detail: e.Message); }
+        catch (DbUpdateConcurrencyException)
+        { return Results.Problem(statusCode: 409, title: "Tenant role version conflict"); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Tenant role changed during write"); }
+        catch (SqlException e) when (e.Number is 2601 or 2627 or 1205 or 3960)
+        { return Results.Problem(statusCode: 409, title: "Tenant role conflict"); }
+    }
+
+    public static async Task<IResult> ChangeRoleState(
+        ITenantContext current, IdentityDbContext db, HttpContext http, Guid id,
+        TenantRoleLifecycleWriter.ChangeStateRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            return Results.Ok(await TenantRoleLifecycleWriter.ChangeStateAsync(current, db, id, request, ct));
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (TenantRoleLifecycleValidationException e)
+        { return Results.Problem(statusCode: 400, title: "Invalid Tenant role", detail: e.Message); }
+        catch (TenantRoleLifecycleConflictException e)
+        { return Results.Problem(statusCode: 409, title: "Tenant role version conflict", detail: e.Message); }
+        catch (DbUpdateConcurrencyException)
+        { return Results.Problem(statusCode: 409, title: "Tenant role version conflict"); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Tenant role changed during write"); }
+        catch (SqlException e) when (e.Number is 1205 or 3960)
+        { return Results.Problem(statusCode: 409, title: "Tenant role concurrent change"); }
+    }
 
     // FR-12A: A read-only, local-role direct-grant matrix. These booleans are
     // not a claim that the requesting user has a given effective permission.
