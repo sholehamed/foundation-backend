@@ -182,7 +182,7 @@ public sealed class TenantWorkspacePermissionEvaluatorTests
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(envelope.Value,
             new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
         var items = json.RootElement.GetProperty("entries").EnumerateArray().ToArray();
-        Assert.Equal(11, items.Length);
+        Assert.Equal(12, items.Length);
         Assert.False(items.Single(x => x.GetProperty("key").GetString() == Branches)
             .GetProperty("allowed").GetBoolean());
         Assert.Equal("no-store", http.Response.Headers.CacheControl.ToString());

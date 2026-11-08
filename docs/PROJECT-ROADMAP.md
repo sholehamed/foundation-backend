@@ -1,3 +1,8 @@
+## FR-13B-3 — temporary credential first-login branch (2026-11-09)
+
+- Next reviewed [Issue #76](https://github.com/sholehamed/foundation-backend/issues/76): Owner creates inactive staff, manually issues unique short-lived temporary credential (never shared across users), staff enters **separate** first-login flow, receives only password-change challenge not JWT, changes permanent password, and logs in again normally. This route complements existing SMTP invitation activation. [Security acceptance](development/FR-13B3-TEMP-PASSWORD-FIRST-LOGIN.md).
+- Operator gate remains: isolated Staging, approved SQL migration and feature registry apply/grants, review response-body logging and secure physical handoff. Never enable production via code merge alone.
+
 ## FR-13B-2 — one-time staff invitation and account activation (2026-11-09)
 
 - [Issue #74](https://github.com/sholehamed/foundation-backend/issues/74): implement reviewed SMTP delivery, token-hash-only SQL storage, 30min TTL, one-time activation, secure password setup and append-only audit; never include token in Owner API. Detailed [FR-13B-2 design/acceptance](development/FR-13B2-INVITATION-ACTIVATION.md).
