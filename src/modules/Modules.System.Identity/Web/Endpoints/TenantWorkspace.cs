@@ -284,7 +284,9 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.RolesUpdate
                 or TenantWorkspacePermissionCatalog.RolesChangeState
                 or TenantWorkspacePermissionCatalog.MembersAssignRoles
-                or TenantWorkspacePermissionCatalog.MembersCreate)
+                or TenantWorkspacePermissionCatalog.MembersCreate
+                or TenantWorkspacePermissionCatalog.MembersInvite
+                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword)
                 allowed = allowed && await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(
                     current, db, ct);
             entries.Add(new UiAccessItem(
@@ -295,7 +297,7 @@ public static class TenantWorkspace
 
     public static async Task<IResult> GetAdministrationCapabilities(
         ITenantContext current, IdentityDbContext db, HttpContext http,
-        CancellationToken ct)
+        IConfiguration configuration, CancellationToken ct)
     {
         http.Response.Headers.CacheControl = "no-store";
         if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
