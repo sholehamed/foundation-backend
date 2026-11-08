@@ -122,7 +122,7 @@ def probe(config, opener=None):
         issuer = json.loads(body)["issuer"]
     except (ValueError, KeyError, TypeError) as exc:
         raise PreflightError("Identity discovery is missing a valid issuer") from exc
-    if issuer.rstrip("/") != config["identity_origin"]:
+    if not isinstance(issuer, str) or issuer.rstrip("/") != config["identity_origin"]:
         raise PreflightError("Identity discovery issuer does not match the configured identity origin")
     for origin_name in ("tenant_origin", "system_origin"):
         url = config[origin_name] + "/bff/session"
