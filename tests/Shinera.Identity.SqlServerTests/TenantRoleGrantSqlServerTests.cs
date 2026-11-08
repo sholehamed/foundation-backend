@@ -954,7 +954,7 @@ public sealed class TenantRoleGrantSqlServerTests
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
                 TenantMemberInvitationWriter.InviteAsync(actor, db,
                     new FakeInvitationSender(), member.Id));
-            setup.UserPermissions.Remove(await setup.UserPermissions.SingleAsync(x =>
+            setup.UserPermissions.Remove(await setup.UserPermissions.IgnoreQueryFilters(["tenant"]).SingleAsync(x =>
                 x.TenantId == actor.ActiveTenantId && x.UserId == actor.UserId &&
                 x.PermissionId == invitePermission.Id));
             var ui = await setup.UiResources.SingleAsync(x =>
