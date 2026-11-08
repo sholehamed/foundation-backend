@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
+using Modules.System.Identity.Web.Endpoints;
 using Modules.System.Identity.Web.Util;
 using Xunit;
 
