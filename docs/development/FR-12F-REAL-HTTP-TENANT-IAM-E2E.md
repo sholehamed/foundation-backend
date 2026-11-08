@@ -15,6 +15,8 @@ An independent GitHub Actions job runs real ASP.NET Core Kestrel, a disposable S
 
 The new Python script is tests/http/tenant_iam_chain_e2e.py. The SQL-only fixture and audit verifier are in tests/Shinera.Identity.E2E.SqlMutator. Failure exits nonzero. Static credentials in CI are disposable test credentials, not shared or production secrets.
 
+## Startup regression discovered by the first live host run
+The shared IEndpointRouteBuilderExtensions MapGet/MapPut/MapPatch/MapDelete/MapFile/MapMethods wrappers dereferenced Delegate.Target, which is null for static method group handlers. Registering the existing FeatureRegistry endpoints therefore threw a NullReferenceException during actual Kestrel startup; earlier isolated TestServer and SQL-only tests did not cover production route registration. FR-12F fixes all six wrappers to derive the endpoint owner from Method.DeclaringType, retaining the instance delegate fallback. StaticEndpointMappingTests exercises every wrapper through an in-process real endpoint router. The HTTP workflow additionally verifies full application startup, closing that blind spot.
 ## Not a browser BFF cutover
 The test is real HTTP + SQL Server for CURRENT bearer-token Tenant APIs, NOT Chromium / deployed BFF Cookie E2E. BFF TestServer tests already separately validate OpenIddict discovery, Authorization Code+PKCE, opaque cookie and session revalidation. Angular still retains legacy token login, and Identity:Bff:Enabled remains false by default.
 
