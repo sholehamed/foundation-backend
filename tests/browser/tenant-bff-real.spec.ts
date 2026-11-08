@@ -48,8 +48,7 @@ async function login(page: Page, username: string): Promise<void> {
   // This is the REAL OpenIddict authorization redirect through the
   // Identity hostname, not a mocked HTTP fixture or token injection.
   await expect(page).toHaveURL(
-    new RegExp('^' + identityHost.replace(/[.*+?^$()|[\]{}]/g, '\\$&') +
-      '/auth/login'),
+    /identity\.shinera\.localhost:8443\/auth\/login/,
     { timeout: 30_000 },
   );
   const fields = page.locator('app-custom-input input');
