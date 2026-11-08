@@ -1,3 +1,9 @@
+## FR-13B-3 — offline first-login credential (2026-11-09)
+
+- [Issue #76](https://github.com/sholehamed/foundation-backend/issues/76): an optional, independent Owner-only temporary password issuance ACTION, 60-minute per-user credential stored hashed in SQL, 5 wrong-attempt cap, 10-minute single-use restricted first-login challenge, transactional permanent password/IsActive change + security-stamp rotation + append-only audit. No normal JWT/cookie/session is issued until a new ordinary login.
+- Explicit Backend toggle `Identity:TenantFirstLogin:Enabled` defaults OFF, Tenant catalog increases 11 -> 12, migration `20261109030000_tenantmemberfirstlogin` requires separately authorized operator apply. Email invitation and BFF feature defaults remain unchanged.
+- [Full FR-13B-3 security design/CI acceptance](development/FR-13B3-TEMP-PASSWORD-FIRST-LOGIN.md). Companion Angular PR and real Staging HTTPS/browser acceptance must be separately verified, no Production enablement.
+
 ## FR-13B-2 — secure Tenant staff invitation and activation (2026-11-09)
 
 - Separate [FR-13B-2 #74](https://github.com/sholehamed/foundation-backend/issues/74), continuing completed inactive member creation #72: owner-gated `TENANT.MEMBERS.INVITE` ACTION, hash-only 30-minute single-use SMTP invitation, SQL Server transactional issue/audit/submission + anonymous HTTPS password setup/activation; no Owner-visible token, no automatic role grants.
