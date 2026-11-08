@@ -1,5 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Modules.System.Identity.Infrastructure.Persistence.Interceptors;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using Modules.System.Identity.Web.Endpoints;
@@ -493,6 +495,77 @@ public sealed class TenantRoleGrantSqlServerTests
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
                 TenantMemberRoleAssignmentWriter.ReplaceAsync(actor, db, member.Id,
                     new TenantMemberRoleAssignmentWriter.ReplaceRequest(token, [])));
+        });
+    }
+
+
+    [Fact]
+    public async Task Real_SQL_guarded_context_denies_direct_grants_but_both_audited_writers_succeed()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (plain, actor, _, roleId, _) = await SeedAsync(setup, options);
+            await using var unguarded = plain;
+            var tenantId = actor.ActiveTenantId!.Value;
+            var member = new User(Guid.NewGuid(), tenantId, "guarded-target",
+                "guarded-target@example.test", "Guarded", "Member", UserType.Tenant)
+            {
+                IsActive = true, NormalizedUserName = "GUARDED-TARGET",
+                NormalizedEmail = "GUARDED-TARGET@EXAMPLE.TEST", PasswordHash = "fixture"
+            };
+            setup.Users.Add(member);
+            await setup.SaveChangesAsync();
+
+            var trusted = new TrustedTenantWriteScope(
+                NullLogger<TrustedTenantWriteScope>.Instance);
+            var interceptor = new TenantSaveChangesInterceptor(actor, trusted);
+            var protectedOptions = new DbContextOptionsBuilder<IdentityDbContext>(options)
+                .AddInterceptors(interceptor).Options;
+            await using var db = new IdentityDbContext(protectedOptions, actor);
+
+            // Both relationship types fail closed without a reviewed intent.
+            var memberPermission = await setup.Permissions.SingleAsync(x =>
+                x.Code == TenantWorkspacePermissionCatalog.MembersRead);
+            db.UserRoles.Add(new UserRole(tenantId, member.Id, roleId));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(
+                () => db.SaveChangesAsync());
+            db.ChangeTracker.Clear();
+            db.RolePermissions.Add(new RolePermission(
+                tenantId, roleId, memberPermission.Id));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(
+                () => db.SaveChangesAsync());
+            db.ChangeTracker.Clear();
+
+            // The previously-reviewed SQL writers still operate and audit,
+            // but only through their precise temporary storage intents.
+            var roleVersion = await GetVersionAsync(db, roleId);
+            var nextRoleVersion = await TenantRolePermissionGrantWriter.ReplaceAsync(
+                actor, db, roleId,
+                new TenantRolePermissionGrantWriter.ReplaceRequest(roleVersion,
+                    [TenantWorkspacePermissionCatalog.MembersRead]), default, trusted);
+            Assert.NotEqual(roleVersion, nextRoleVersion);
+            Assert.Equal(1, await AuditCountAsync(db));
+            Assert.True(await db.RolePermissions.AsNoTracking().AnyAsync(x =>
+                x.TenantId == tenantId && x.RoleId == roleId &&
+                x.PermissionId == memberPermission.Id));
+
+            var memberVersion = Convert.ToBase64String((await db.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).RowVersion);
+            var nextMemberVersion = await TenantMemberRoleAssignmentWriter.ReplaceAsync(
+                actor, db, member.Id,
+                new TenantMemberRoleAssignmentWriter.ReplaceRequest(
+                    memberVersion, [roleId]), default, trusted);
+            Assert.NotEqual(memberVersion, nextMemberVersion);
+            Assert.Equal(1, await MemberAuditCountAsync(db));
+            Assert.True(await db.UserRoles.AsNoTracking().AnyAsync(x =>
+                x.TenantId == tenantId && x.UserId == member.Id && x.RoleId == roleId));
+
+            // After the auditable operation, the scope has been disposed;
+            // no unrelated grant may piggyback on the existing DbContext.
+            db.RolePermissions.Add(new RolePermission(
+                tenantId, roleId, Guid.NewGuid()));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(
+                () => db.SaveChangesAsync());
         });
     }
 
