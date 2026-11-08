@@ -1,0 +1,64 @@
+name: Foundation private cross-repo access smoke
+
+# Sensitive checkout is strictly main-only, never on PR events.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/foundation-cross-repo-smoke.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foundation-cross-repo-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-private-checkout:
+    if: github.repository == 'sholehamed/foundation-backend' && github.ref == 'refs/heads/main'
+    name: Verify read-only frontend checkout
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted Backend main
+        uses: actions/checkout@v4
+        with:
+          path: backend
+          persist-credentials: false
+
+      - name: Check scoped Actions secret is present
+        shell: bash
+        env:
+          FRONTEND_READ_TOKEN: ${{ secrets.FOUNDATION_FRONTEND_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$FRONTEND_READ_TOKEN" ]]; then
+            echo "::error::Missing Actions secret FOUNDATION_FRONTEND_READ_TOKEN in foundation-backend."
+            exit 1
+          fi
+          echo "Restricted cross-repo read token is configured (not printed)."
+
+      - name: Checkout private Frontend as read-only
+        uses: actions/checkout@v4
+        with:
+          repository: sholehamed/foundation-frontend
+          ref: main
+          token: ${{ secrets.FOUNDATION_FRONTEND_READ_TOKEN }}
+          path: frontend
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Confirm both repositories are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f backend/src/Web/Web.csproj
+          test -f backend/.github/workflows/tenant-iam-http-e2e.yml
+          test -f frontend/package.json
+          test -f frontend/src/app/app.routes.ts
+          test -f frontend/playwright.bff-pilot.config.ts
+          echo "Backend SHA: $(git -C backend rev-parse HEAD)"
+          echo "Frontend SHA: $(git -C frontend rev-parse HEAD)"
+          echo "SUCCESS: two private repositories checked out in one trusted CI job."
