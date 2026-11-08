@@ -21,7 +21,7 @@ public static class TenantWorkspace
         app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/branches", CreateBranch)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
-        app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/branches/{id:guid}", UpdateBranch)
+        app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/branches/{{id:guid}}", UpdateBranch)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/admin-capabilities", GetAdministrationCapabilities)
