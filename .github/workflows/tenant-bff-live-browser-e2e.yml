@@ -1,0 +1,92 @@
+name: FR-12G-C live HTTPS BFF browser E2E
+
+# Secrets are never exposed to pull requests or unchecked branches.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tenant-bff-live-browser-e2e.yml'
+      - 'tests/browser/**'
+
+permissions:
+  contents: read
+
+jobs:
+  angular-identity-bff-live:
+    if: github.repository == 'sholehamed/foundation-backend' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: 'CiOnly_BffSql2026!_NotProduction'
+        ports:
+          - 1433:1433
+    env:
+      ASPNETCORE_ENVIRONMENT: Development
+      DataBaseServer: '127.0.0.1,1433'
+      DataBaseUsername: sa
+      DataBasePassword: 'CiOnly_BffSql2026!_NotProduction'
+      DBNAME: 'Shinera_E2E_RealBffBrowser'
+      SHINERA_DEVELOPMENT_ADMIN_PASSWORD: 'CiOnly_TenantIAM_2026!_NotProduction'
+      SHINERA_E2E_DB_MUTATION: 'stale-jwt-ci-only'
+      Identity__E2E__Enabled: 'true'
+      Identity__E2E__CaptchaCode: 'ABCDE'
+      Identity__AllowInsecureHttpForE2E: 'true'
+      Identity__PlatformPermissions__BootstrapDevelopmentGrants: 'true'
+      Identity__TenantPermissions__EnableCatalogApply: 'true'
+      Tenant__WorkspaceBaseDomain: 'shinera.localhost'
+      Identity__Bff__Enabled: 'true'
+      Identity__Bff__TenantWorkspaceCookieBridge__Enabled: 'true'
+      Identity__Bff__ClientId: 'foundation-browser-bff'
+      Identity__Bff__ClientSecret: 'DisposableE2EBrowserOnlyClientSecret2026NeverUseInProduction!'
+      Identity__Bff__Authority: 'https://identity.shinera.localhost:8443'
+      Identity__Bff__RedirectUris__0: 'https://e2e-http-ci.shinera.localhost:8443/signin-oidc'
+      Identity__Bff__SqlServer__Enabled: 'false'
+      SHINERA_E2E_BASE_URL: 'http://127.0.0.1:5069'
+      NO_PROXY: 'localhost,127.0.0.1,identity.shinera.localhost,e2e-http-ci.shinera.localhost,other.shinera.localhost'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: backend
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: sholehamed/foundation-frontend
+          ref: main
+          token: ${{ secrets.FOUNDATION_FRONTEND_READ_TOKEN }}
+          path: frontend
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build Angular browser application
+        run: |
+          npm ci --prefix frontend --no-audit --no-fund
+          npm --prefix frontend run build -- --configuration bff-pilot-e2e
+          test -f frontend/dist/ShineraApp/browser/index.html
+      - name: Build .NET API and SQL fixture CLI
+        run: |
+          dotnet restore backend/src/Web/Web.csproj
+          dotnet restore backend/tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj
+          dotnet build backend/src/Web/Web.csproj --no-restore -c Release
+          dotnet build backend/tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj --no-restore -c Release
+      - name: Live HTTPS OIDC Chromium end-to-end
+        shell: bash
+        run: bash backend/tests/browser/run_live_https_bff.sh
+      - name: Upload failed browser test traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr-12g-c-live-browser-failure
+          path: frontend/test-results/
+          if-no-files-found: ignore
