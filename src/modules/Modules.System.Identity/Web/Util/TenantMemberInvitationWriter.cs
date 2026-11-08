@@ -1,5 +1,6 @@
 using System.Data;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +30,7 @@ public static class TenantMemberInvitationWriter
         public Guid Id { get; set; }
         public Guid TenantId { get; set; }
         public Guid TargetUserId { get; set; }
+        public byte[] RecipientEmailHash { get; set; } = [];
         public DateTime ExpiresAtUtc { get; set; }
         public DateTime? SubmittedAtUtc { get; set; }
         public DateTime? UsedAtUtc { get; set; }
@@ -139,6 +141,8 @@ public static class TenantMemberInvitationWriter
                 throw new UnauthorizedAccessException("Tenant invite permission revoked.");
             // The recipient and Tenant host are authoritative at issuance.
             var freshTarget = await TargetAsync(current, db, memberId, ct);
+            var recipientEmailHash = SHA256.HashData(Encoding.UTF8.GetBytes(
+                freshTarget.Email.Trim().ToUpperInvariant()));
 
             var tenantId = current.ActiveTenantId!.Value;
             var actor = current.UserId!.Value;
@@ -151,9 +155,9 @@ public static class TenantMemberInvitationWriter
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO [dbo].[TenantMemberInvitations]
                     ([Id],[TenantId],[TargetUserId],[IssuedByUserId],
-                     [TokenHash],[CreatedAtUtc],[ExpiresAtUtc])
+                     [TokenHash],[RecipientEmailHash],[CreatedAtUtc],[ExpiresAtUtc])
                 VALUES ({inviteId},{tenantId},{memberId},{actor},
-                        {tokenHash},{now},{expiry})
+                        {tokenHash},{recipientEmailHash},{now},{expiry})
                 """, ct);
             await AuditAsync(db, tenantId, actor, memberId, "invite_issued", ct);
             await tx.CommitAsync(ct);
@@ -215,7 +219,7 @@ public static class TenantMemberInvitationWriter
             if (changed != 1) throw new TenantInvitationDeliveryException();
             var rows = await db.Database.SqlQueryRaw<InvitationRow>(
                 """
-                SELECT [Id],[TenantId],[TargetUserId],[ExpiresAtUtc],
+                SELECT [Id],[TenantId],[TargetUserId],[RecipientEmailHash],[ExpiresAtUtc],
                        [SubmittedAtUtc],[UsedAtUtc],[RevokedAtUtc]
                 FROM [dbo].[TenantMemberInvitations] WHERE [Id] = {0}
                 """, inviteId).ToListAsync(ct);
@@ -270,7 +274,7 @@ public static class TenantMemberInvitationWriter
             // the unique hash index; the conditional UPDATE is the final CAS.
             var found = await db.Database.SqlQueryRaw<InvitationRow>(
                 """
-                SELECT [Id],[TenantId],[TargetUserId],[ExpiresAtUtc],
+                SELECT [Id],[TenantId],[TargetUserId],[RecipientEmailHash],[ExpiresAtUtc],
                        [SubmittedAtUtc],[UsedAtUtc],[RevokedAtUtc]
                 FROM [dbo].[TenantMemberInvitations] WITH (UPDLOCK, HOLDLOCK)
                 WHERE [TokenHash] = {0}
@@ -295,6 +299,15 @@ public static class TenantMemberInvitationWriter
                     ur.Role.TenantId == invite.TenantId &&
                     ur.Role.NormalizedName == "OWNER" &&
                     ur.Role.Scope != RoleScope.System, ct))
+                throw new TenantInvitationValidationException();
+
+            // A previously submitted invitation cannot activate a User if
+            // the registered recipient email changed after issuance.
+            var liveEmailHash = SHA256.HashData(Encoding.UTF8.GetBytes(
+                user.Email.Trim().ToUpperInvariant()));
+            if (invite.RecipientEmailHash.Length != 32 ||
+                !CryptographicOperations.FixedTimeEquals(
+                    liveEmailHash, invite.RecipientEmailHash))
                 throw new TenantInvitationValidationException();
 
             user.PasswordHash = hasher.HashPassword(user, request.Password!);
