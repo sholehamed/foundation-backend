@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
 using System.Net;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
@@ -53,6 +54,18 @@ public static class TenantWorkspace
             .RequireAuthorization()
             .RequireRateLimiting("tenant-member-invite")
             .WithTags("Tenant Workspace");
+        app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/temporary-password", IssueTemporaryPassword)
+            .RequireAuthorization()
+            .RequireRateLimiting("tenant-member-invite")
+            .WithTags("Tenant Workspace");
+        app.MapPost($"/{backendPrefix.Trim('/')}/public/tenant-first-login/start", StartFirstLogin)
+            .AllowAnonymous()
+            .RequireRateLimiting("tenant-first-login")
+            .WithTags("First Login");
+        app.MapPost($"/{backendPrefix.Trim('/')}/public/tenant-first-login/complete", CompleteFirstLogin)
+            .AllowAnonymous()
+            .RequireRateLimiting("tenant-first-login")
+            .WithTags("First Login");
         app.MapPost($"/{backendPrefix.Trim('/')}/public/tenant-invitations/activate", ActivateInvitedMember)
             .AllowAnonymous()
             .RequireRateLimiting("tenant-invite-activate")
@@ -238,7 +251,7 @@ public static class TenantWorkspace
 
     public static async Task<IResult> GetCurrentUiAccess(
         ITenantContext current, IdentityDbContext db, HttpContext http,
-        CancellationToken ct)
+        IConfiguration configuration, CancellationToken ct)
     {
         http.Response.Headers.CacheControl = "no-store";
         if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
@@ -261,7 +274,8 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.RolesChangeState
                 or TenantWorkspacePermissionCatalog.MembersAssignRoles
                 or TenantWorkspacePermissionCatalog.MembersCreate
-                or TenantWorkspacePermissionCatalog.MembersInvite)
+                or TenantWorkspacePermissionCatalog.MembersInvite
+                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword)
                 allowed = allowed && current.WritableTenantIds.Contains(tenantId);
             // IAM writes also require a live local Owner, independent of
             // delegated read/group permissions.
@@ -311,7 +325,10 @@ public static class TenantWorkspace
             canAssignMemberRoles = await TenantMemberRoleAssignmentWriter.CanManageAsync(
                 current, db, ct),
             canCreateMembers = await TenantPendingMemberWriter.CanCreateAsync(current, db, ct),
-            canInviteMembers = await TenantMemberInvitationWriter.CanInviteAsync(current, db, ct)
+            canInviteMembers = await TenantMemberInvitationWriter.CanInviteAsync(current, db, ct),
+            canIssueTemporaryPassword = configuration.GetValue<bool>(
+                "Identity:TenantFirstLogin:Enabled") &&
+                await TenantFirstLoginWriter.CanIssueAsync(current, db, ct)
         });
     }
 
@@ -431,6 +448,93 @@ public static class TenantWorkspace
         { return Results.Problem(statusCode: 400, title: "Invalid or expired invitation"); }
         catch (DbUpdateException)
         { return Results.Problem(statusCode: 409, title: "Account activation unavailable"); }
+    }
+
+    // A separate feature toggle, explicit registered ACTION and live Owner
+    // permission protect the only endpoint that reveals the temporary secret.
+    public static async Task<IResult> IssueTemporaryPassword(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        IConfiguration configuration, IPasswordHasher<User> hasher,
+        Guid id, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        http.Response.Headers.Pragma = "no-cache";
+        if (!configuration.GetValue<bool>("Identity:TenantFirstLogin:Enabled"))
+            return Results.NotFound();
+        if (!http.Request.IsHttps) return Results.Problem(
+            statusCode: 400, title: "HTTPS required");
+        try
+        {
+            var result = await TenantFirstLoginWriter.IssueAsync(current, db, hasher, id, ct);
+            // Exactly one response; no database, log or further GET can reveal it.
+            return Results.Ok(result);
+        }
+        catch (FirstLoginDeniedException) { return DeniedAfterAuthentication(); }
+        catch (FirstLoginTargetException) { return Results.NotFound(); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Temporary credential conflict"); }
+        catch (SqlException e) when (e.Number is 1205 or 2601 or 2627 or 3960)
+        { return Results.Problem(statusCode: 409, title: "Temporary credential conflict"); }
+    }
+
+    // Clients must use HTTPS on the exact tenant host. A valid first-login
+    // challenge is deliberately NOT an app token/JWT or authenticated session.
+    private static bool FirstLoginTransportAllowed(
+        HttpContext http, IConfiguration configuration, IHostEnvironment environment,
+        string? slug)
+    {
+        if (!configuration.GetValue<bool>("Identity:TenantFirstLogin:Enabled") ||
+            string.IsNullOrWhiteSpace(slug) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(slug,
+                @"\A[a-z0-9]+(?:-[a-z0-9]+)*\z") ||
+            !http.Request.IsHttps)
+            return false;
+        var baseDomain = configuration["Tenant:WorkspaceBaseDomain"]?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(baseDomain)) return false;
+        var expectedHost = slug + "." + baseDomain;
+        return string.Equals(http.Request.Host.Host, expectedHost,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static async Task<IResult> StartFirstLogin(
+        HttpContext http, IConfiguration configuration, IHostEnvironment environment,
+        IdentityDbContext db, IPasswordHasher<User> hasher,
+        TenantFirstLoginWriter.StartRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        http.Response.Headers.Pragma = "no-cache";
+        if (!configuration.GetValue<bool>("Identity:TenantFirstLogin:Enabled"))
+            return Results.NotFound();
+        if (!FirstLoginTransportAllowed(http, configuration, environment, request.TenantSlug))
+            return Results.Problem(statusCode: 400, title: "Secure tenant host required");
+        try
+        {
+            return Results.Ok(await TenantFirstLoginWriter.StartAsync(db, hasher, request, ct));
+        }
+        catch (FirstLoginValidationException)
+        { return Results.Problem(statusCode: 401, title: "Invalid first-login credentials"); }
+    }
+
+    public static async Task<IResult> CompleteFirstLogin(
+        HttpContext http, IConfiguration configuration, IHostEnvironment environment,
+        IdentityDbContext db, IPasswordHasher<User> hasher,
+        TenantFirstLoginWriter.CompleteRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        http.Response.Headers.Pragma = "no-cache";
+        if (!configuration.GetValue<bool>("Identity:TenantFirstLogin:Enabled"))
+            return Results.NotFound();
+        if (!FirstLoginTransportAllowed(http, configuration, environment, request.TenantSlug))
+            return Results.Problem(statusCode: 400, title: "Secure tenant host required");
+        try
+        {
+            await TenantFirstLoginWriter.CompleteAsync(db, hasher, request, ct);
+            return Results.Ok(new { passwordChanged = true, requiresRelogin = true });
+        }
+        catch (FirstLoginValidationException)
+        { return Results.Problem(statusCode: 400, title: "Invalid or expired password-change challenge"); }
+        catch (DbUpdateConcurrencyException)
+        { return Results.Problem(statusCode: 400, title: "Invalid or expired password-change challenge"); }
     }
 
     // FR-12D: direct UserRole matrix for one active tenant; never an
