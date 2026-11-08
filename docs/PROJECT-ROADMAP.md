@@ -1,3 +1,8 @@
+## FR-13B-1 — begin real Tenant staff onboarding (2026-11-09)
+
+- [Issue #72](https://github.com/sholehamed/foundation-backend/issues/72): reviewed Owner-only inactive Tenant member create endpoint and Angular directory companion, SQL audit/validation/conflict testing. No invitation is sent and no account can log in. Refer to [FR-13B-1](development/FR-13B1-INACTIVE-TENANT-MEMBER-CREATE.md).
+- **Next release gate:** secure token-based invitation/activation and password setup; only after that can active staff receive Role grants, navigate scoped menus, and complete real browser BFF role revoke acceptance. Never infer successful onboarding from creation of a disabled User.
+
 ## FR-13 — operational staging and Tenant Admin acceptance (2026-11-09)
 
 Tracked in [FR-13 #70](https://github.com/sholehamed/foundation-backend/issues/70).
