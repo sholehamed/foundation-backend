@@ -16,6 +16,7 @@ public static class TenantWorkspacePermissionCatalog
     public const string RolesChangeState = "TENANT.ROLES.CHANGE-STATE";
     public const string MembersAssignRoles = "TENANT.MEMBERS.ASSIGN-ROLES";
     public const string MembersCreate = "TENANT.MEMBERS.CREATE";
+    public const string MembersInvite = "TENANT.MEMBERS.INVITE";
 
     public sealed record Definition(string Key, string Kind, string Route, string Name, string UiKey);
     public static IReadOnlyList<Definition> Definitions { get; } =
@@ -29,7 +30,8 @@ public static class TenantWorkspacePermissionCatalog
         new(RolesUpdate, "ACTION", "/dashboard/roles", "Update tenant roles", "tenant.workspace.roles.update"),
         new(RolesChangeState, "ACTION", "/dashboard/roles", "Activate/deactivate tenant roles", "tenant.workspace.roles.change-state"),
         new(MembersAssignRoles, "ACTION", "/dashboard/members", "Assign ordinary Tenant roles to members", "tenant.workspace.members.assign-roles"),
-        new(MembersCreate, "ACTION", "/dashboard/members", "Create inactive local Tenant members", "tenant.workspace.members.create")
+        new(MembersCreate, "ACTION", "/dashboard/members", "Create inactive local Tenant members", "tenant.workspace.members.create"),
+        new(MembersInvite, "ACTION", "/dashboard/members", "Send a single-use invite to inactive Tenant member", "tenant.workspace.members.invite")
     ];
 
     public static bool IsKnownKey(string key) =>
