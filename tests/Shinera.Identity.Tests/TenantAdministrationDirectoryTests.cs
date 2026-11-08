@@ -20,11 +20,11 @@ public sealed class TenantAdministrationDirectoryTests
             new Tenant(tenantId, null, "Own", "own", "own.test") { RowVersion = [1], IsActive = true },
             new Tenant(otherId, null, "Other", "other", "other.test") { RowVersion = [1], IsActive = true });
         var owner = new User(actorId, tenantId, "owner", "owner@test.local", "Tenant", "Owner", UserType.Tenant)
-            { RowVersion = [1], NormalizedUserName = "OWNER", IsActive = true };
+            { RowVersion = [1], NormalizedEmail = "OWNER@TEST.LOCAL", PasswordHash = "fixture-hash", NormalizedUserName = "OWNER", IsActive = true };
         var staff = new User(tenantId, "staff", "staff@test.local", "Staff", "Person", UserType.Tenant)
-            { RowVersion = [1], NormalizedUserName = "STAFF" };
+            { RowVersion = [1], NormalizedEmail = "STAFF@TEST.LOCAL", PasswordHash = "fixture-hash", NormalizedUserName = "STAFF" };
         var foreign = new User(otherId, "secret", "secret@test.local", "Other", "Tenant", UserType.Tenant)
-            { RowVersion = [1], NormalizedUserName = "SECRET" };
+            { RowVersion = [1], NormalizedEmail = "SECRET@TEST.LOCAL", PasswordHash = "fixture-hash", NormalizedUserName = "SECRET" };
         db.Users.AddRange(owner, staff, foreign);
         var ownerRole = new Role(tenantId, "Owner", "Local owner") { RowVersion = [1], Scope = RoleScope.Tenant };
         db.Roles.AddRange(ownerRole, new Role(otherId, "Secret role", null) { RowVersion = [1], Scope = RoleScope.Tenant });
@@ -65,9 +65,9 @@ public sealed class TenantAdministrationDirectoryTests
             { RowVersion = [1], IsActive = true });
         db.Users.AddRange(
             new User(ownerId, tenantId, "owner", "owner@test.local", "Owner", "Person", UserType.Tenant)
-                { RowVersion = [1] },
+                { RowVersion = [1], NormalizedEmail = "OWNER@TEST.LOCAL", PasswordHash = "fixture-hash", NormalizedUserName = "OWNER" },
             new User(staffId, tenantId, "staff", "staff@test.local", "Staff", "Person", UserType.Tenant)
-                { RowVersion = [1] });
+                { RowVersion = [1], NormalizedEmail = "STAFF@TEST.LOCAL", PasswordHash = "fixture-hash", NormalizedUserName = "STAFF" });
         var role = new Role(tenantId, "Owner", "Local owner") { RowVersion = [1], Scope = RoleScope.Tenant };
         db.Roles.Add(role);
         db.UserRoles.Add(new UserRole(tenantId, ownerId, role.Id) { RowVersion = [1] });
@@ -95,7 +95,7 @@ public sealed class TenantAdministrationDirectoryTests
             { RowVersion = [1], IsActive = true };
         db.Tenants.Add(tenant);
         db.Users.Add(new User(actorId, tenantId, "owner", "owner@test.local", "Owner", "Person", UserType.Tenant)
-            { RowVersion = [1] });
+            { RowVersion = [1], NormalizedEmail = "OWNER@TEST.LOCAL", PasswordHash = "fixture-hash", NormalizedUserName = "OWNER" });
         var role = new Role(tenantId, "Owner", null) { RowVersion = [1] }; // legacy RoleScope = 0
         db.Roles.Add(role);
         var assignment = new UserRole(tenantId, actorId, role.Id) { RowVersion = [1] };
