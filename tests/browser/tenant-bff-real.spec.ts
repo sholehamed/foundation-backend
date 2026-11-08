@@ -41,6 +41,34 @@ async function api(page: Page, method: string, path: string, body?: unknown,
 }
 
 async function login(page: Page, username: string): Promise<void> {
+  // Log only endpoint path + response code; never log credentials,
+  // authorization parameters, cookies, code, code_verifier or state.
+  page.on('response', response => {
+    try {
+      const url = new URL(response.url());
+      const path = url.pathname.toLowerCase();
+      if (path === '/api/system/auth/interactive-login' ||
+          path === '/api/connect/authorize' ||
+          path === '/signin-oidc' ||
+          path === '/bff/session' ||
+          path === '/bff/auth/login' ||
+          path === '/api/system/auth/csrf') {
+        console.log('FR12G-C auth HTTP: ' +
+          url.hostname + path + ' -> ' + response.status());
+      }
+    } catch {
+      // Ignore non-HTTP navigation events.
+    }
+  });
+  page.on('framenavigated', frame => {
+    if (frame !== page.mainFrame()) return;
+    try {
+      const url = new URL(frame.url());
+      console.log('FR12G-C browser path: ' + url.hostname + url.pathname);
+    } catch {
+      // Ignore temporary about:blank documents.
+    }
+  });
   console.log('FR12G-C stage: opening Tenant dashboard');
   await page.goto(tenantHost + '/dashboard/members', { waitUntil: 'domcontentloaded', timeout: 30000 });
   await expect(page).toHaveURL(/\/auth\/login/, { timeout: 30_000 });
@@ -61,12 +89,21 @@ async function login(page: Page, username: string): Promise<void> {
   await fields.nth(1).fill(password!);
   await page.locator('#captcha-code').fill('ABCDE');
   console.log('FR12G-C stage: submitting Identity interactive login');
-  await page.getByRole('button', { name: 'ورود', exact: true }).click();
-  console.log('FR12G-C stage: waiting for BFF OIDC callback to return to Tenant');
-  await expect(page).toHaveURL(
-    /e2e-http-ci\.shinera\.localhost:8443\/dashboard\/members/,
-    { timeout: 45_000 },
-  );
+  // Angular submits the form and then assigns a new browser URL on success.
+  // Do not let Playwright's implicit full-navigation wait hide the actual
+  // HTTP/redirect failure behind the test-wide timeout.
+  await page.getByRole('button', { name: 'ورود', exact: true })
+    .click({ noWaitAfter: true, timeout: 10000 });
+  console.log('FR12G-C stage: form submitted; checking live OIDC callback');
+  await expect.poll(() => {
+    try {
+      const url = new URL(page.url());
+      return url.host + url.pathname; // never print code/state/query tokens
+    } catch {
+      return 'unavailable';
+    }
+  }, { timeout: 45_000, intervals: [300, 500, 1000] })
+    .toBe('e2e-http-ci.shinera.localhost:8443/dashboard/members');
   console.log('FR12G-C stage: returned to Tenant dashboard');
 }
 
