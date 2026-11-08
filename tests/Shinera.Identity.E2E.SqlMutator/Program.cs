@@ -13,15 +13,16 @@ using Modules.System.Identity.Infrastructure.Persistence;
 const string optIn = "stale-jwt-ci-only";
 var databaseName = Environment.GetEnvironmentVariable("DBNAME") ?? "";
 var server = Environment.GetEnvironmentVariable("DataBaseServer") ?? "";
+var isEnsureDatabase = args.Length == 1 && args[0] == "ensure-e2e-database";
 var isTenantFixture = args.Length == 1 && args[0] == "seed-tenant-iam";
 var isTenantAudit = args.Length == 1 && args[0] == "assert-tenant-iam-audit";
 var isRevoke = args.Length == 2 && args[0] == "revoke-seeded-superadmin";
 var isAuditCheck = args.Length == 3 && args[0] == "assert-denied-audit";
 Guid subject = Guid.Empty;
-var subjectValid = (isTenantFixture || isTenantAudit) ||
+var subjectValid = (isEnsureDatabase || isTenantFixture || isTenantAudit) ||
     (args.Length >= 2 && Guid.TryParse(args[1], out subject) &&
      subject != Guid.Empty);
-if (!(isRevoke || isAuditCheck || isTenantFixture || isTenantAudit) ||
+if (!(isRevoke || isAuditCheck || isEnsureDatabase || isTenantFixture || isTenantAudit) ||
     !subjectValid ||
     Environment.GetEnvironmentVariable("SHINERA_E2E_DB_MUTATION") != optIn ||
     Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") != "Development" ||
@@ -43,7 +44,7 @@ if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(password))
 var connectionString = new SqlConnectionStringBuilder
 {
     DataSource = server,
-    InitialCatalog = databaseName,
+    InitialCatalog = isEnsureDatabase ? "master" : databaseName,
     UserID = user,
     Password = password,
     Encrypt = SqlConnectionEncryptOption.Optional,
@@ -52,6 +53,30 @@ var connectionString = new SqlConnectionStringBuilder
 
 await using var connection = new SqlConnection(connectionString);
 await connection.OpenAsync();
+
+if (isEnsureDatabase)
+{
+    // Creating a database is never allowed by arbitrary user data. This
+    // invocation is unavailable from the HTTP runtime and restricted to a
+    // disposable Development SQL Server on loopback.
+    if (!databaseName.StartsWith("Shinera_E2E_", StringComparison.Ordinal) ||
+        databaseName.Length > 64 ||
+        databaseName.Any(c => !(char.IsAsciiLetterOrDigit(c) || c == '_')))
+        throw new InvalidOperationException("Invalid disposable SQL database name.");
+
+    await using var provision = new SqlCommand("""
+        IF DB_ID(@name) IS NULL
+        BEGIN
+            DECLARE @statement nvarchar(max) = N'CREATE DATABASE ' + QUOTENAME(@name);
+            EXEC sys.sp_executesql @statement;
+        END
+        """, connection);
+    provision.Parameters.Add("@name", SqlDbType.NVarChar, 128).Value = databaseName;
+    await provision.ExecuteNonQueryAsync();
+    Console.WriteLine("PASS: disposable Tenant IAM SQL database exists.");
+    return;
+}
+
 
 if (isTenantFixture)
 {
