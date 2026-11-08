@@ -41,6 +41,17 @@ namespace Modules.System.Identity
                             PermitLimit = 5, Window = TimeSpan.FromMinutes(1),
                             QueueLimit = 0, AutoReplenishment = true
                         }));
+                // New Tenant employee records: per authenticated actor, bounded even
+                // before the separate invitation/activation flow exists.
+                options.AddPolicy("tenant-member-create", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        context.User.FindFirst("sub")?.Value ??
+                        "anonymous:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 10, Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
                 options.AddPolicy("identity-login", context =>
                     RateLimitPartition.GetFixedWindowLimiter(
                         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
