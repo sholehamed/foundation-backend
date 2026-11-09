@@ -108,6 +108,8 @@ public static class TenantWorkspace
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/groups/{{id:guid}}/members/{{userId:guid}}", ChangeGroupMember)
             .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/groups/{{id:guid}}/audit", GetGroupAudit)
+            .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/groups/{{id:guid}}/roles", GetGroupRoles)
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/groups/{{id:guid}}/roles/{{roleId:guid}}", ChangeGroupRole)
@@ -353,6 +355,8 @@ public static class TenantWorkspace
                 await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(current, db, ct),
             canViewRoles = roles,
             canViewGroups = groups,
+            canViewGroupAudit = groups && members && roles &&
+                await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(current, db, ct),
             canCreateGroups = await TenantGroupLifecycleWriter.CanWriteAsync(
                 current, db, TenantWorkspacePermissionCatalog.GroupsCreate, ct),
             canUpdateGroups = await TenantGroupLifecycleWriter.CanWriteAsync(
@@ -967,6 +971,38 @@ public static class TenantWorkspace
         { return Results.Problem(statusCode: 409, title: "Tenant Group state conflict"); }
         catch (SqlException e) when (e.Number is 1205 or 3960)
         { return Results.Problem(statusCode: 409, title: "Tenant Group SQL conflict"); }
+    }
+
+    /// <summary>
+    /// Local Owner-only, read-only history and historical relationship triage.
+    /// Requires all three relevant live PAGE grants, not simply Group write.
+    /// </summary>
+    public static async Task<IResult> GetGroupAudit(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        Guid id, int page = 1, CancellationToken ct = default)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (id == Guid.Empty || page is < 1 or > 1000) return Results.BadRequest();
+        if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
+            current.HomeTenantId != tenantId ||
+            !current.ReadableTenantIds.Contains(tenantId) ||
+            !await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.GroupsRead, ct) ||
+            !await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.MembersRead, ct) ||
+            !await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.RolesRead, ct) ||
+            !await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(current, db, ct))
+            return DeniedAfterAuthentication();
+        if (!db.Database.IsSqlServer())
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        var group = await db.Groups.AsNoTracking()
+            .Where(g => g.TenantId == tenantId && g.Id == id)
+            .Select(g => new { g.Id, g.Name })
+            .SingleOrDefaultAsync(ct);
+        if (group is null) return Results.NotFound();
+        return Results.Ok(await TenantGroupSecurityAuditReader.ReadAsync(
+            db, tenantId, group.Id, group.Name, page, ct));
     }
 
     /// <summary>Only Tenant Groups + Roles PAGE permissions expose the role matrix.</summary>

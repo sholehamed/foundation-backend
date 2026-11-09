@@ -1,3 +1,8 @@
+## FR-13C-2D — Group security audit and legacy assessment (2026-11-09)
+
+- Implemented next Owner-only read model: combined Group lifecycle, UserGroup membership and GroupRole history in one bounded timeline, with no TenantId leaks or sensitive data. Read-only current-link integrity counters distinguish invalid/Owner targets from **unattributed old links**; a missing event is *not* proof of unauthorized access. No automatic repair. [Acceptance contract](development/FR-13C2D-GROUP-SECURITY-REVIEW.md).
+- Next: review integrity anomalies with a human/operator, establish explicit exported snapshot + signed correction plan and rollback before any mutation; keep Staging suspended until explicitly reauthorized.
+
 ## FR-13C-2A — Tenant Group management without grant mutation (2026-11-09)
 
 - Implement Owner-only Group lifecycle (create, edit, active state) as independent 3-ACTION Tenant feature, transactionally audited with 8-byte RowVersion CAS. Full SQL/HTTP and Angular tests. No UserGroup/GroupRole shortcuts or automatic grants. [Acceptance contract](development/FR-13C2A-TENANT-GROUP-LIFECYCLE.md).

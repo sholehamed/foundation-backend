@@ -29,6 +29,166 @@ namespace Shinera.Identity.SqlServerTests;
 public sealed class TenantRoleGrantSqlServerTests
 {
     [Fact]
+    public async Task Group_security_review_unifies_ledgers_and_traces_unattributed_legacy_links()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (db, owner, ownerRole, ordinaryRole, _) = await SeedAsync(setup, options);
+            await using (db)
+            {
+                var tenantId = owner.ActiveTenantId!.Value;
+                var ownerId = owner.UserId!.Value;
+                var otherTenant = await setup.Tenants.AsNoTracking()
+                    .Where(t => t.Slug == "other-role-grants")
+                    .Select(t => t.Id).SingleAsync();
+
+                var staff = new User(Guid.NewGuid(), tenantId, "group-audit-staff",
+                    "group-audit-staff@example.test", "Staff", "Test", UserType.Tenant)
+                {
+                    NormalizedUserName = "GROUP-AUDIT-STAFF",
+                    NormalizedEmail = "GROUP-AUDIT-STAFF@EXAMPLE.TEST",
+                    PasswordHash = "fixture", IsActive = true
+                };
+                setup.Users.Add(staff);
+                setup.UserRoles.Add(new UserRole(tenantId, staff.Id, ordinaryRole));
+                await setup.SaveChangesAsync();
+                var role = await db.Roles.AsNoTracking()
+                    .SingleAsync(r => r.Id == ordinaryRole);
+                await TenantRolePermissionGrantWriter.ReplaceAsync(
+                    owner, db, ordinaryRole,
+                    new(Convert.ToBase64String(role.RowVersion),
+                    [
+                        TenantWorkspacePermissionCatalog.GroupsRead,
+                        TenantWorkspacePermissionCatalog.MembersRead,
+                        TenantWorkspacePermissionCatalog.RolesRead
+                    ]));
+
+                var group = await TenantGroupLifecycleWriter.CreateAsync(
+                    owner, db, new("Historical team", "existing roles"));
+                var now = DateTime.UtcNow;
+
+                // Existing links may predate reviewed grant APIs. Some are
+                // legitimate, some unsafe; never delete them on reading.
+                setup.UserGroups.AddRange(
+                    new UserGroup(Guid.NewGuid())
+                    { TenantId = tenantId, GroupId = group.Id, UserId = staff.Id },
+                    new UserGroup(Guid.NewGuid())
+                    { TenantId = tenantId, GroupId = group.Id, UserId = ownerId });
+                setup.GroupRoles.AddRange(
+                    new GroupRole(Guid.NewGuid())
+                    { TenantId = tenantId, GroupId = group.Id, RoleId = ordinaryRole },
+                    new GroupRole(Guid.NewGuid())
+                    { TenantId = tenantId, GroupId = group.Id, RoleId = ownerRole });
+                await setup.SaveChangesAsync();
+
+                // Matching historical grant only for ordinary links; the
+                // Owner links intentionally have NO ledger provenance.
+                await setup.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO [dbo].[TenantGroupMembershipAuditEntries]
+                        ([Id],[TenantId],[ActorUserId],[GroupId],
+                         [TargetUserId],[Action],[OccurredAtUtc])
+                    VALUES ({Guid.NewGuid()},{tenantId},{ownerId},{group.Id},
+                        {staff.Id},{"grant"},{now.AddMinutes(2)})
+                    """);
+                await setup.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO [dbo].[TenantGroupRoleAuditEntries]
+                        ([Id],[TenantId],[ActorUserId],[GroupId],
+                         [RoleId],[RoleName],[Action],[OccurredAtUtc])
+                    VALUES ({Guid.NewGuid()},{tenantId},{ownerId},{group.Id},
+                        {ordinaryRole},{"Reception"},{"grant"},{now.AddMinutes(3)})
+                    """);
+                for (var i = 0; i < 22; i++)
+                {
+                    await setup.Database.ExecuteSqlInterpolatedAsync($"""
+                        INSERT INTO [dbo].[TenantGroupChangeAuditEntries]
+                            ([Id],[TenantId],[ActorUserId],[GroupId],
+                             [Action],[CurrentName],[CurrentActive],[OccurredAtUtc])
+                        VALUES ({Guid.NewGuid()},{tenantId},{ownerId},{group.Id},
+                            {"state"},{"Historical team"},{true},{now.AddSeconds(i)})
+                        """);
+                }
+                // Foreign Tenant with SAME GroupId, newer timestamp. A
+                // reader filtering on GroupId alone would leak this record.
+                await setup.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO [dbo].[TenantGroupRoleAuditEntries]
+                        ([Id],[TenantId],[ActorUserId],[GroupId],
+                         [RoleId],[RoleName],[Action],[OccurredAtUtc])
+                    VALUES ({Guid.NewGuid()},{otherTenant},{ownerId},{group.Id},
+                        {ordinaryRole},{"FOREIGN ROLE LEAK"},{"grant"},{now.AddHours(1)})
+                    """);
+
+                var http = new DefaultHttpContext();
+                var firstResult = await TenantWorkspace.GetGroupAudit(
+                    owner, db, http, group.Id, 1);
+                var first = Assert.IsType<TenantGroupSecurityAuditReader.Page>(
+                    Assert.IsAssignableFrom<IValueHttpResult>(firstResult).Value);
+                Assert.Equal("no-store", http.Response.Headers.CacheControl.ToString());
+                Assert.Equal(group.Id, first.GroupId);
+                Assert.Equal("Historical team", first.GroupName);
+                Assert.Equal(20, first.Items.Count);
+                Assert.True(first.HasNext);
+                Assert.DoesNotContain(first.Items, x => x.RoleName == "FOREIGN ROLE LEAK");
+                Assert.Equal(2, first.Integrity.MemberLinks);
+                Assert.Equal(2, first.Integrity.RoleLinks);
+                Assert.Equal(1, first.Integrity.OwnerMemberLinks);
+                Assert.Equal(1, first.Integrity.InvalidRoleLinks);
+                Assert.Equal(0, first.Integrity.InvalidMemberLinks);
+                Assert.Equal(1, first.Integrity.UnattributedMemberLinks);
+                Assert.Equal(1, first.Integrity.UnattributedRoleLinks);
+
+                var second = Assert.IsType<TenantGroupSecurityAuditReader.Page>(
+                    Assert.IsAssignableFrom<IValueHttpResult>(
+                        await TenantWorkspace.GetGroupAudit(
+                            owner, db, new DefaultHttpContext(), group.Id, 2)).Value);
+                Assert.Equal(5, second.Items.Count);
+                Assert.False(second.HasNext);
+                var history = first.Items.Concat(second.Items).ToArray();
+                Assert.Contains(history, x => x.Category == "group_member" &&
+                    x.TargetUserId == staff.Id && x.TargetUserName == "group-audit-staff");
+                Assert.Contains(history, x => x.Category == "group_role" &&
+                    x.RoleId == ordinaryRole && x.RoleName == "Reception");
+                Assert.Contains(history, x => x.Category == "group" &&
+                    x.Action == "create" && x.CurrentName == "Historical team");
+                Assert.All(first.Items.Concat(second.Items), x =>
+                    Assert.NotEqual("FOREIGN ROLE LEAK", x.RoleName));
+                Assert.Equal(400, Assert.IsAssignableFrom<IStatusCodeHttpResult>(
+                    await TenantWorkspace.GetGroupAudit(
+                        owner, db, new DefaultHttpContext(), group.Id, 0)).StatusCode);
+                Assert.Equal(404, Assert.IsAssignableFrom<IStatusCodeHttpResult>(
+                    await TenantWorkspace.GetGroupAudit(
+                        owner, db, new DefaultHttpContext(), Guid.NewGuid(), 1)).StatusCode);
+
+                // Staff has all three read PAGE permissions, but NOT Owner.
+                var staffTenant = new TenantContext();
+                staffTenant.InitializeTenant(staff.Id, tenantId,
+                    [tenantId], [tenantId], tenantId);
+                await using var staffDb = new IdentityDbContext(options, staffTenant);
+                foreach (var key in new[] {
+                    TenantWorkspacePermissionCatalog.GroupsRead,
+                    TenantWorkspacePermissionCatalog.MembersRead,
+                    TenantWorkspacePermissionCatalog.RolesRead
+                })
+                    Assert.True(await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                        staffTenant, staffDb, key, default));
+                Assert.Equal(403, Assert.IsAssignableFrom<IStatusCodeHttpResult>(
+                    await TenantWorkspace.GetGroupAudit(
+                        staffTenant, staffDb, new DefaultHttpContext(), group.Id)).StatusCode);
+                Assert.Equal(403, Assert.IsAssignableFrom<IStatusCodeHttpResult>(
+                    await TenantWorkspace.GetGroupAudit(
+                        new TenantContext(), setup, new DefaultHttpContext(), group.Id)).StatusCode);
+
+                // Inspection MUST NOT mutate either legacy relationship.
+                Assert.Equal(2, await setup.UserGroups
+                    .IgnoreQueryFilters(["tenant"])
+                    .CountAsync(x => x.TenantId == tenantId && x.GroupId == group.Id));
+                Assert.Equal(2, await setup.GroupRoles
+                    .IgnoreQueryFilters(["tenant"])
+                    .CountAsync(x => x.TenantId == tenantId && x.GroupId == group.Id));
+            }
+        });
+    }
+
+    [Fact]
     public async Task Member_audit_is_owner_only_bounded_and_cannot_cross_tenants()
     {
         await WithDisposableDatabaseAsync(async (setup, options) =>

@@ -1,3 +1,9 @@
+## FR-13C-2D — Group security history and legacy-link review (2026-11-09)
+
+- Added local Owner-only `GET /api/tenant/workspace/groups/{id}/audit?page=1` requiring **Groups.Read + Members.Read + Roles.Read**; 20-row unified append-only lifecycle, UserGroup and GroupRole audit with explicit TenantId/GroupId SQL filtering and no-cache response. Separate read-only integrity counters flag legacy Owner/non-local/unknown-audit-provenance links without modifying any records.
+- New disposable SQL and real signed HTTP verification for 401/403/404/400, mixed timeline pagination and foreign ledger ID isolation. Companion Angular guarded history page and tests. [Detailed contract](development/FR-13C2D-GROUP-SECURITY-REVIEW.md).
+- **No migration, automatic clean-up, Registry Apply or deployment; Staging remains deferred.** Future reconciliation requires a separate human-reviewed plan.
+
 ## FR-13C-2C — Tenant GroupRole grants (2026-11-09)
 
 - Reviewed `TENANT.GROUPS.ASSIGN-ROLES` ACTION, Owner-only group/role-pair SQL CAS grant/revoke, live tenant authorization, extra actor-member/Owner-group denial, immutable grant history with rollback and 20-row Group role reader. Raw generic GroupRole and UserPermission writes stay denied.
