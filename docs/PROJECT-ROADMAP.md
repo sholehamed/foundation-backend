@@ -1,3 +1,8 @@
+## FR-14B-3 — auditable System account lifecycle backend (2026-11-09)
+
+- New dedicated System-only profile/state/lock/read endpoints behind independent default-OFF feature flag; SQL CAS with concurrent version, live Master actor/target checks, self/SuperAdmin protection, SecurityStamp invalidation, and append-only audit migration/test suite. Legacy generic account writes remain forbidden.
+- Next: Angular editor UX with version Conflict handling, actual System/browser HTTP positive/negative tests, deployment migration/flag planning, account recovery and reserved SuperAdmin rotation. Staging and Production remain deferred. [Details](development/FR-14B3-SYSTEM-ACCOUNT-LIFECYCLE.md).
+
 ## FR-14B-2B — First System password, forced rotation, fresh login (2026-11-09)
 
 - System-only inactive target receives a short-lived, one-time initial secret with a separate SQL proof challenge. Completion atomically rotates credentials and activates the account, without issuing tokens/cookies. Default-OFF HTTP/Angular flow and additional audit/migration kept independent of Tenant first-login. [Design and acceptance](development/FR-14B2B-SYSTEM-FIRST-LOGIN.md).
