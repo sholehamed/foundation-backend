@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Application.Services;
@@ -33,6 +35,8 @@ public class Auth : EndpointGroupBase
             .MapGet(GetAntiforgeryToken, "csrf", configure: x => x.AllowAnonymous())
             .MapPost(InteractiveLogin, "interactive-login",
                 configure: x => x.AllowAnonymous().RequireRateLimiting("identity-login"))
+            .MapPost(CompleteInteractiveFirstLogin, "interactive-first-login/complete",
+                configure: x => x.AllowAnonymous().RequireRateLimiting("tenant-first-login"))
             .MapGet(GetUserInfo, "/userinfo", configure: x => x.RequireAuthorization())
             .MapMethods(Logout, ["GET", "POST"], "logout");
     }
@@ -162,7 +166,41 @@ public class Auth : EndpointGroupBase
             cancellationToken);
 
         if (principal is null)
+        {
+            // Only Tenant credentials proven against an unused SQL temp hash
+            // may enter the restricted branch. Never sign in the Identity
+            // cookie, issue an OIDC code, or reveal an inactive account here.
+            var settings = httpContext.RequestServices.GetRequiredService<IConfiguration>();
+            if (context == IdentityLoginContext.Tenant &&
+                FirstLoginIdentityHostAllowed(httpContext, settings) &&
+                TenantFirstLoginWriter.LooksLikeIssuedPassword(input.Password) &&
+                !string.IsNullOrWhiteSpace(input.Tenant))
+            {
+                var db = httpContext.RequestServices.GetRequiredService<
+                    Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext>();
+                var passwordHasher = httpContext.RequestServices.GetRequiredService<IPasswordHasher<User>>();
+                var resolved = await TenantFirstLoginWriter.ResolveForLoginAsync(
+                    db, passwordHasher,
+                    new TenantFirstLoginWriter.StartRequest(
+                        input.Tenant, input.Username, input.Password),
+                    cancellationToken);
+                if (resolved.Status == "password_change_required")
+                {
+                    // A previously authenticated Identity user must NOT be
+                    // able to continue an earlier OIDC request while a
+                    // different inactive account changes its first password.
+                    await httpContext.SignOutAsync(
+                        IdentityServerCookieDefaults.AuthenticationScheme);
+                    return Results.Ok(new
+                    {
+                        status = resolved.Status,
+                        challenge = resolved.Challenge,
+                        expiresAtUtc = resolved.ExpiresAtUtc
+                    });
+                }
+            }
             return Results.Unauthorized();
+        }
 
         var now = DateTimeOffset.UtcNow;
         await httpContext.SignInAsync(
@@ -178,6 +216,87 @@ public class Auth : EndpointGroupBase
 
         httpContext.Response.Headers.CacheControl = "no-store";
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Only the separately deployed Identity origin may perform an
+    /// interactive BFF first-password completion. Tenant app hosts must
+    /// continue to use their already-reviewed isolated endpoint instead.
+    /// An explicit authority, when configured, further pins the exact host.
+    /// </summary>
+    public static bool FirstLoginIdentityHostAllowed(
+        HttpContext http, IConfiguration configuration)
+    {
+        if (!configuration.GetValue<bool>("Identity:TenantFirstLogin:Enabled") ||
+            !http.Request.IsHttps)
+            return false;
+
+        var baseDomain = configuration["Tenant:WorkspaceBaseDomain"]?
+            .Trim().TrimEnd('.').ToLowerInvariant();
+        var actualHost = http.Request.Host.Host.TrimEnd('.').ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(baseDomain) ||
+            actualHost is not { Length: > 0 } ||
+            (actualHost != "identity." + baseDomain &&
+             actualHost != "auth." + baseDomain))
+            return false;
+
+        var authority = configuration["Identity:Bff:Authority"];
+        if (string.IsNullOrWhiteSpace(authority)) return true;
+        return Uri.TryCreate(authority, UriKind.Absolute, out var uri) &&
+            uri.Scheme == Uri.UriSchemeHttps && uri.UserInfo.Length == 0 &&
+            uri.AbsolutePath == "/" && uri.Query.Length == 0 &&
+            uri.Fragment.Length == 0 &&
+            string.Equals(uri.Host, actualHost, StringComparison.OrdinalIgnoreCase) &&
+            uri.Port == (http.Request.Host.Port ?? 443);
+    }
+
+    /// <summary>
+    /// This is NOT a login: a verified restricted challenge can only set
+    /// the employee's permanent password using SQL's atomic one-use CAS.
+    /// Antiforgery validates the Identity-host cookie/XSRF header again.
+    /// In no outcome does this endpoint mint an Identity or BFF session.
+    /// </summary>
+    public async Task<IResult> CompleteInteractiveFirstLogin(
+        TenantFirstLoginWriter.CompleteRequest input,
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        CancellationToken cancellationToken)
+    {
+        httpContext.Response.Headers.CacheControl = "no-store";
+        httpContext.Response.Headers.Pragma = "no-cache";
+        var configuration = httpContext.RequestServices.GetRequiredService<IConfiguration>();
+        if (!configuration.GetValue<bool>("Identity:TenantFirstLogin:Enabled"))
+            return Results.NotFound();
+        if (!FirstLoginIdentityHostAllowed(httpContext, configuration))
+            return Results.Problem(statusCode: 400, title: "Secure Identity host required");
+        try
+        {
+            await antiforgery.ValidateRequestAsync(httpContext);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Results.BadRequest(new { error = "invalid_antiforgery_token" });
+        }
+        try
+        {
+            var db = httpContext.RequestServices.GetRequiredService<
+                Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext>();
+            var passwordHasher = httpContext.RequestServices.GetRequiredService<IPasswordHasher<User>>();
+            await TenantFirstLoginWriter.CompleteAsync(
+                db, passwordHasher, input, cancellationToken);
+            await httpContext.SignOutAsync(IdentityServerCookieDefaults.AuthenticationScheme);
+            return Results.Ok(new { passwordChanged = true, requiresRelogin = true });
+        }
+        catch (FirstLoginValidationException)
+        {
+            return Results.Problem(statusCode: 400,
+                title: "Invalid or expired password-change challenge");
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            return Results.Problem(statusCode: 400,
+                title: "Invalid or expired password-change challenge");
+        }
     }
 
     [Resouce("", "logout")]
