@@ -48,6 +48,13 @@ public sealed class Fr14b3SystemAccountLifecycleContractTests
                 JsonSerializer.Deserialize<
                     SystemAccountLifecycleWriter.ProfileRequest>(injected, options));
 
+        // Missing desired bool must NOT silently become false (suspend/lock).
+        Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<SystemAccountLifecycleWriter.StateRequest>(
+                """{"expectedVersion":"v1"}""", options));
+        Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<SystemAccountLifecycleWriter.LockRequest>(
+                """{"expectedVersion":"v1"}""", options));
         Assert.Throws<JsonException>(() =>
             JsonSerializer.Deserialize<SystemAccountLifecycleWriter.StateRequest>(
                 """{"isActive":true,"expectedVersion":"v1","isSuperAdmin":true}""",
