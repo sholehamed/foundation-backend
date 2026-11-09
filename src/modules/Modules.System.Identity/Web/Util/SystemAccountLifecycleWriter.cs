@@ -12,8 +12,8 @@ using OpenIddict.Abstractions;
 
 namespace Modules.System.Identity.Web.Util;
 
-public sealed class SystemAccountMutationValidationException : Exception;
-public sealed class SystemAccountMutationConflictException : Exception;
+public sealed class SystemAccountMutationValidationException : Exception { }
+public sealed class SystemAccountMutationConflictException : Exception { }
 
 /// <summary>
 /// FR-14B-3: explicit, System-only profile, suspension/resumption and lock
@@ -84,7 +84,6 @@ public static class SystemAccountLifecycleWriter
         if (target is null)
             throw new UnauthorizedAccessException("Target is not a System account.");
 
-        var master = DefaultSeedData.MasterTenant.Id;
         var directReserved = await db.UserRoles.IgnoreQueryFilters(["tenant"])
             .AsNoTracking().AnyAsync(x => x.UserId == targetId &&
                 x.Role.NormalizedName == "SUPERADMIN", ct);
@@ -236,7 +235,7 @@ public static class SystemAccountLifecycleWriter
                 """
                 SELECT COUNT(*) AS [Value] FROM [dbo].[SystemAccountLifecycleAuditEntries]
                 WHERE [TargetUserId]={0} AND [Action]='temp_activated'
-                """, target.Id).AnyAsync(count => count > 0, ct))
+                """, target.Id).SingleAsync(ct) > 0)
                 throw new UnauthorizedAccessException(
                     "Pending System accounts cannot be directly activated.");
 
