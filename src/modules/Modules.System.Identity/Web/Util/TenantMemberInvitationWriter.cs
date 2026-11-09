@@ -307,6 +307,11 @@ public static class TenantMemberInvitationWriter
 
             // A previously submitted invitation cannot activate a User if
             // the registered recipient email changed after issuance.
+            // Member email may have been removed after an invitation was
+            // submitted. Treat that identically to an expired/revoked token;
+            // never dereference null, echo token or activate this account.
+            if (string.IsNullOrWhiteSpace(user.Email))
+                throw new TenantInvitationValidationException();
             var liveEmailHash = SHA256.HashData(Encoding.UTF8.GetBytes(
                 user.Email.Trim().ToUpperInvariant()));
             if (invite.RecipientEmailHash.Length != 32 ||
