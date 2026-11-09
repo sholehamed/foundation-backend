@@ -42,6 +42,8 @@ public static class TenantWorkspace
             .WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/ui-access/me", GetCurrentUiAccess)
             .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/navigation/me", GetTenantNavigation)
+            .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/admin-capabilities", GetAdministrationCapabilities)
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members", GetMembers)
@@ -276,6 +278,21 @@ public static class TenantWorkspace
     // FR-11A: Permission decisions are live, scoped and individually evaluated.
     // The evaluated actor ID and tenant are never client-selected.
     public sealed record UiAccessItem(string Key, string Kind, string Route, bool Allowed);
+
+    /// <summary>
+    /// FR-14C-1: server-authorized dynamic navigation, matching the same
+    /// current authenticated Tenant / live PAGE grants used by workspace APIs.
+    /// Does not accept RoleId, TenantId or branch from query/body.
+    /// </summary>
+    public static async Task<IResult> GetTenantNavigation(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        CancellationToken ct = default)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        var navigation = await TenantWorkspaceNavigationService.GetAsync(
+            current, db, http.User, ct);
+        return navigation is null ? DeniedAfterAuthentication() : Results.Ok(navigation);
+    }
 
     public static async Task<IResult> GetCurrentUiAccess(
         ITenantContext current, IdentityDbContext db, HttpContext http,
