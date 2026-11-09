@@ -1582,6 +1582,12 @@ public sealed class TenantRoleGrantSqlServerTests
                 actor.ActiveTenantId!.Value).SingleAsync());
 
             await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            var normalAuthenticator = new UserCredentialAuthenticator(
+                anonymous, hasher,
+                new IdentityPrincipalFactory(anonymous, new DefaultSystemTenantScope()));
+            Assert.Null(await normalAuthenticator.AuthenticateAsync(
+                "no.email.two", second.TemporaryPassword,
+                IdentityLoginContext.Tenant, "tenant-role-grants"));
             var resolved = await TenantFirstLoginWriter.ResolveForLoginAsync(
                 anonymous, hasher, new TenantFirstLoginWriter.StartRequest(
                     "tenant-role-grants", "no.email.two", second.TemporaryPassword));
@@ -1602,6 +1608,17 @@ public sealed class TenantRoleGrantSqlServerTests
                     "New-Long-Employee-Password-2026!"));
             Assert.False(await anonymous.UserRoles.IgnoreQueryFilters(["tenant"])
                 .AnyAsync(r => r.UserId == activated.Id));
+
+            // The exact *real* login pipeline must work without a fabricated
+            // email or an invalid OpenIddict Claim(email, null) exception.
+            var signedIn = await normalAuthenticator.AuthenticateAsync(
+                "no.email.two", "New-Long-Employee-Password-2026!",
+                IdentityLoginContext.Tenant, "tenant-role-grants");
+            Assert.NotNull(signedIn);
+            Assert.True(signedIn.Identity?.IsAuthenticated);
+            Assert.Null(signedIn.FindFirst("email"));
+            Assert.Equal(activated.Id.ToString(), signedIn.FindFirst("sub")?.Value);
+            Assert.Equal("tenant-role-grants", signedIn.FindFirst("tenant")?.Value);
         });
     }
 
