@@ -113,6 +113,14 @@ def run():
           data={"name": "Anonymous", "description": None})
     check("GET", TENANT_PATH + "/roles", 403, token=admin)
     check("GET", TENANT_PATH + "/members", 403, token=staff)
+    # Real HTTP route registration, same-origin authenticated Owner read,
+    # no caller-selected TenantId, and non-Owner privacy gate.
+    audit = check("GET", TENANT_PATH + "/members/audit", 200, token=owner)
+    assert audit["pageNumber"] == 1 and isinstance(audit["items"], list)
+    check("GET", TENANT_PATH + "/members/audit", 401)
+    check("GET", TENANT_PATH + "/members/audit", 403, token=admin)
+    check("GET", TENANT_PATH + "/members/audit", 403, token=staff)
+    check("GET", TENANT_PATH + "/members/audit?page=0", 400, token=owner)
     check("POST", TENANT_PATH + "/roles", 403, token=staff,
           data={"name": "Unauthorized", "description": None})
     check("GET", TENANT_PATH + "/members", 403, token=owner,
@@ -187,6 +195,8 @@ def run():
           data={"expectedVersion": added["version"], "roleIds": [FOREIGN_ID]})
     check("GET", TENANT_PATH + "/members", 200, token=staff)
     assert ui_allowed(staff, MEMBERS_READ)
+    # Reading Members PAGE never grants access to Owner security history.
+    check("GET", TENANT_PATH + "/members/audit", 403, token=staff)
 
     # The same signed staff JWT must lose access immediately when the direct
     # RolePermission is revoked, with no browser logout/token rotation.
