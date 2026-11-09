@@ -1409,6 +1409,13 @@ public sealed class TenantRoleGrantSqlServerTests
                 "ABCDE", "tenant", "tenant-role-grants");
             var anti = new PassThroughAntiforgery();
 
+            var csrfFailure = await endpoint.InteractiveLogin(
+                input, NewRequest(services), new PassThroughAntiforgery(reject: true),
+                captcha, auth, default);
+            Assert.Equal(400, ((IStatusCodeHttpResult)csrfFailure).StatusCode);
+            Assert.Equal(0, session.SignedIn);
+            Assert.Equal(0, session.SignedOut);
+
             var captchaFailure = await endpoint.InteractiveLogin(
                 input with { CaptchaCode = "WRONG" },
                 NewRequest(services), anti, captcha, auth, default);
@@ -1441,6 +1448,25 @@ public sealed class TenantRoleGrantSqlServerTests
             Assert.Equal(1, session.SignedOut);
             Assert.False((await anonymous.Users.AsNoTracking()
                 .SingleAsync(x => x.Id == pending.Member.Id)).IsActive);
+
+            var completeRequest = new TenantFirstLoginWriter.CompleteRequest(
+                "tenant-role-grants", challenge,
+                "New-Strong-Permanent-Password-For-Idp-2026!");
+
+            var foreignHost = NewRequest(services);
+            foreignHost.Request.Host = new HostString("tenant-role-grants.shinera.localhost");
+            var forbiddenHost = await endpoint.CompleteInteractiveFirstLogin(
+                completeRequest, foreignHost, anti, default);
+            Assert.Equal(400, ((IStatusCodeHttpResult)forbiddenHost).StatusCode);
+
+            var csrfDenied = await endpoint.CompleteInteractiveFirstLogin(
+                completeRequest, NewRequest(services),
+                new PassThroughAntiforgery(reject: true), default);
+            Assert.Equal(400, ((IStatusCodeHttpResult)csrfDenied).StatusCode);
+            Assert.False((await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == pending.Member.Id)).IsActive);
+            Assert.Equal(0, session.SignedIn);
+            Assert.Equal(1, session.SignedOut);
 
             var completed = await endpoint.CompleteInteractiveFirstLogin(
                 new TenantFirstLoginWriter.CompleteRequest(
@@ -1480,7 +1506,7 @@ public sealed class TenantRoleGrantSqlServerTests
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
-    private sealed class PassThroughAntiforgery : IAntiforgery
+    private sealed class PassThroughAntiforgery(bool reject = false) : IAntiforgery
     {
         public AntiforgeryTokenSet GetAndStoreTokens(HttpContext context) =>
             throw new NotSupportedException();
@@ -1488,7 +1514,10 @@ public sealed class TenantRoleGrantSqlServerTests
             throw new NotSupportedException();
         public Task<bool> IsRequestValidAsync(HttpContext context) =>
             Task.FromResult(true);
-        public Task ValidateRequestAsync(HttpContext context) => Task.CompletedTask;
+        public Task ValidateRequestAsync(HttpContext context) =>
+            reject
+                ? Task.FromException(new AntiforgeryValidationException("Denied test request"))
+                : Task.CompletedTask;
         public void SetCookieTokenAndHeader(HttpContext context) =>
             throw new NotSupportedException();
     }
