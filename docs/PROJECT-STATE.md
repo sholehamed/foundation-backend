@@ -1,3 +1,9 @@
+## FR-14C-1 — dynamic Tenant navigation aligned to live PAGE guards (2026-11-09)
+
+- Authenticated `/tenant/workspace/navigation/me` and existing Tenant `/System/Menus/me` now return only code-owned safe Tenant paths. Members, Roles and Groups require the same **live Tenant PAGE evaluator** used at their API/Angular guards, even when the global `Menu.PermissionId` is null. Wrong RoleScope, foreign Tenant/subject, explicit Deny, revoked Group/Role and unknown paths fail closed; invalid parent folders disappear.
+- In-memory and disposable SQL tests cover Tenant isolation, direct Deny, wrong role scope, group revocation and 403/no-store. No grant, migration or Menu mutation; Tenant Menu catalog itself is still global rather than owned. [FR-14C-1 contract](development/FR-14C1-TENANT-NAVIGATION-BOUNDARIES.md).
+- **Next:** explicit Tenant/branch-owned menu schema and migration review, delegation boundaries and branch-scoped membership/RBAC. Staging and Production remain deferred.
+
 ## FR-14B-3 — guarded System account lifecycle (2026-11-09)
 
 - Added opt-in, HTTPS-only, SystemAdministrator-scoped GET /Admins/{id}/lifecycle and CAS-versioned PUT /Admins/{id}/profile, /state and /lock. Target must be non-self, System/TenantId-null and not a direct/inherited SuperAdmin. Older unsafe generic User/Admin mutation routes remain 403.
