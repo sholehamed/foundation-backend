@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Modules.System.Identity.Web.Endpoints;
 using Modules.System.Identity.Web.Util;
@@ -22,6 +23,27 @@ public sealed class Fr14bLegacyAccountWriteLockdownTests
         Assert.IsType<ForbidHttpResult>(endpoints.UserDelete(Guid.NewGuid()));
         Assert.IsType<ForbidHttpResult>(endpoints.UserChangeState(Guid.NewGuid()));
         Assert.IsType<ForbidHttpResult>(endpoints.UserChangeLockState(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public void Inert_account_input_rejects_scope_credentials_and_privilege_fields()
+    {
+        var json = """
+            {"userName":"operator","email":"operator@example.test",
+             "firstName":"Safe","lastName":"User","isActive":true}
+            """;
+        Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<SystemPendingAccountWriter.CreateRequest>(
+                json, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        foreach (var forbidden in new[] { "tenantId", "password", "roleId", "userType" })
+        {
+            var payload = "{\"userName\":\"operator\",\"email\":\"operator@example.test\"," +
+                          "\"firstName\":\"Safe\",\"lastName\":\"User\"," +
+                          "\"" + forbidden + "\":\"forged\"}";
+            Assert.Throws<JsonException>(() =>
+                JsonSerializer.Deserialize<SystemPendingAccountWriter.CreateRequest>(
+                    payload, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        }
     }
 
     [Fact]
