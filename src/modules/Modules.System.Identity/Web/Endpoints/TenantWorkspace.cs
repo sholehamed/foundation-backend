@@ -325,8 +325,7 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.MembersAssignRoles
                 or TenantWorkspacePermissionCatalog.MembersCreate
                 or TenantWorkspacePermissionCatalog.MembersInvite
-                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword
-)
+                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword)
                 allowed = allowed && current.WritableTenantIds.Contains(tenantId);
             // IAM writes also require a live local Owner, independent of
             // delegated read/group permissions.
@@ -342,8 +341,7 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.MembersAssignRoles
                 or TenantWorkspacePermissionCatalog.MembersCreate
                 or TenantWorkspacePermissionCatalog.MembersInvite
-                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword
-)
+                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword)
                 allowed = allowed && await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(
                     current, db, ct);
             entries.Add(new UiAccessItem(
