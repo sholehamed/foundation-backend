@@ -58,7 +58,7 @@ def method_calls(source: str):
     """Yield registrations with balanced call expressions (not handler bodies)."""
     exp = re.compile(r"\.Map(Get|Post|Put|Patch|Delete|Methods)\s*\(")
     matches = list(exp.finditer(source))
-    for match in matches:
+    for ordinal, match in enumerate(matches):
         depth = 1
         index = match.end()
         quote = None
@@ -79,8 +79,13 @@ def method_calls(source: str):
             index += 1
         if depth != 0:
             raise AuditError("Unbalanced route registration")
+        # Fluent MapGroup chains put the NEXT Map* before the final
+        # semicolon. Never attribute AllowAnonymous/RequireAuthorization
+        # on a later endpoint to the current endpoint.
         until = source.find(";", index)
-        tail = source[index:until if until >= 0 else index]
+        next_call = matches[ordinal + 1].start() if ordinal + 1 < len(matches) else len(source)
+        tail_end = min(until if until >= 0 else len(source), next_call)
+        tail = source[index:tail_end]
         body = source[match.end():index - 1]
         handler = re.match(r"\s*(?:\$?\"[^\"]+\"\s*,\s*)?(\w+)", body)
         yield match.group(1).upper(), (handler.group(1) if handler else "?"), body, tail
