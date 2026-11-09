@@ -1,3 +1,8 @@
+## FR-14C-1 — live authorized Tenant menu projection (2026-11-09)
+
+- Existing database-backed Menu tree can now be exposed to the Tenant workspace through a read-only Tenant endpoint and a code-owned, fail-closed route/page map; direct denials and Tenant RoleScope are respected. Companion Angular dynamic navigation pilot remains independently **OFF** and does not replace underlying API authorization.
+- **Not complete:** per-Tenant/Menu ownership data model, branch assignment/restrictions, delegated role administration and actual operator catalog seed/apply. [Scope/acceptance](development/FR-14C1-TENANT-NAVIGATION-BOUNDARIES.md). No Staging or DB changes.
+
 ## FR-14B-3 — auditable System account lifecycle backend (2026-11-09)
 
 - New dedicated System-only profile/state/lock/read endpoints behind independent default-OFF feature flag; SQL CAS with concurrent version, live Master actor/target checks, self/SuperAdmin protection, SecurityStamp invalidation, and append-only audit migration/test suite. Legacy generic account writes remain forbidden.

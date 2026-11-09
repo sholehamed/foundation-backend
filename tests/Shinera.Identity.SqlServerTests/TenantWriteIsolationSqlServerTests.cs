@@ -4,6 +4,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Modules.System.Identity.Web.Util;
+using Modules.System.Identity.Web.Endpoints;
 using Modules.System.Identity.Application.Features.Roles.Commands;
 using Modules.System.Identity.Application.Features.Groups.Commands;
 using OpenIddict.Abstractions;
@@ -1992,6 +1993,112 @@ public sealed class TenantWriteIsolationSqlServerTests
                 enabled: true);
             Assert.Equal("After", updated.FirstName);
             Assert.NotEqual("original-version", updated.Version);
+        });
+    }
+
+    [Fact]
+    public async Task Tenant_dynamic_menu_respects_live_SQL_role_scope_direct_deny_and_revocation()
+    {
+        await WithTestDatabaseAsync(async (setup, tenantContext, db, _) =>
+        {
+            var id = Guid.NewGuid();
+            var tenant = new Tenant(id, null, "Tenant Navigation",
+                "tenant-menu-live", "localhost");
+            var user = new User(id, "nav-member", "nav-member@example.test",
+                "Menu", "Member", UserType.Tenant)
+            {
+                NormalizedUserName = "NAV-MEMBER",
+                NormalizedEmail = "NAV-MEMBER@EXAMPLE.TEST",
+                PasswordHash = "fixture-only", SecurityStamp = "nav-stamp",
+                IsActive = true
+            };
+            var role = new Role(id, "tenant-menu-reader", null)
+                { Scope = RoleScope.Tenant };
+            var permission = new Permission(Guid.NewGuid(),
+                TenantWorkspacePermissionCatalog.MembersRead,
+                null, "Read Tenant members", null);
+            var category = new MenuCategory(Guid.NewGuid())
+            {
+                Title = "Workspace", IsActive = true, Order = 1
+            };
+            var home = new Menu(Guid.NewGuid())
+            {
+                CategoryId = category.Id, Title = "Home", Route = "/dashboard",
+                Icon = "home", IsActive = true, Order = 1
+            };
+            var privileged = new Menu(Guid.NewGuid())
+            {
+                CategoryId = category.Id, Title = "Members",
+                Route = "/dashboard/members", Icon = "people",
+                IsActive = true, Order = 2,
+                // Intentionally no PermissionId: the PAGE gate is authoritative.
+                PermissionId = null
+            };
+            var unknown = new Menu(Guid.NewGuid())
+            {
+                CategoryId = category.Id, Title = "Unsafe Unknown",
+                Route = "/dashboard/legacy-admin", Icon = "warning",
+                IsActive = true, Order = 3
+            };
+            setup.AddRange(tenant, user, role, permission, category,
+                home, privileged, unknown,
+                new UserRole(id, user.Id, role.Id),
+                new RolePermission(id, role.Id, permission.Id));
+            await setup.SaveChangesAsync();
+
+            tenantContext.InitializeTenant(user.Id, id, [id], [id], id);
+            var principal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim(OpenIddictConstants.Claims.Subject, user.Id.ToString()),
+                new Claim("account_type", "tenant"),
+                new Claim("tenant_id", id.ToString()),
+                new Claim("tenant", tenant.Slug)
+            ], "test"));
+
+            var first = await TenantWorkspaceNavigationService.GetAsync(
+                tenantContext, db, principal);
+            Assert.Equal(new[] { "Home", "Members" },
+                Assert.Single(first!).Items.Select(x => x.Title));
+
+            setup.UserPermissions.Add(new UserPermission(Guid.NewGuid())
+            {
+                UserId = user.Id, TenantId = id, PermissionId = permission.Id,
+                IsGranted = false
+            });
+            await setup.SaveChangesAsync();
+            var denied = await TenantWorkspaceNavigationService.GetAsync(
+                tenantContext, db, principal);
+            Assert.Equal("Home", Assert.Single(
+                Assert.Single(denied!).Items).Title);
+
+            var deny = await setup.UserPermissions.SingleAsync(x =>
+                x.UserId == user.Id && x.PermissionId == permission.Id);
+            setup.UserPermissions.Remove(deny);
+            role.Scope = RoleScope.System; // may be tracked in setup context
+            await setup.SaveChangesAsync();
+            var wrongScope = await TenantWorkspaceNavigationService.GetAsync(
+                tenantContext, db, principal);
+            Assert.Equal("Home", Assert.Single(
+                Assert.Single(wrongScope!).Items).Title);
+
+            role.Scope = RoleScope.Tenant;
+            await setup.SaveChangesAsync();
+            Assert.Equal(2, Assert.Single(
+                (await TenantWorkspaceNavigationService.GetAsync(
+                    tenantContext, db, principal))!).Items.Count);
+
+            // On revocation the unchanged JWT cannot restore menu links.
+            var assignment = await setup.UserRoles.SingleAsync(x => x.UserId == user.Id);
+            setup.UserRoles.Remove(assignment);
+            await setup.SaveChangesAsync();
+            var afterRevocation = await TenantWorkspaceNavigationService.GetAsync(
+                tenantContext, db, principal);
+            Assert.Equal("Home", Assert.Single(
+                Assert.Single(afterRevocation!).Items).Title);
+
+            var otherContext = new TenantContext();
+            otherContext.InitializeSystem(Guid.NewGuid(), true);
+            Assert.Null(await TenantWorkspaceNavigationService.GetAsync(
+                otherContext, db, principal));
         });
     }
 

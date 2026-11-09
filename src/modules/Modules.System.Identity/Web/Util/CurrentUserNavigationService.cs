@@ -81,7 +81,9 @@ public sealed class CurrentUserNavigationService(IIdentityDbContext db)
         // on deep nested collection navigation fixup and stay bounded.
         var roleIds = (await db.UserRoles.IgnoreQueryFilters(["tenant"]).AsNoTracking()
             .Where(x => x.UserId == userId && x.TenantId == scopeId &&
-                x.Role.TenantId == scopeId && x.Role.IsActive)
+                x.Role.TenantId == scopeId && x.Role.IsActive &&
+                (kind == UserType.System || x.Role.Scope == RoleScope.Tenant ||
+                 (x.Role.NormalizedName == "OWNER" && x.Role.Scope != RoleScope.System)))
             .Select(x => x.RoleId)
             .ToListAsync(cancellationToken)).ToHashSet();
 
@@ -94,7 +96,8 @@ public sealed class CurrentUserNavigationService(IIdentityDbContext db)
             roleIds.UnionWith(await db.GroupRoles.IgnoreQueryFilters(["tenant"]).AsNoTracking()
                 .Where(x => x.TenantId == scopeId && groupIds.Contains(x.GroupId) &&
                     x.Group!.TenantId == scopeId && x.Group.IsActive &&
-                    x.Role!.TenantId == scopeId && x.Role.IsActive)
+                    x.Role!.TenantId == scopeId && x.Role.IsActive &&
+                    (kind == UserType.System || x.Role.Scope == RoleScope.Tenant))
                 .Select(x => x.RoleId).ToListAsync(cancellationToken));
 
         if (roleIds.Count > 0)
