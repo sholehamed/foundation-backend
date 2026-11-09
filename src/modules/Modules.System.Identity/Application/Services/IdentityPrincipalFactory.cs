@@ -121,7 +121,6 @@ public sealed class IdentityPrincipalFactory(
         {
             new(OpenIddictConstants.Claims.Subject, user.Id.ToString()),
             new(OpenIddictConstants.Claims.Username, user.UserName),
-            new(OpenIddictConstants.Claims.Email, user.Email),
             new(OpenIddictConstants.Claims.Picture, user.ImageId?.ToString() ?? string.Empty),
             new(OpenIddictConstants.Claims.GivenName, $"{user.FirstName} {user.LastName}".Trim()),
             new("account_type", context == IdentityLoginContext.System ? "system" : "tenant"),
@@ -130,6 +129,12 @@ public sealed class IdentityPrincipalFactory(
                 DateTimeOffset.UtcNow.ToUnixTimeSeconds()).ToString(CultureInfo.InvariantCulture),
                 ClaimValueTypes.Integer64)
         };
+
+        // Standards-compliant: the email claim is OPTIONAL. Never fabricate
+        // a fake address or construct a Claim with a null value for
+        // physically onboarded Tenant staff without an email.
+        if (!string.IsNullOrWhiteSpace(user.Email))
+            claims.Add(new Claim(OpenIddictConstants.Claims.Email, user.Email));
 
         if (tenant is not null)
         {
