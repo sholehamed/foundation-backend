@@ -33,7 +33,9 @@ SPECIAL_SYSTEM_HANDLERS = {
     "Menus": {"GetMyNavigation"},
 }
 PROTOCOL_ENDPOINT_GROUPS = {"Auth", "Connect", "PublicSignup"}
-SYSTEM_IGNORED = {"TenantWorkspace", "TenantWorkspacePermissionCatalog",
+# TenantWorkspace is intentionally NOT ignored: it is a mandatory scanned
+# surface even though it is not part of the System Feature Registry.
+SYSTEM_IGNORED = {"TenantWorkspacePermissionCatalog",
                   "TenantWorkspacePermissionEvaluator"}
 # Legacy POST search uses a request body for paging but never changes grants.
 REVIEWED_POST_READ_EXCEPTIONS = {"SYSTEM.GROUPS.MEMBERS-LIST"}
