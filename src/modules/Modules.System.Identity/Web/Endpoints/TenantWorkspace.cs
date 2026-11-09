@@ -80,6 +80,8 @@ public static class TenantWorkspace
             .AllowAnonymous()
             .RequireRateLimiting("tenant-invite-activate")
             .WithTags("Tenant Activation");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/effective-permissions", GetMemberEffectivePermissions)
+            .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/roles", GetMemberRoles)
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/roles", ReplaceMemberRoles)
@@ -353,6 +355,8 @@ public static class TenantWorkspace
             canViewMembers = members,
             canViewMemberAudit = members &&
                 await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(current, db, ct),
+            canViewMemberEffectivePermissions =
+                await TenantMemberEffectivePermissionReader.CanReadAsync(current, db, ct),
             canViewRoles = roles,
             canViewGroups = groups,
             canViewGroupAudit = groups && members && roles &&
@@ -416,6 +420,24 @@ public static class TenantWorkspace
             rows.Take(DirectoryPageSize).ToArray(), page, rows.Count > DirectoryPageSize));
     }
 
+
+    /// <summary>
+    /// Explain live Tenant PAGE/ACTION permission decisions for a specific
+    /// member, including direct overrides and active role/group paths.
+    /// This report does not itself authorize privileged endpoint operations.
+    /// </summary>
+    public static async Task<IResult> GetMemberEffectivePermissions(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        Guid id, CancellationToken ct = default)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (id == Guid.Empty) return Results.BadRequest();
+        if (!await TenantMemberEffectivePermissionReader.CanReadAsync(current, db, ct))
+            return DeniedAfterAuthentication();
+        var report = await TenantMemberEffectivePermissionReader.ReadAsync(
+            current, db, id, ct);
+        return report is null ? Results.NotFound() : Results.Ok(report);
+    }
 
     /// <summary>
     /// Read-only, Owner-only member security audit. A normal member with
