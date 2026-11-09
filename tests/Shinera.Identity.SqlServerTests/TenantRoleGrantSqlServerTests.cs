@@ -29,6 +29,181 @@ namespace Shinera.Identity.SqlServerTests;
 public sealed class TenantRoleGrantSqlServerTests
 {
     [Fact]
+    public async Task Effective_member_permissions_match_live_evaluator_and_explain_role_group_deny_and_owner()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (db, owner, _, directRoleId, foreignRoleId) =
+                await SeedAsync(setup, options);
+            await using (db)
+            {
+                var tenantId = owner.ActiveTenantId!.Value;
+                var staff = new User(Guid.NewGuid(), tenantId, "effective-staff",
+                    "sensitive-address@example.test", "Staff", "Test", UserType.Tenant)
+                {
+                    IsActive = true, NormalizedUserName = "EFFECTIVE-STAFF",
+                    PasswordHash = "NeverExposePasswordHash"
+                };
+                var groupRole = new Role(tenantId, "Team Support", null)
+                { Scope = RoleScope.Tenant };
+                setup.Users.Add(staff);
+                setup.Roles.Add(groupRole);
+                setup.UserRoles.Add(new UserRole(tenantId, staff.Id, directRoleId));
+                await setup.SaveChangesAsync();
+
+                var group = await TenantGroupLifecycleWriter.CreateAsync(
+                    owner, db, new("Effective Support", null));
+                setup.UserGroups.Add(new UserGroup(Guid.NewGuid())
+                { TenantId = tenantId, UserId = staff.Id, GroupId = group.Id });
+                setup.GroupRoles.Add(new GroupRole(Guid.NewGuid())
+                { TenantId = tenantId, GroupId = group.Id, RoleId = groupRole.Id });
+                var readMembers = await setup.Permissions.SingleAsync(x =>
+                    x.Code == TenantWorkspacePermissionCatalog.MembersRead);
+                var readGroups = await setup.Permissions.SingleAsync(x =>
+                    x.Code == TenantWorkspacePermissionCatalog.GroupsRead);
+                var readRoles = await setup.Permissions.SingleAsync(x =>
+                    x.Code == TenantWorkspacePermissionCatalog.RolesRead);
+                setup.RolePermissions.Add(new RolePermission(tenantId, directRoleId, readMembers.Id));
+                setup.RolePermissions.Add(new RolePermission(tenantId, groupRole.Id, readGroups.Id));
+                setup.UserPermissions.AddRange(
+                    new UserPermission(Guid.NewGuid())
+                    {
+                        TenantId = tenantId, UserId = staff.Id,
+                        PermissionId = readGroups.Id, IsGranted = false
+                    },
+                    new UserPermission(Guid.NewGuid())
+                    {
+                        TenantId = tenantId, UserId = staff.Id,
+                        PermissionId = readRoles.Id, IsGranted = true
+                    });
+                await setup.SaveChangesAsync();
+
+                var http = new DefaultHttpContext();
+                var result = await TenantWorkspace.GetMemberEffectivePermissions(
+                    owner, db, http, staff.Id);
+                Assert.Equal("no-store", http.Response.Headers.CacheControl.ToString());
+                var report = Assert.IsType<TenantMemberEffectivePermissionReader.Report>(
+                    Assert.IsAssignableFrom<IValueHttpResult>(result).Value);
+                Assert.Equal(staff.Id, report.UserId);
+                Assert.True(report.UserActive);
+                Assert.False(report.IsOwner);
+                Assert.Equal(TenantWorkspacePermissionCatalog.Definitions.Count,
+                    report.Items.Count);
+
+                var direct = report.Items.Single(x =>
+                    x.Code == TenantWorkspacePermissionCatalog.MembersRead);
+                Assert.True(direct.Allowed);
+                Assert.Equal("role", direct.Decision);
+                Assert.Contains(direct.Sources,
+                    s => s.Kind == "role" && s.RoleId == directRoleId);
+
+                var denied = report.Items.Single(x =>
+                    x.Code == TenantWorkspacePermissionCatalog.GroupsRead);
+                Assert.False(denied.Allowed);
+                Assert.Equal("direct_deny", denied.Decision);
+                Assert.Contains(denied.Sources, s => s.Kind == "direct_deny");
+                Assert.Contains(denied.Sources,
+                    s => s.Kind == "group_role" && s.GroupId == group.Id &&
+                        s.RoleId == groupRole.Id);
+
+                var allowedOverride = report.Items.Single(x =>
+                    x.Code == TenantWorkspacePermissionCatalog.RolesRead);
+                Assert.True(allowedOverride.Allowed);
+                Assert.Equal("direct_allow", allowedOverride.Decision);
+
+                // The report describes the same exact decisions as the
+                // authoritative, tenant-home-bound evaluator.
+                var target = new TenantContext();
+                target.InitializeTenant(staff.Id, tenantId, [tenantId], [], tenantId);
+                await using var targetDb = new IdentityDbContext(options, target);
+                foreach (var p in report.Items)
+                    Assert.Equal(p.Allowed,
+                        await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                            target, targetDb, p.Code, default));
+
+                // A Group role is suppressed when its Group is disabled.
+                var storedGroup = await setup.Groups.IgnoreQueryFilters(["tenant"])
+                    .SingleAsync(x => x.Id == group.Id);
+                storedGroup.IsActive = false;
+                await setup.SaveChangesAsync();
+                var disabledGroup = await TenantMemberEffectivePermissionReader.ReadAsync(
+                    owner, db, staff.Id);
+                Assert.NotNull(disabledGroup);
+                var groupPermission = disabledGroup.Items.Single(x =>
+                    x.Code == TenantWorkspacePermissionCatalog.GroupsRead);
+                Assert.False(groupPermission.Allowed);
+                Assert.DoesNotContain(groupPermission.Sources,
+                    s => s.Kind == "group_role");
+                storedGroup.IsActive = true;
+                await setup.SaveChangesAsync();
+
+                // Direct deny can be lifted immediately without a new JWT.
+                var overrideRecord = await setup.UserPermissions
+                    .IgnoreQueryFilters(["tenant"]).SingleAsync(x =>
+                        x.TenantId == tenantId && x.UserId == staff.Id &&
+                        x.PermissionId == readGroups.Id);
+                setup.UserPermissions.Remove(overrideRecord);
+                await setup.SaveChangesAsync();
+                var restored = await TenantMemberEffectivePermissionReader.ReadAsync(
+                    owner, db, staff.Id);
+                Assert.True(restored!.Items.Single(x =>
+                    x.Code == TenantWorkspacePermissionCatalog.GroupsRead).Allowed);
+                Assert.Equal("group_role", restored.Items.Single(x =>
+                    x.Code == TenantWorkspacePermissionCatalog.GroupsRead).Decision);
+
+                // Legacy Owner fallback is annotated instead of masquerading
+                // as an ordinary UserRole/GroupRole permission.
+                var ownerReport = await TenantMemberEffectivePermissionReader.ReadAsync(
+                    owner, db, owner.UserId!.Value);
+                Assert.NotNull(ownerReport);
+                Assert.True(ownerReport.IsOwner);
+                Assert.Contains(ownerReport.Items, x =>
+                    x.Decision == "owner_fallback" && x.Allowed);
+
+                var foreign = await TenantMemberEffectivePermissionReader.ReadAsync(
+                    owner, db, foreignRoleId);
+                Assert.Null(foreign);
+                var invalid = await TenantWorkspace.GetMemberEffectivePermissions(
+                    owner, db, new DefaultHttpContext(), Guid.Empty);
+                Assert.Equal(400, Assert.IsAssignableFrom<IStatusCodeHttpResult>(
+                    invalid).StatusCode);
+                var missing = await TenantWorkspace.GetMemberEffectivePermissions(
+                    owner, db, new DefaultHttpContext(), foreignRoleId);
+                Assert.Equal(404, Assert.IsAssignableFrom<IStatusCodeHttpResult>(
+                    missing).StatusCode);
+
+                // Even when delegated all read PAGEs, ordinary users cannot
+                // inspect another member's grant provenance.
+                var staffContext = new TenantContext();
+                staffContext.InitializeTenant(staff.Id, tenantId,
+                    [tenantId], [tenantId], tenantId);
+                await using var staffDb = new IdentityDbContext(options, staffContext);
+                Assert.Equal(403, Assert.IsAssignableFrom<IStatusCodeHttpResult>(
+                    await TenantWorkspace.GetMemberEffectivePermissions(
+                        staffContext, staffDb, new DefaultHttpContext(), staff.Id)).StatusCode);
+                Assert.Equal(403, Assert.IsAssignableFrom<IStatusCodeHttpResult>(
+                    await TenantWorkspace.GetMemberEffectivePermissions(
+                        new TenantContext(), setup, new DefaultHttpContext(), staff.Id)).StatusCode);
+
+                // Deactivated accounts have no live Tenant workspace access,
+                // even if their old role and Group links remain stored.
+                var user = await setup.Users.SingleAsync(x => x.Id == staff.Id);
+                user.IsActive = false;
+                await setup.SaveChangesAsync();
+                var inactive = await TenantMemberEffectivePermissionReader.ReadAsync(
+                    owner, db, staff.Id);
+                Assert.NotNull(inactive);
+                Assert.False(inactive.UserActive);
+                Assert.All(inactive.Items, x =>
+                {
+                    Assert.False(x.Allowed);
+                    Assert.Equal("account_inactive", x.Decision);
+                });
+            }
+        });
+    }
+
+    [Fact]
     public async Task Group_security_review_unifies_ledgers_and_traces_unattributed_legacy_links()
     {
         await WithDisposableDatabaseAsync(async (setup, options) =>

@@ -205,6 +205,21 @@ def run():
     owner_users = [m for m in members["items"] if m["userName"] == "e2e-tenant"]
     assert len(owner_users) == 1
     owner_id = str(uuid.UUID(owner_users[0]["id"]))
+    # FR-13C-2E: Owner-only provenance of the live Tenant decision.
+    effective_path = f"{TENANT_PATH}/members/{staff_id}/effective-permissions"
+    check("GET", effective_path, 401)
+    check("GET", effective_path, 403, token=admin)
+    check("GET", effective_path, 403, token=staff)
+    check("GET", f"{TENANT_PATH}/members/{FOREIGN_ID}/effective-permissions",
+          404, token=owner)
+    empty_provenance = check("GET", effective_path, 200, token=owner)
+    assert empty_provenance["userId"] == staff_id
+    assert all(set(x.keys()) == {
+        "code", "name", "kind", "route", "registered", "allowed",
+        "decision", "sources", "moreSources",
+    } for x in empty_provenance["items"])
+    assert all(not x["allowed"] for x in empty_provenance["items"])
+
     # FR-13C-2B: one-member Group changes (not a whole-page replacement).
     check("GET", f"{TENANT_PATH}/groups/{group_id}/members", 401)
     check("GET", f"{TENANT_PATH}/groups/{group_id}/members", 403, token=staff)
@@ -294,6 +309,11 @@ def run():
                    data={"assigned": True, "expectedVersion": current_members["version"]})
     check("GET", TENANT_PATH + "/members", 200, token=staff)
     assert ui_allowed(staff, MEMBERS_READ)
+    inherited = check("GET", effective_path, 200, token=owner)
+    member_key = next(x for x in inherited["items"] if x["code"] == MEMBERS_READ)
+    assert member_key["allowed"] and member_key["decision"] == "group_role"
+    assert any(src["kind"] == "group_role" and src["groupId"] == group_id
+               and src["roleId"] == role_id for src in member_key["sources"])
     check("PUT", pair_url, 409, token=owner,
           data={"assigned": False, "expectedVersion": first_role["version"]})
     current_roles = check("GET", roles_path, 200, token=owner)
@@ -304,6 +324,9 @@ def run():
     check("GET", TENANT_PATH + "/members", 403, token=staff)
     assert not ui_allowed(staff, MEMBERS_READ)
     assert revoked_role["version"] != relink["version"]
+    revoked_report = check("GET", effective_path, 200, token=owner)
+    revoked_key = next(x for x in revoked_report["items"] if x["code"] == MEMBERS_READ)
+    assert not revoked_key["allowed"] and revoked_key["decision"] == "not_granted"
 
     # FR-13C-2D: Owner-only, read-only unified Group timeline and
     # historical (non-repairing) relationship health counters.
