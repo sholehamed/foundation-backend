@@ -1,3 +1,5 @@
+> **SUPERSEDED — 2026-11-10.** The user confirmed that only **System Admin defines menus, routes and permission definitions**. This earlier Tenant-owned menu design is retired and **must not be deployed**. See [the authoritative decision](FR-14C-CENTRAL-MENU-AUTHORITY.md). Historical content below is retained solely to explain previous commits.
+
 # FR-14C-1 — Live Tenant navigation and page ownership boundary
 
 2026-11-09. This slice aligns the existing global Menu catalog navigation with the **live, Tenant-scoped PAGE permission evaluator**. It does **not** implement branch membership, per-Tenant menu ownership rows, or new grants.
