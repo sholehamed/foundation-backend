@@ -1648,6 +1648,37 @@ public sealed class TenantRoleGrantSqlServerTests
     }
 
     [Fact]
+    public async Task Removing_email_after_invite_revokes_redemption_authority_without_500_or_activation()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(
+                actor, db, hasher, new TenantPendingMemberWriter.CreateRequest(
+                    "email.removed", "before.removal@example.test", "Mail", "Removed"));
+            var sender = new FakeInvitationSender();
+            await TenantMemberInvitationWriter.InviteAsync(actor, db, sender, member.Id);
+            var altered = await setup.Users.SingleAsync(x => x.Id == member.Id);
+            altered.Email = null;
+            altered.NormalizedEmail = null;
+            await setup.SaveChangesAsync();
+
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            await Assert.ThrowsAsync<TenantInvitationValidationException>(() =>
+                TenantMemberInvitationWriter.ActivateAsync(anonymous, hasher,
+                    new TenantMemberInvitationWriter.ActivateRequest(
+                        "tenant-role-grants", sender.Token, "P@ssword-For-St4ff!")));
+            Assert.False((await anonymous.Users.AsNoTracking()
+                .SingleAsync(u => u.Id == member.Id)).IsActive);
+            Assert.Equal(0, await anonymous.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberInvitations] WHERE [UsedAtUtc] IS NOT NULL")
+                .SingleAsync());
+        });
+    }
+
+    [Fact]
     public async Task Actual_emails_stay_unique_per_Tenant_while_multiple_missing_emails_are_allowed()
     {
         await WithDisposableDatabaseAsync(async (setup, options) =>
