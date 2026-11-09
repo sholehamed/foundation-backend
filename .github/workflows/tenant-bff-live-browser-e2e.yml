@@ -39,6 +39,8 @@ jobs:
       Identity__PlatformPermissions__BootstrapDevelopmentGrants: 'true'
       Identity__TenantPermissions__EnableCatalogApply: 'true'
       Tenant__WorkspaceBaseDomain: 'shinera.localhost'
+      # Opt in exclusively inside the disposable GitHub Actions runner.
+      Identity__TenantFirstLogin__Enabled: 'true'
       Identity__Bff__Enabled: 'true'
       Identity__Bff__TenantWorkspaceCookieBridge__Enabled: 'true'
       Identity__Bff__ClientId: 'foundation-browser-bff'
@@ -69,6 +71,18 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Enable first-login UI only in disposable live-E2E checkout
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('frontend/src/environments/environment.bff-pilot.e2e.ts')
+          value = path.read_text()
+          expected = 'tenantFirstLoginEnabled: false,'
+          if value.count(expected) != 1:
+              raise SystemExit('First-login flag location changed; refusing unreviewed E2E config')
+          path.write_text(value.replace(expected, 'tenantFirstLoginEnabled: true,'))
+          PY
       - name: Build Angular browser application
         run: |
           npm ci --prefix frontend --no-audit --no-fund
@@ -80,7 +94,7 @@ jobs:
           dotnet restore backend/tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj
           dotnet build backend/src/Web/Web.csproj --no-restore -c Release
           dotnet build backend/tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj --no-restore -c Release
-      - name: Live HTTPS OIDC Chromium end-to-end
+      - name: Live HTTPS OIDC + first-login Chromium end-to-end
         shell: bash
         run: bash backend/tests/browser/run_live_https_bff.sh
       - name: Upload failed browser test traces
