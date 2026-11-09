@@ -131,7 +131,7 @@ def run():
     preview = check("GET", REGISTRY_PATH + "/preview", 200, token=admin)
     assert preview["canApply"], "The disposable catalog unexpectedly conflicts"
     assert preview["hasPending"], "The fixture must exercise real SQL registration"
-    assert len([x for x in preview["changes"] if x["entity"] == "Permission"]) == 15
+    assert len([x for x in preview["changes"] if x["entity"] == "Permission"]) == 16
     check("POST", REGISTRY_PATH + "/apply", 403, token=owner,
           data={"fingerprint": preview["fingerprint"]})
     check("POST", REGISTRY_PATH + "/apply", 409, token=admin,
@@ -205,6 +205,44 @@ def run():
     owner_users = [m for m in members["items"] if m["userName"] == "e2e-tenant"]
     assert len(owner_users) == 1
     owner_id = str(uuid.UUID(owner_users[0]["id"]))
+    # FR-13C-2B: one-member Group changes (not a whole-page replacement).
+    check("GET", f"{TENANT_PATH}/groups/{group_id}/members", 401)
+    check("GET", f"{TENANT_PATH}/groups/{group_id}/members", 403, token=staff)
+    check("GET", f"{TENANT_PATH}/groups/{group_id}/members", 403, token=admin)
+    matrix = check("GET", f"{TENANT_PATH}/groups/{group_id}/members", 200, token=owner)
+    assert matrix["groupId"] == group_id and matrix["canEdit"]
+    assert matrix["version"] and matrix["page"] == 1
+    assert any(x["id"] == staff_id and not x["assigned"] for x in matrix["items"])
+    assert all(x["id"] != owner_id for x in matrix["items"])
+    member_path = f"{TENANT_PATH}/groups/{group_id}/members/{staff_id}"
+    check("PUT", member_path, 401, data={"assigned": True,
+          "expectedVersion": matrix["version"]})
+    check("PUT", member_path, 403, token=staff, data={"assigned": True,
+          "expectedVersion": matrix["version"]})
+    check("PUT", member_path, 403, token=admin, data={"assigned": True,
+          "expectedVersion": matrix["version"]})
+    check("PUT", f"{TENANT_PATH}/groups/{group_id}/members/{owner_id}", 403,
+          token=owner, data={"assigned": True, "expectedVersion": matrix["version"]})
+    check("PUT", member_path, 400, token=owner,
+          data={"assigned": True, "expectedVersion": "invalid"})
+    linked = check("PUT", member_path, 200, token=owner,
+                   data={"assigned": True, "expectedVersion": matrix["version"]})
+    assert linked["version"] != matrix["version"]
+    check("PUT", member_path, 409, token=owner,
+          data={"assigned": False, "expectedVersion": matrix["version"]})
+    current = check("GET", f"{TENANT_PATH}/groups/{group_id}/members", 200, token=owner)
+    assert any(x["id"] == staff_id and x["assigned"] for x in current["items"])
+    assert current["version"] == linked["version"]
+    unchanged = check("PUT", member_path, 200, token=owner,
+                      data={"assigned": True, "expectedVersion": linked["version"]})
+    assert unchanged["version"] == linked["version"]
+    unlinked = check("PUT", member_path, 200, token=owner,
+                     data={"assigned": False, "expectedVersion": linked["version"]})
+    assert unlinked["version"] != linked["version"]
+    after = check("GET", f"{TENANT_PATH}/groups/{group_id}/members", 200, token=owner)
+    assert any(x["id"] == staff_id and not x["assigned"] for x in after["items"])
+    assert not ui_allowed(staff, MEMBERS_READ)
+
     protected = member_matrix(owner, owner_id)
     assert not protected["canEdit"], "Owner target is never role assignable"
     check("PUT", f"{TENANT_PATH}/members/{owner_id}/roles", 403, token=owner,

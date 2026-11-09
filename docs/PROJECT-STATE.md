@@ -1,3 +1,9 @@
+## FR-13C-2B — single-member Tenant Group grants (2026-11-09)
+
+- New explicit reviewed `TENANT.GROUPS.ASSIGN-MEMBERS` ACTION and owner-only, tenant-scoped, SQL CAS/audited UserGroup grant and revoke. Group+single-user temporary write intent, 20-row eligible-member reader, no Owner/self/foreign targets, no bulk membership truncation. Existing GroupRole/UserPermission generic writes remain denied.
+- Disposable SQL and signed HTTP regression coverage for stale version, role inheritance/revocation, 403 boundaries, immutable audit and rollback. [Contract](development/FR-13C2B-TENANT-GROUP-MEMBERS.md).
+- Next: separate GroupRole audited assignment, then broader Tenant Admin. **Staging deferred**; no operational settings touched.
+
 ## FR-13C-2A — Tenant Group lifecycle (2026-11-09)
 
 - Added separate Owner-only Tenant Group create/update/activate/deactivate endpoints with live `TENANT.GROUPS.READ` plus three exact ACTIONs, writable home scope and direct deny precedence. SQL SERIALIZABLE transaction + RowVersion CAS and new append-only `TenantGroupChangeAuditEntries` ledger. Existing UserGroup/GroupRole privilege links remain fail-closed and are NEVER created or modified here. Catalog expands 12 -> 15; no automatic Apply or grants.
