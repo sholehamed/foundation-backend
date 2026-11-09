@@ -1478,6 +1478,225 @@ public sealed class TenantWriteIsolationSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task System_initial_password_replays_expiry_grants_and_active_session_are_denied()
+    {
+        await WithTestDatabaseAsync(async (setup, tenant, guarded, trusted) =>
+        {
+            var master = DefaultSeedData.MasterTenant.Id;
+            var masterTenant = new Tenant(master, null,
+                "Master", "system-first-login-master", "localhost");
+            var foreign = new Tenant(null, "Foreign",
+                "system-first-login-foreign", "localhost");
+            var actor = new User(null, "firstlogin-admin", "fl-admin@example.test",
+                "Admin", "One", UserType.System)
+            {
+                NormalizedUserName = "FIRSTLOGIN-ADMIN",
+                NormalizedEmail = "FL-ADMIN@EXAMPLE.TEST",
+                PasswordHash = "fixture-only", SecurityStamp = "fixture-stamp"
+            };
+            var target = new User(null, "pending.system", "fl-target@example.test",
+                "Pending", "System", UserType.System, isActive: false)
+            {
+                NormalizedUserName = "PENDING.SYSTEM",
+                NormalizedEmail = "FL-TARGET@EXAMPLE.TEST",
+                PasswordHash = "unknown-random-hash",
+                SecurityStamp = "original-stamp", ConcurrencyStamp = "original-concurrency"
+            };
+            var tenantTarget = new User(foreign.Id, "pending.system",
+                "fl-tenant@example.test", "Foreign", "Tenant", UserType.Tenant, false)
+            {
+                NormalizedUserName = "PENDING.SYSTEM",
+                NormalizedEmail = "FL-TENANT@EXAMPLE.TEST",
+                PasswordHash = "unknown-tenant-hash", SecurityStamp = "fixture-stamp"
+            };
+            var superAdmin = new Role(master, "superadmin", null);
+            var actorRole = new UserRole(master, actor.Id, superAdmin.Id);
+            setup.AddRange(masterTenant, foreign, actor, target,
+                tenantTarget, superAdmin, actorRole);
+            await setup.SaveChangesAsync();
+            tenant.InitializeSystem(actor.Id, isSuperAdmin: true);
+            var admin = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim(OpenIddictConstants.Claims.Subject, actor.Id.ToString()),
+                new Claim("account_type", "system"),
+                new Claim(OpenIddictConstants.Claims.Role, "superadmin")
+            ], "test"));
+            var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
+            var gateway = new AuthorizedPlatformMasterWrite(guarded, tenant, trusted,
+                NullLogger<AuthorizedPlatformMasterWrite>.Instance);
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemFirstLoginWriter.IssueAsync(
+                    guarded, gateway, hasher, admin, target.Id, enabled: false));
+            await Assert.ThrowsAsync<SystemFirstLoginTargetException>(() =>
+                SystemFirstLoginWriter.IssueAsync(
+                    guarded, gateway, hasher, admin, tenantTarget.Id, enabled: true));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemFirstLoginWriter.IssueAsync(
+                    guarded, gateway, hasher, admin, actor.Id, enabled: true));
+
+            var issued = await SystemFirstLoginWriter.IssueAsync(
+                guarded, gateway, hasher, admin, target.Id, enabled: true);
+            Assert.True(SystemFirstLoginWriter.LooksLikeIssuedPassword(issued.TemporaryPassword));
+            Assert.InRange((issued.ExpiresAtUtc - DateTime.UtcNow).TotalMinutes, 58, 60);
+
+            var stored = await guarded.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == target.Id);
+            Assert.False(stored.IsActive);
+            Assert.Equal("original-stamp", stored.SecurityStamp);
+            Assert.NotEqual(issued.TemporaryPassword, stored.PasswordHash);
+            Assert.Empty(await guarded.UserRoles.IgnoreQueryFilters(["tenant"])
+                .Where(x => x.UserId == target.Id).ToArrayAsync());
+
+            // Invalid guesses are indistinguishable from unknown accounts.
+            var wrong = issued.TemporaryPassword == "AAAAAA-AAAAAA-AAAAAA-AAAAAA"
+                ? "BBBBBB-BBBBBB-BBBBBB-BBBBBB"
+                : "AAAAAA-AAAAAA-AAAAAA-AAAAAA";
+            var invalid = await SystemFirstLoginWriter.ResolveForLoginAsync(
+                guarded, hasher, new("pending.system", wrong));
+            Assert.Equal("continue_login", invalid.Status);
+            var unknown = await SystemFirstLoginWriter.ResolveForLoginAsync(
+                guarded, hasher, new("missing.system", issued.TemporaryPassword));
+            Assert.Equal("continue_login", unknown.Status);
+
+            var start = await SystemFirstLoginWriter.StartAsync(
+                guarded, hasher, new("pending.system", issued.TemporaryPassword));
+            Assert.Matches("^[A-F0-9]{64}$", start.Challenge);
+            Assert.InRange((start.ExpiresAtUtc - DateTime.UtcNow).TotalMinutes, 8, 10);
+            await Assert.ThrowsAsync<SystemFirstLoginValidationException>(() =>
+                SystemFirstLoginWriter.CompleteAsync(
+                    guarded, hasher, new(start.Challenge, issued.TemporaryPassword)));
+            await Assert.ThrowsAsync<SystemFirstLoginValidationException>(() =>
+                SystemFirstLoginWriter.CompleteAsync(
+                    guarded, hasher, new(start.Challenge, "pending.system-password12345")));
+
+            // A new verification revokes the previous challenge.
+            var next = await SystemFirstLoginWriter.StartAsync(
+                guarded, hasher, new("pending.system", issued.TemporaryPassword));
+            Assert.NotEqual(start.Challenge, next.Challenge);
+            await Assert.ThrowsAsync<SystemFirstLoginValidationException>(() =>
+                SystemFirstLoginWriter.CompleteAsync(
+                    guarded, hasher, new(start.Challenge, "LongUniquePass-2067!pass")));
+            await Assert.ThrowsAsync<SystemFirstLoginValidationException>(() =>
+                SystemFirstLoginWriter.CompleteAsync(
+                    guarded, hasher, new("A".PadLeft(64, 'F'),
+                        "LongUniquePass-2067!pass")));
+
+            var changedPassword = "LongUniquePass-2067!pass";
+            await SystemFirstLoginWriter.CompleteAsync(
+                guarded, hasher, new(next.Challenge, changedPassword));
+            var activated = await guarded.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == target.Id);
+            Assert.True(activated.IsActive);
+            Assert.Equal(UserType.System, activated.UserType);
+            Assert.Null(activated.TenantId);
+            Assert.NotEqual("original-stamp", activated.SecurityStamp);
+            Assert.NotEqual("original-concurrency", activated.ConcurrencyStamp);
+            Assert.NotEqual(
+                Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed,
+                hasher.VerifyHashedPassword(activated, activated.PasswordHash, changedPassword));
+            Assert.Equal(
+                Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed,
+                hasher.VerifyHashedPassword(activated, activated.PasswordHash, issued.TemporaryPassword));
+
+            await Assert.ThrowsAsync<SystemFirstLoginValidationException>(() =>
+                SystemFirstLoginWriter.CompleteAsync(
+                    guarded, hasher, new(next.Challenge, "Another-Long-Secure-Password")));
+            await Assert.ThrowsAsync<SystemFirstLoginValidationException>(() =>
+                SystemFirstLoginWriter.StartAsync(
+                    guarded, hasher, new("pending.system", issued.TemporaryPassword)));
+            await Assert.ThrowsAsync<SystemFirstLoginTargetException>(() =>
+                SystemFirstLoginWriter.IssueAsync(
+                    guarded, gateway, hasher, admin, target.Id, enabled: true));
+
+            Assert.Equal(1, await guarded.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[SystemAccountLifecycleAuditEntries] " +
+                "WHERE [TargetUserId]={0} AND [Action]='temp_issued'", target.Id).SingleAsync());
+            Assert.Equal(2, await guarded.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[SystemAccountLifecycleAuditEntries] " +
+                "WHERE [TargetUserId]={0} AND [Action]='temp_verified'", target.Id).SingleAsync());
+            Assert.Equal(1, await guarded.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[SystemAccountLifecycleAuditEntries] " +
+                "WHERE [TargetUserId]={0} AND [Action]='temp_activated'", target.Id).SingleAsync());
+            Assert.False(tenant.IsFilterDisabled);
+            Assert.False(trusted.AllowsPlatformTenant(master));
+        });
+    }
+
+    [Fact]
+    public async Task System_initial_password_activation_rolls_back_if_audit_fails()
+    {
+        await WithTestDatabaseAsync(async (setup, tenant, guarded, trusted) =>
+        {
+            var master = DefaultSeedData.MasterTenant.Id;
+            var actor = new User(null, "audit-issuer", "audit-issuer@example.test",
+                "Admin", "One", UserType.System)
+            {
+                NormalizedUserName = "AUDIT-ISSUER",
+                NormalizedEmail = "AUDIT-ISSUER@EXAMPLE.TEST",
+                PasswordHash = "fixture-only", SecurityStamp = "fixture-stamp"
+            };
+            var pending = new User(null, "audit-target", "audit-target@example.test",
+                "Pending", "User", UserType.System, false)
+            {
+                NormalizedUserName = "AUDIT-TARGET",
+                NormalizedEmail = "AUDIT-TARGET@EXAMPLE.TEST",
+                PasswordHash = "unknown-password", SecurityStamp = "old-stamp"
+            };
+            var role = new Role(master, "superadmin", null);
+            setup.AddRange(new Tenant(master, null, "Master", "audit-master", "localhost"),
+                actor, pending, role, new UserRole(master, actor.Id, role.Id));
+            await setup.SaveChangesAsync();
+
+            tenant.InitializeSystem(actor.Id, isSuperAdmin: true);
+            var principal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim(OpenIddictConstants.Claims.Subject, actor.Id.ToString()),
+                new Claim("account_type", "system"),
+                new Claim(OpenIddictConstants.Claims.Role, "superadmin")
+            ], "test"));
+            var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
+            var gateway = new AuthorizedPlatformMasterWrite(guarded, tenant, trusted,
+                NullLogger<AuthorizedPlatformMasterWrite>.Instance);
+            var issued = await SystemFirstLoginWriter.IssueAsync(
+                guarded, gateway, hasher, principal, pending.Id, enabled: true);
+            var start = await SystemFirstLoginWriter.StartAsync(
+                guarded, hasher, new("audit-target", issued.TemporaryPassword));
+
+            await setup.Database.ExecuteSqlRawAsync("""
+                CREATE TRIGGER [dbo].[TR_SystemAccountAudit_RejectActivation]
+                ON [dbo].[SystemAccountLifecycleAuditEntries]
+                AFTER INSERT AS
+                BEGIN
+                    IF EXISTS(SELECT 1 FROM inserted WHERE [Action]='temp_activated')
+                        THROW 51085, 'Injected activation audit failure', 1;
+                END
+                """);
+            try
+            {
+                await Assert.ThrowsAsync<SqlException>(() =>
+                    SystemFirstLoginWriter.CompleteAsync(
+                        guarded, hasher, new(start.Challenge, "Brand-New-Long-Safe-Password")));
+            }
+            finally
+            {
+                await setup.Database.ExecuteSqlRawAsync(
+                    "DROP TRIGGER IF EXISTS [dbo].[TR_SystemAccountAudit_RejectActivation]");
+                guarded.ChangeTracker.Clear();
+            }
+
+            Assert.False((await guarded.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == pending.Id)).IsActive);
+            Assert.Equal("old-stamp", (await guarded.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == pending.Id)).SecurityStamp);
+
+            // The challenge and temp credential were not consumed on rollback.
+            await SystemFirstLoginWriter.CompleteAsync(
+                guarded, hasher, new(start.Challenge, "Brand-New-Long-Safe-Password"));
+            Assert.True((await guarded.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == pending.Id)).IsActive);
+        });
+    }
+
     private static Task<int> CountAuditEventsAsync(IdentityDbContext db, string kind) =>
         db.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*) AS [Value] FROM [dbo].[PlatformGrantAuditEntries] WHERE [Kind] = @kind",
