@@ -156,11 +156,11 @@ public sealed class CurrentSystemUiAccessTests
         var snapshot = await service.GetSnapshotAsync(Principal(user));
         Assert.NotNull(snapshot);
         Assert.Equal(2, snapshot.SchemaVersion);
-        Assert.Equal(80, snapshot.Entries.Count);
+        Assert.Equal(81, snapshot.Entries.Count);
         Assert.Equal(45, snapshot.Entries.Count(x => x.Type == "PAGE"));
-        Assert.Equal(35, snapshot.Entries.Count(x => x.Type == "ACTION"));
+        Assert.Equal(36, snapshot.Entries.Count(x => x.Type == "ACTION"));
         Assert.All(snapshot.Entries, x => Assert.False(x.Allowed));
-        Assert.Equal(80, snapshot.Entries.Select(x => x.Key)
+        Assert.Equal(81, snapshot.Entries.Select(x => x.Key)
             .Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Contains(snapshot.Entries, x => x.Key == "system.roles.permissions" &&
             x.Route == "/system/roles/:roleId/permissions" && !x.Allowed);
