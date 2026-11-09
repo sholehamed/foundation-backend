@@ -1,3 +1,9 @@
+## FR-13B-3B — unified Tenant Login (2026-11-09)
+
+- [Issue #79](https://github.com/sholehamed/foundation-backend/issues/79): Owner optional atomic inactive member + initial password, and new HTTPS Tenant login decision `/api/public/tenant-login/resolve`. Server produces password-change-only challenge **only** for a valid 4x6 one-time secret; normal credentials fall through unchanged. No authenticated session before reset; new password then fresh normal login.
+- SQL transaction checks both code-owned Tenant Actions and writes `create_inactive` + `temp_issued` audit atomically. Existing 12-key catalog, pending email invitation, BFF flags and prior `UserCredentialAuthenticator` preserved. Feature `Identity:TenantFirstLogin:Enabled` OFF until approved staging. [Complete contract](development/FR-13B3B-UNIFIED-TENANT-LOGIN.md).
+- Legacy Identity-host BFF interactive Login still needs separate integration. No real staging deployment, new SQL migration, Registry Apply/grants or distributed throttling has been performed in this development PR. Email-less members remain issue #78.
+
 ## FR-13B-3 — offline first-login credential (2026-11-09)
 
 - [Issue #76](https://github.com/sholehamed/foundation-backend/issues/76): an optional, independent Owner-only temporary password issuance ACTION, 60-minute per-user credential stored hashed in SQL, 5 wrong-attempt cap, 10-minute single-use restricted first-login challenge, transactional permanent password/IsActive change + security-stamp rotation + append-only audit. No normal JWT/cookie/session is issued until a new ordinary login.
