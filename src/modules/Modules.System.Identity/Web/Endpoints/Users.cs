@@ -1,6 +1,4 @@
-﻿using Modules.System.Identity.Application.Features.Tenants.Commands;
-using Modules.System.Identity.Application.Features.Users.Commands;
-using Modules.System.Identity.Application.Features.Users.Queries;
+﻿using Modules.System.Identity.Application.Features.Users.Queries;
 using Modules.System.Identity.Web.Util;
 
 
@@ -97,10 +95,11 @@ public class Users : EndpointGroupBase
         catch (UnauthorizedAccessException) { return TypedResults.Forbid(); }
     }
 
-    public async Task UserDelete(IDispatcher sender, Guid id)
-    {
-        await sender.Send(new UserDeleteCommand(id));
-    }
+    // FR-14B-1: the legacy CQRS command accepts arbitrary TenantId and/or
+    // password changes. Never dispatch it through a System endpoint.
+    // Dedicated scoped, audited account lifecycle APIs are required before
+    // ordinary create/edit/delete/state/lock operations can be re-enabled.
+    public ForbidHttpResult UserDelete(Guid id) => TypedResults.Forbid();
     public async Task<Results<Ok<bool>, BadRequest>> IsUsernameTaken(IDispatcher sender, [AsParameters] IsUsernameTakenQuery parameter, CancellationToken cancellationToken = default)
     {
         var res = await sender.Query(parameter, cancellationToken);
@@ -117,25 +116,26 @@ public class Users : EndpointGroupBase
         var res = await sender.Query(new UserGetByIdQuery(id), cancellationToken);
         return TypedResults.Ok(res);
     }
-    public async Task<Results<Created<Guid>, BadRequest>> UserCreate(IDispatcher sender, UserCreateCommand parameter, CancellationToken cancellationToken = default)
-    {
-        var res = await sender.Send(parameter, cancellationToken);
-        return TypedResults.Created(res.ToString(), res);
-    }
-    public async Task<NoContent> UserUpdate([FromServices] IDispatcher sender, [FromRoute] Guid id, UserUpdateCommand parameter, CancellationToken cancellationToken = default)
-    {
-        parameter.Id = id;
-        await sender.Send(parameter, cancellationToken);
-        return TypedResults.NoContent();
-    }
-    public async Task UserChangeState(IDispatcher sender, Guid id)
-    {
-        await sender.Send(new UserChangeStateCommand(id));
-    }
-    public async Task UserChangeLockState(IDispatcher sender, Guid id)
-    {
-        await sender.Send(new UserChangeLockStateCommand(id));
-    }
+    // FR-14B-1: the legacy CQRS command accepts arbitrary TenantId and/or
+    // password changes. Never dispatch it through a System endpoint.
+    // Dedicated scoped, audited account lifecycle APIs are required before
+    // ordinary create/edit/delete/state/lock operations can be re-enabled.
+    public ForbidHttpResult UserCreate() => TypedResults.Forbid();
+    // FR-14B-1: the legacy CQRS command accepts arbitrary TenantId and/or
+    // password changes. Never dispatch it through a System endpoint.
+    // Dedicated scoped, audited account lifecycle APIs are required before
+    // ordinary create/edit/delete/state/lock operations can be re-enabled.
+    public ForbidHttpResult UserUpdate(Guid id) => TypedResults.Forbid();
+    // FR-14B-1: the legacy CQRS command accepts arbitrary TenantId and/or
+    // password changes. Never dispatch it through a System endpoint.
+    // Dedicated scoped, audited account lifecycle APIs are required before
+    // ordinary create/edit/delete/state/lock operations can be re-enabled.
+    public ForbidHttpResult UserChangeState(Guid id) => TypedResults.Forbid();
+    // FR-14B-1: the legacy CQRS command accepts arbitrary TenantId and/or
+    // password changes. Never dispatch it through a System endpoint.
+    // Dedicated scoped, audited account lifecycle APIs are required before
+    // ordinary create/edit/delete/state/lock operations can be re-enabled.
+    public ForbidHttpResult UserChangeLockState(Guid id) => TypedResults.Forbid();
 
 
 }
