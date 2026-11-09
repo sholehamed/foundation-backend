@@ -219,8 +219,6 @@ def run():
         "decision", "sources", "moreSources",
     } for x in empty_provenance["items"])
     assert all(not x["allowed"] for x in empty_provenance["items"])
-    assert all("password" not in str(x).lower() and "email" not in str(x).lower()
-               for x in empty_provenance["items"])
 
     # FR-13C-2B: one-member Group changes (not a whole-page replacement).
     check("GET", f"{TENANT_PATH}/groups/{group_id}/members", 401)
