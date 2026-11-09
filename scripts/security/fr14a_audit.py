@@ -33,7 +33,7 @@ SPECIAL_SYSTEM_HANDLERS = {
     "Menus": {"GetMyNavigation"},
 }
 PROTOCOL_ENDPOINT_GROUPS = {"Auth", "Connect", "PublicSignup"}
-TENANT_ENDPOINT_GROUPS = {"TenantWorkspace", "TenantNavigationManagement"}
+TENANT_ENDPOINT_GROUPS = {"TenantWorkspace"}
 # TenantWorkspace is intentionally NOT ignored: it is a mandatory scanned
 # surface even though it is not part of the System Feature Registry.
 SYSTEM_IGNORED = {"TenantWorkspacePermissionCatalog",
