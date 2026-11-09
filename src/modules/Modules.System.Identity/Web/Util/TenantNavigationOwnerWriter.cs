@@ -377,7 +377,7 @@ public static class TenantNavigationOwnerWriter
             if (!await db.Database.SqlQueryRaw<int>(
                     "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantNavigationCategories] " +
                     "WHERE [TenantId]={0} AND [Id]={1} AND [IsActive]=1",
-                    tenant, existing.CategoryId).AnyAsync(x => x > 0, ct))
+                    tenant, existing.CategoryId).SingleAsync(ct) == 0)
                 throw new UnauthorizedAccessException();
             ValidateParent(items, existing.CategoryId, id, input.ParentId);
 
