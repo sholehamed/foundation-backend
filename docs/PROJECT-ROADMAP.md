@@ -1,3 +1,8 @@
+## FR-14B-2A — Safe pending System identity creation (2026-11-09)
+
+- Dedicated opt-in/HTTPS Master-scoped System pending-account creation with enforced inactive state, non-disclosed random password hash, zero auto-grants, strict 4-field request and atomic append-only audit; SQL filtered unique System email migration added but **not deployed**. Other unsafe lifecycle operations remain 403. [Contract and operations gate](development/FR-14B2A-PENDING-SYSTEM-ACCOUNTS.md).
+- **Next:** FR-14B-2B expiring one-time System credential and challenge-based forced password change without unrestricted login; FR-14B-3 audited, CAS-safe profile, state and lock CRUD. No Staging, permission Apply or flag activation.
+
 ## FR-14B-1 — containment before System account CRUD (2026-11-09)
 
 - Fail-closed the ten historically unsafe System Users/Admins lifecycle write mappings (no legacy CQRS dispatch), preserving separately audited grant APIs. Prevent re-opening via C# endpoint tests and mutation-tested Python CI inventory. This is **only the containment slice**, not operational CRUD.
