@@ -18,16 +18,15 @@ public static class TenantNavigationManagement
 {
     public static void Map(WebApplication app, string backendPrefix)
     {
-        var root = "/" + backendPrefix.Trim('/') + "/tenant/workspace/navigation/catalog";
-        app.MapGet(root, Read).RequireAuthorization()
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/navigation/catalog", Read).RequireAuthorization()
             .WithTags("Tenant Navigation");
-        app.MapPost(root + "/categories", CreateCategory).RequireAuthorization()
+        app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/navigation/catalog/categories", CreateCategory).RequireAuthorization()
             .WithTags("Tenant Navigation");
-        app.MapPut(root + "/categories/{id:guid}", UpdateCategory).RequireAuthorization()
+        app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/navigation/catalog/categories/{{id:guid}}", UpdateCategory).RequireAuthorization()
             .WithTags("Tenant Navigation");
-        app.MapPost(root + "/items", CreateItem).RequireAuthorization()
+        app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/navigation/catalog/items", CreateItem).RequireAuthorization()
             .WithTags("Tenant Navigation");
-        app.MapPut(root + "/items/{id:guid}", UpdateItem).RequireAuthorization()
+        app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/navigation/catalog/items/{{id:guid}}", UpdateItem).RequireAuthorization()
             .WithTags("Tenant Navigation");
     }
 
