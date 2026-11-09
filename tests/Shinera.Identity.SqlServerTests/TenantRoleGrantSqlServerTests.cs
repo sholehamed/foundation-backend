@@ -1,4 +1,17 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
+using Modules.System.Identity.Application.Services;
+using Modules.System.Identity.Application.Abstractions;
+using Modules.System.Identity.Infrastructure;
+using System.Security.Claims;
+using System.Text.Json;
+
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -1344,6 +1357,164 @@ public sealed class TenantRoleGrantSqlServerTests
             Assert.Equal("continue_login", after.Status);
             Assert.Null(after.Challenge);
         });
+    }
+
+
+    [Fact]
+    public async Task Identity_host_interactive_login_forces_change_without_signing_in_then_requires_new_login()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var pending = await TenantPendingMemberWriter.CreateWithInitialPasswordAsync(
+                actor, db, hasher, new TenantPendingMemberWriter.CreateRequest(
+                    "idp.member", "idp.member@example.test", "Idp", "Member"));
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            var config = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Identity:TenantFirstLogin:Enabled"] = "true",
+                    ["Tenant:WorkspaceBaseDomain"] = "shinera.localhost",
+                    ["Identity:Bff:Authority"] = "https://identity.shinera.localhost",
+                    ["Identity:E2E:Enabled"] = "true",
+                    ["Identity:E2E:CaptchaCode"] = "ABCDE",
+                    ["Identity:AllowInsecureHttpForE2E"] = "true",
+                }).Build();
+            var captcha = new CaptchaService(
+                DataProtectionProvider.Create("FoundationFirstLoginHttpTest"),
+                config, new FirstLoginTestEnvironment());
+            var captchaId = captcha.CreateChallenge().Token;
+            var session = new RecordingAuthenticationService();
+            using var services = new ServiceCollection()
+                .AddSingleton<IConfiguration>(config)
+                .AddSingleton<IdentityDbContext>(anonymous)
+                .AddSingleton<IPasswordHasher<User>>(hasher)
+                .AddSingleton<IAuthenticationService>(session)
+                .BuildServiceProvider();
+            static DefaultHttpContext NewRequest(IServiceProvider services)
+            {
+                var ctx = new DefaultHttpContext { RequestServices = services };
+                ctx.Request.Scheme = "https";
+                ctx.Request.Host = new HostString("identity.shinera.localhost");
+                return ctx;
+            }
+
+            var endpoint = new Auth();
+            var auth = new UserCredentialAuthenticator(anonymous, hasher,
+                new IdentityPrincipalFactory(anonymous, new DefaultSystemTenantScope()));
+            var input = new InteractiveLoginRequest(
+                "idp.member", pending.TemporaryPassword, captchaId,
+                "ABCDE", "tenant", "tenant-role-grants");
+            var anti = new PassThroughAntiforgery();
+
+            var captchaFailure = await endpoint.InteractiveLogin(
+                input with { CaptchaCode = "WRONG" },
+                NewRequest(services), anti, captcha, auth, default);
+            Assert.Equal(401, ((IStatusCodeHttpResult)captchaFailure).StatusCode);
+            Assert.Equal(0, session.SignedIn);
+            Assert.Equal(0, session.SignedOut);
+            Assert.Equal(0, await anonymous.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberFirstLoginChallenges]")
+                .SingleAsync());
+
+            var wrongContext = await endpoint.InteractiveLogin(
+                input with { LoginContext = "system" },
+                NewRequest(services), anti, captcha, auth, default);
+            Assert.Equal(401, ((IStatusCodeHttpResult)wrongContext).StatusCode);
+            Assert.Equal(0, session.SignedIn);
+            Assert.Equal(0, session.SignedOut);
+
+            var request = NewRequest(services);
+            var restricted = await endpoint.InteractiveLogin(
+                input, request, anti, captcha, auth, default);
+            Assert.Equal(200, ((IStatusCodeHttpResult)restricted).StatusCode);
+            var value = ((IValueHttpResult)restricted).Value!;
+            using var document = JsonDocument.Parse(JsonSerializer.Serialize(value));
+            var root = document.RootElement;
+            Assert.Equal("password_change_required",
+                root.GetProperty("status").GetString());
+            var challenge = root.GetProperty("challenge").GetString()!;
+            Assert.Equal(64, challenge.Length);
+            Assert.Equal(0, session.SignedIn);
+            Assert.Equal(1, session.SignedOut);
+            Assert.False((await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == pending.Member.Id)).IsActive);
+
+            var completed = await endpoint.CompleteInteractiveFirstLogin(
+                new TenantFirstLoginWriter.CompleteRequest(
+                    "tenant-role-grants", challenge,
+                    "New-Strong-Permanent-Password-For-Idp-2026!"),
+                NewRequest(services), anti, default);
+            Assert.Equal(200, ((IStatusCodeHttpResult)completed).StatusCode);
+            using var completeJson = JsonDocument.Parse(JsonSerializer.Serialize(
+                ((IValueHttpResult)completed).Value));
+            Assert.True(completeJson.RootElement.GetProperty("passwordChanged").GetBoolean());
+            Assert.True(completeJson.RootElement.GetProperty("requiresRelogin").GetBoolean());
+            Assert.Equal(0, session.SignedIn);
+            Assert.Equal(2, session.SignedOut);
+
+            anonymous.ChangeTracker.Clear();
+            var active = await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == pending.Member.Id);
+            Assert.True(active.IsActive);
+            Assert.Equal(PasswordVerificationResult.Success,
+                hasher.VerifyHashedPassword(active, active.PasswordHash,
+                    "New-Strong-Permanent-Password-For-Idp-2026!"));
+            var replay = await endpoint.CompleteInteractiveFirstLogin(
+                new TenantFirstLoginWriter.CompleteRequest(
+                    "tenant-role-grants", challenge,
+                    "A-Second-Permanent-Password-For-Idp-2026!"),
+                NewRequest(services), anti, default);
+            Assert.Equal(400, ((IStatusCodeHttpResult)replay).StatusCode);
+            Assert.Equal(0, session.SignedIn);
+        });
+    }
+
+    private sealed class FirstLoginTestEnvironment : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = Environments.Development;
+        public string ApplicationName { get; set; } = "Foundation.Identity.SqlServerTests";
+        public string ContentRootPath { get; set; } = "/tmp";
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    private sealed class PassThroughAntiforgery : IAntiforgery
+    {
+        public AntiforgeryTokenSet GetAndStoreTokens(HttpContext context) =>
+            throw new NotSupportedException();
+        public AntiforgeryTokenSet GetTokens(HttpContext context) =>
+            throw new NotSupportedException();
+        public Task<bool> IsRequestValidAsync(HttpContext context) =>
+            Task.FromResult(true);
+        public Task ValidateRequestAsync(HttpContext context) => Task.CompletedTask;
+        public void SetCookieTokenAndHeader(HttpContext context) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class RecordingAuthenticationService : IAuthenticationService
+    {
+        public int SignedIn { get; private set; }
+        public int SignedOut { get; private set; }
+        public Task<AuthenticateResult> AuthenticateAsync(HttpContext context, string? scheme) =>
+            Task.FromResult(AuthenticateResult.NoResult());
+        public Task ChallengeAsync(HttpContext context, string? scheme,
+            AuthenticationProperties? properties) => Task.CompletedTask;
+        public Task ForbidAsync(HttpContext context, string? scheme,
+            AuthenticationProperties? properties) => Task.CompletedTask;
+        public Task SignInAsync(HttpContext context, string? scheme,
+            ClaimsPrincipal principal, AuthenticationProperties? properties)
+        {
+            SignedIn++;
+            return Task.CompletedTask;
+        }
+        public Task SignOutAsync(HttpContext context, string? scheme,
+            AuthenticationProperties? properties)
+        {
+            SignedOut++;
+            return Task.CompletedTask;
+        }
     }
 
     private static Task<int> MemberAuditCountAsync(IdentityDbContext db) =>
