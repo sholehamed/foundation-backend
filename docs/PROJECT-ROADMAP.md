@@ -1,3 +1,8 @@
+## FR-13C-1 — Tenant member security history (2026-11-09)
+
+- With Staging intentionally deferred, implement a small Owner-only audit viewer for existing lifecycle and member-role ledgers, strict TenantId SQL isolation, bounded paging, and matching guarded Angular route. No catalog mutation or Production rollout. [Detailed contract](development/FR-13C1-TENANT-MEMBER-AUDIT.md).
+- Next independent feature slice: Tenant Groups management (group CRUD, role/membership assignment, explicit reviewed ACTION permissions and audit). Broader System Admin writes and multi-node BFF operational certification remain separate.
+
 ## FR-13B-3B — unify initial password into normal Tenant Login (2026-11-09)
 
 - Implement and test [#79](https://github.com/sholehamed/foundation-backend/issues/79): in-place forced change UX triggered by server verified temp credential; new atomic Owner create + credential issuance (two existing live Actions), SQL rollback, strict login fallback. [Contract](development/FR-13B3B-UNIFIED-TENANT-LOGIN.md).

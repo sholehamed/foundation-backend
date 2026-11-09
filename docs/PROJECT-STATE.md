@@ -1,3 +1,8 @@
+## FR-13C-1 — read-only Tenant member security audit (2026-11-09)
+
+- Added an Owner-only, authenticated, Tenant-scoped read of existing append-only lifecycle and direct member-role ledgers. New `GET /api/tenant/workspace/members/audit` uses live `TENANT.MEMBERS.READ` + current local Owner role, explicit SQL TenantId joins, bounded 20-row paging and optional member filtering. No credential fields or SQL mutation; System/non-Owner/mismatched-Tenant access denied.
+- Companion Angular Owner links, guarded route and Persian activity history; no new static menu item, permission catalog, SQL migration, deployment configuration or Staging. [Contract and tests](development/FR-13C1-TENANT-MEMBER-AUDIT.md). Next: group management CRUD + membership.
+
 ## FR-13C — real disposable HTTPS/Chromium first-login E2E (2026-11-09)
 
 - Extended existing trusted-main-only FR-12G-C Action; real local HTTPS Identity + Tenant, SQL Server, Angular form, real OpenIddict Code+PKCE and BFF session. New browser scenario covers Owner atomic create of email-less inactive staff, one-time credential, forced password change inside ordinary Identity login, no pre-change session, CSRF rejection, consumed-secret replay denial, fresh login and real role grant/revoke effects (401 stale ticket, 403 fresh ticket, UI access decision).
