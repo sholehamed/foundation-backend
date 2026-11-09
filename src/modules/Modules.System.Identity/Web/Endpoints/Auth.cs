@@ -177,7 +177,7 @@ public class Auth : EndpointGroupBase
                 !string.IsNullOrWhiteSpace(input.Tenant))
             {
                 var db = httpContext.RequestServices.GetRequiredService<
-                    Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext>();
+                    global::Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext>();
                 var passwordHasher = httpContext.RequestServices.GetRequiredService<IPasswordHasher<User>>();
                 var resolved = await TenantFirstLoginWriter.ResolveForLoginAsync(
                     db, passwordHasher,
@@ -280,7 +280,7 @@ public class Auth : EndpointGroupBase
         try
         {
             var db = httpContext.RequestServices.GetRequiredService<
-                Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext>();
+                global::Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext>();
             var passwordHasher = httpContext.RequestServices.GetRequiredService<IPasswordHasher<User>>();
             await TenantFirstLoginWriter.CompleteAsync(
                 db, passwordHasher, input, cancellationToken);
