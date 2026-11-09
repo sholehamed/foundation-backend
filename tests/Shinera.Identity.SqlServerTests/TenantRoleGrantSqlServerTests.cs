@@ -1221,6 +1221,74 @@ public sealed class TenantRoleGrantSqlServerTests
     }
 
     [Fact]
+    public async Task One_step_Staff_creation_is_inactive_and_initial_password_requires_forced_change()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var output = await TenantPendingMemberWriter.CreateWithInitialPasswordAsync(
+                actor, db, hasher, new TenantPendingMemberWriter.CreateRequest(
+                    "one.step", "one.step@example.test", "One", "Step"));
+            Assert.False(output.Member.IsActive);
+            Assert.Equal(27, output.TemporaryPassword.Length);
+            Assert.True(output.ExpiresAtUtc > DateTime.UtcNow);
+            var user = await db.Users.AsNoTracking().SingleAsync(x => x.Id == output.Member.Id);
+            Assert.False(user.IsActive);
+            Assert.Equal(PasswordVerificationResult.Failed,
+                hasher.VerifyHashedPassword(user, user.PasswordHash, output.TemporaryPassword));
+            Assert.False(await db.UserRoles.AsNoTracking().AnyAsync(x => x.UserId == user.Id));
+            Assert.Equal(1, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberTemporaryCredentials] WHERE [TargetUserId]={0}",
+                user.Id).SingleAsync());
+            var audits = await db.Database.SqlQueryRaw<string>(
+                "SELECT [Action] AS [Value] FROM [dbo].[TenantMemberLifecycleAuditEntries] WHERE [TargetUserId]={0}",
+                user.Id).ToArrayAsync();
+            Assert.Contains("create_inactive", audits);
+            Assert.Contains("temp_issued", audits);
+
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            var resolved = await TenantFirstLoginWriter.ResolveForLoginAsync(
+                anonymous, hasher, new TenantFirstLoginWriter.StartRequest(
+                    "tenant-role-grants", "one.step", output.TemporaryPassword));
+            Assert.Equal("password_change_required", resolved.Status);
+            Assert.NotNull(resolved.Challenge);
+            await TenantFirstLoginWriter.CompleteAsync(anonymous, hasher,
+                new TenantFirstLoginWriter.CompleteRequest(
+                    "tenant-role-grants", resolved.Challenge,
+                    "Fresh-Long-Password-For-Employee-2026!"));
+            anonymous.ChangeTracker.Clear();
+            Assert.True((await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == user.Id)).IsActive);
+        });
+    }
+
+    [Fact]
+    public async Task One_step_Staff_creation_rolls_back_both_user_and_password_when_audit_fails()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            await setup.Database.ExecuteSqlRawAsync(
+                "DROP TABLE [dbo].[TenantMemberLifecycleAuditEntries]");
+            await Assert.ThrowsAsync<SqlException>(() =>
+                TenantPendingMemberWriter.CreateWithInitialPasswordAsync(
+                    actor, db, new PasswordHasher<User>(),
+                    new TenantPendingMemberWriter.CreateRequest(
+                        "atomic.step", "atomic.step@example.test", "Atomic", "Step")));
+            db.ChangeTracker.Clear();
+            Assert.False(await db.Users.AsNoTracking().AnyAsync(x =>
+                x.NormalizedUserName == "ATOMIC.STEP" &&
+                x.TenantId == actor.ActiveTenantId));
+            Assert.Equal(0, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberTemporaryCredentials]")
+                .SingleAsync());
+        });
+    }
+
+    [Fact]
     public async Task Unified_Tenant_login_decision_preserves_normal_auth_and_limits_temp_password_to_change_challenge()
     {
         await WithDisposableDatabaseAsync(async (setup, options) =>
