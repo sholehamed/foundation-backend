@@ -1,3 +1,10 @@
+## FR-14C-2A — isolated Tenant-owned menu catalog (2026-11-09)
+
+- Created additive `TenantNavigationCategories` / `TenantNavigationItems` schema with composite Tenant/Category/Parent FKs, a per-Tenant unique Route index, RowVersion, and guarded non-destructive rollback. Global System Menu/MenuCategory unchanged; **no legacy migration/backfill**.
+- Existing Tenant navigation endpoints can explicitly select the parameterized owned-only SQL projection via **default-OFF** `Identity:TenantNavigation:OwnedCatalogEnabled`. PAGE permission decisions remain live; empty/missing catalog never falls back to global menus. No Tenant menu writes, grants, branch authorization or deployment are enabled.
+- Added pure security and disposable SQL FK/isolation/deny/revocation tests and wired the new SQL test suite into required PR CI. [Contract and remaining gates](development/FR-14C2A-TENANT-OWNED-NAVIGATION.md).
+- Next FR-14C-2B: audited CAS + delegated Editor/Owner menu authoring and explicit legacy import preview. FR-14C-3: actual BranchMembership and branch-scoped roles. Staging stays deferred.
+
 ## FR-14C-1 — dynamic Tenant navigation aligned to live PAGE guards (2026-11-09)
 
 - Authenticated `/tenant/workspace/navigation/me` and existing Tenant `/System/Menus/me` now return only code-owned safe Tenant paths. Members, Roles and Groups require the same **live Tenant PAGE evaluator** used at their API/Angular guards, even when the global `Menu.PermissionId` is null. Wrong RoleScope, foreign Tenant/subject, explicit Deny, revoked Group/Role and unknown paths fail closed; invalid parent folders disappear.

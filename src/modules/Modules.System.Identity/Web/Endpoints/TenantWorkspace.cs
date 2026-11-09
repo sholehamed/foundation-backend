@@ -286,11 +286,13 @@ public static class TenantWorkspace
     /// </summary>
     public static async Task<IResult> GetTenantNavigation(
         ITenantContext current, IdentityDbContext db, HttpContext http,
-        CancellationToken ct = default)
+        IConfiguration configuration, CancellationToken ct = default)
     {
         http.Response.Headers.CacheControl = "no-store";
         var navigation = await TenantWorkspaceNavigationService.GetAsync(
-            current, db, http.User, ct);
+            current, db, http.User, ct,
+            ownedCatalogEnabled: configuration.GetValue<bool>(
+                "Identity:TenantNavigation:OwnedCatalogEnabled"));
         return navigation is null ? DeniedAfterAuthentication() : Results.Ok(navigation);
     }
 

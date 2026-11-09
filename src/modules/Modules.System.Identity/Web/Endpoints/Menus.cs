@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Modules.System.Identity.Application.Features.Menus.Commands;
 using Modules.System.Identity.Application.Features.Menus.Queries;
 using Modules.System.Identity.Application.Abstractions;
@@ -30,6 +31,7 @@ public class Menus : EndpointGroupBase
         HttpContext http,
         global::Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext db,
         ITenantContext current,
+        IConfiguration configuration,
         CancellationToken cancellationToken)
     {
         http.Response.Headers.CacheControl = "no-store";
@@ -38,7 +40,9 @@ public class Menus : EndpointGroupBase
         // simply because the Menu.PermissionId is null/stale.
         var result = http.User.FindFirst("account_type")?.Value == "tenant"
             ? await TenantWorkspaceNavigationService.GetAsync(
-                current, db, http.User, cancellationToken)
+                current, db, http.User, cancellationToken,
+                ownedCatalogEnabled: configuration.GetValue<bool>(
+                    "Identity:TenantNavigation:OwnedCatalogEnabled"))
             : await new CurrentUserNavigationService(db)
                 .GetAsync(http.User, cancellationToken);
         return result is null ? Results.Forbid() : Results.Ok(result);
