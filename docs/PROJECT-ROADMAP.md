@@ -1,3 +1,9 @@
+## FR-14C architecture correction — System-only menu ownership (2026-11-10)
+
+- **Confirmed:** System Admin alone defines Menu, Page, Route, Resource, Action, Endpoint and permission catalog; Tenant Owner assigns only permitted, centrally registered capabilities to local roles and users. There is no Tenant menu authoring. The FR-14C-2A/2B owned menu implementation was superseded and removed from source; previously merged PRs remain historical records.
+- FR-14C-1 read-only central Menu projection with live Tenant PAGE filtering remains. The Tenant-owned menu reader/writer, API, two pending migrations and Owner NAVIGATION.READ/MANAGE catalog definitions were retired. Dynamic Angular menu pilot remains OFF.
+- [Canonical architecture and database preflight](development/FR-14C-CENTRAL-MENU-AUTHORITY.md): verify whether any database already applied retired migration IDs before deploying; never auto-drop or delete audit data. Staging/Production unchanged. Next: System Registry completeness, Tenant grant boundaries and branch-scoped RBAC.
+
 ## FR-14C-2B — Owner-only Tenant navigation editor backend (2026-11-09)
 
 - Safe owner-scoped category/item configuration with versioned reorder/enable/disable, SQL immutable audit and new code-owned READ/MANAGE catalog permissions. Backend default OFF. Frontend companion must be validated and separately flagged.
