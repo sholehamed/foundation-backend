@@ -48,3 +48,5 @@
 - [FR-13B-2 — Secure one-time Tenant member invitation and activation](development/FR-13B2-INVITATION-ACTIVATION.md)
 
 - [FR-13B-3 — One-time temporary password and forced first login change](development/FR-13B3-TEMP-PASSWORD-FIRST-LOGIN.md)
+
+- [FR-13B-3B — unified Tenant Login, first-password forced change](development/FR-13B3B-UNIFIED-TENANT-LOGIN.md)
