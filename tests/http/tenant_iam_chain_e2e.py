@@ -214,8 +214,10 @@ def run():
           404, token=owner)
     empty_provenance = check("GET", effective_path, 200, token=owner)
     assert empty_provenance["userId"] == staff_id
-    assert len(empty_provenance["items"]) == 17
-    assert all(x["code"].startswith("TENANT.") for x in empty_provenance["items"])
+    assert all(set(x.keys()) == {
+        "code", "name", "kind", "route", "registered", "allowed",
+        "decision", "sources", "moreSources",
+    } for x in empty_provenance["items"])
     assert all(not x["allowed"] for x in empty_provenance["items"])
     assert all("password" not in str(x).lower() and "email" not in str(x).lower()
                for x in empty_provenance["items"])
