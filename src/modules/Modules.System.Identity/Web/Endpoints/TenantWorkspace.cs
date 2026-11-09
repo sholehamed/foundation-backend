@@ -344,7 +344,7 @@ public static class TenantWorkspace
 
     public sealed record DirectoryPage<T>(IReadOnlyList<T> Items, int Page, bool HasNext);
     public sealed record WorkspaceMemberDto(
-        Guid Id, string UserName, string Email, string? FirstName, string? LastName, bool IsActive);
+        Guid Id, string UserName, string? Email, string? FirstName, string? LastName, bool IsActive);
     public sealed record WorkspaceRoleDto(
         Guid Id, string Name, string? Description, bool IsActive, bool IsOwner, string Version);
     public sealed record WorkspaceGroupDto(Guid Id, string Name, string? Description, bool IsActive);
