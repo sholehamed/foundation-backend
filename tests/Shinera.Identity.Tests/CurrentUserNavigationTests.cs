@@ -155,27 +155,12 @@ public sealed class CurrentUserNavigationTests
             top.Items.Select(x => x.Title));
         Assert.Equal("Members", Assert.Single(top.Items[2].Childs).Title);
 
-        // With owned-catalog mode selected on a provider without the reviewed
-        // SQL schema, the old global menu MUST NOT reappear as a fallback.
-        var noSqlOwned = await TenantWorkspaceNavigationService.GetAsync(
-            f.Current, f.Db, principal, ownedCatalogEnabled: true);
-        Assert.Empty(noSqlOwned!);
-
-        // The HTTP endpoint is a scoped read-only view, not permission grant.
+        // The HTTP endpoint is a scoped read-only view, not a permission grant.
         var http = new DefaultHttpContext { User = principal };
         var httpResult = await TenantWorkspace.GetTenantNavigation(
-            f.Current, f.Db, http, new ConfigurationBuilder().Build());
+            f.Current, f.Db, http);
         Assert.IsType<Ok<List<CurrentNavigationCategory>>>(httpResult);
         Assert.Equal("no-store", http.Response.Headers.CacheControl.ToString());
-
-        var ownedConfig = new ConfigurationBuilder().AddInMemoryCollection(
-            new Dictionary<string, string?> {
-                ["Identity:TenantNavigation:OwnedCatalogEnabled"] = "true"
-            }).Build();
-        var featureOnResult = await TenantWorkspace.GetTenantNavigation(
-            f.Current, f.Db, http, ownedConfig);
-        Assert.Empty(Assert.IsType<Ok<List<CurrentNavigationCategory>>>(
-            featureOnResult).Value!);
 
         // A live direct user DENY wins over the role. Parent containers with
         // zero children disappear rather than leaking a hidden section name.
@@ -216,7 +201,7 @@ public sealed class CurrentUserNavigationTests
         Assert.Null(await TenantWorkspaceNavigationService.GetAsync(
             crossTenant, f.Db, principal));
         var deniedHttp = await TenantWorkspace.GetTenantNavigation(
-            crossTenant, f.Db, http, new ConfigurationBuilder().Build());
+            crossTenant, f.Db, http);
         Assert.Equal(StatusCodes.Status403Forbidden,
             Assert.IsType<StatusCodeHttpResult>(deniedHttp).StatusCode);
     }
