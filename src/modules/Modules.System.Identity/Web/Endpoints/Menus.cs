@@ -28,12 +28,19 @@ public class Menus : EndpointGroupBase
     }
     public static async Task<IResult> GetMyNavigation(
         HttpContext http,
-        IIdentityDbContext db,
+        Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext db,
+        ITenantContext current,
         CancellationToken cancellationToken)
     {
         http.Response.Headers.CacheControl = "no-store";
-        var result = await new CurrentUserNavigationService(db)
-            .GetAsync(http.User, cancellationToken);
+        // Tenant navigation must also pass the live Tenant PAGE evaluator.
+        // Never expose arbitrary global menu routes or Tenant PAGE titles
+        // simply because the Menu.PermissionId is null/stale.
+        var result = http.User.FindFirst("account_type")?.Value == "tenant"
+            ? await TenantWorkspaceNavigationService.GetAsync(
+                current, db, http.User, cancellationToken)
+            : await new CurrentUserNavigationService(db)
+                .GetAsync(http.User, cancellationToken);
         return result is null ? Results.Forbid() : Results.Ok(result);
     }
 
