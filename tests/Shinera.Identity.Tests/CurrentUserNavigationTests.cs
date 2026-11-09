@@ -95,6 +95,103 @@ public sealed class CurrentUserNavigationTests
     }
 
     [Fact]
+    public async Task Tenant_workspace_navigation_requires_live_page_permissions_even_when_menu_has_none()
+    {
+        await using var f = await Fixture.CreateAsync();
+        f.Tenant(Master, "master");
+        var tenant = f.Tenant(Guid.NewGuid(), "own");
+        var foreign = f.Tenant(Guid.NewGuid(), "foreign");
+        var user = f.User(tenant.Id, UserType.Tenant);
+        var category = f.Category("Tenant workspace");
+
+        // An incorrectly configured Menu.PermissionId=null must NOT turn a
+        // privileged Tenant PAGE into a public link in the dynamic sidebar.
+        f.Menu(category, "Home", "/dashboard", null, order: 1);
+        f.Menu(category, "Business", "/dashboard/business", null, order: 2);
+        var parent = f.Menu(category, "Administration", null, null, order: 3);
+        f.Menu(category, "Members", "/dashboard/members", null, parent.Id);
+        f.Menu(category, "Roles", "/dashboard/roles", null, parent.Id);
+        f.Menu(category, "Groups", "/dashboard/groups", null, parent.Id);
+        f.Menu(category, "Unknown internal page", "/dashboard/secret", null);
+        f.Menu(category, "Foreign tenant escape", "/system/admins", null);
+
+        var members = f.Permission(
+            Modules.System.Identity.Web.Endpoints.TenantWorkspacePermissionCatalog.MembersRead);
+        var roles = f.Permission(
+            Modules.System.Identity.Web.Endpoints.TenantWorkspacePermissionCatalog.RolesRead);
+        var groupPermission = f.Permission(
+            Modules.System.Identity.Web.Endpoints.TenantWorkspacePermissionCatalog.GroupsRead);
+
+        var local = f.Role(tenant.Id, "operator");
+        local.Scope = RoleScope.Tenant;
+        f.AssignRole(user, local, tenant.Id);
+        f.Grant(local, members, tenant.Id);
+
+        // This is a malformed System-scope Role under the same Tenant.
+        // The ordinary navigation projector must not accept its role grant.
+        var wrongScope = f.Role(tenant.Id, "system-role");
+        wrongScope.Scope = RoleScope.System;
+        f.AssignRole(user, wrongScope, tenant.Id);
+        f.Grant(wrongScope, groupPermission, tenant.Id);
+
+        // A foreign Tenant role cannot confer local navigation authority.
+        var foreignRole = f.Role(foreign.Id, "foreign-role");
+        foreignRole.Scope = RoleScope.Tenant;
+        f.AssignRole(user, foreignRole, foreign.Id);
+        f.Grant(foreignRole, roles, foreign.Id);
+        f.Save();
+
+        f.Current.InitializeTenant(user.Id, tenant.Id, [tenant.Id], [tenant.Id], tenant.Id);
+        var principal = f.Principal(user, "tenant", tenant);
+        var allowed = await TenantWorkspaceNavigationService.GetAsync(
+            f.Current, f.Db, principal);
+        Assert.NotNull(allowed);
+        var top = Assert.Single(allowed);
+        Assert.Equal(new[] { "Home", "Business", "Administration" },
+            top.Items.Select(x => x.Title));
+        Assert.Equal("Members", Assert.Single(top.Items[2].Childs).Title);
+
+        // A live direct user DENY wins over the role. Parent containers with
+        // zero children disappear rather than leaking a hidden section name.
+        f.Direct(user, members, tenant.Id, false);
+        f.Save();
+        var denied = await TenantWorkspaceNavigationService.GetAsync(
+            f.Current, f.Db, principal);
+        Assert.Equal(new[] { "Home", "Business" },
+            Assert.Single(denied!).Items.Select(x => x.Title));
+
+        // Grant by a live local GroupRole is recognized through the SAME
+        // evaluator. Deactivating its Group removes navigation immediately.
+        var groupRole = f.Role(tenant.Id, "group-reader");
+        groupRole.Scope = RoleScope.Tenant;
+        f.Grant(groupRole, roles, tenant.Id);
+        f.GroupGrant(user, groupRole, tenant.Id);
+        f.Save();
+        var withGroup = await TenantWorkspaceNavigationService.GetAsync(
+            f.Current, f.Db, principal);
+        Assert.Equal("Roles",
+            Assert.Single(Assert.Single(withGroup!).Items[2].Childs).Title);
+        var group = await f.Db.Groups.SingleAsync(x => x.TenantId == tenant.Id);
+        group.IsActive = false;
+        f.Save();
+        var afterRevoke = await TenantWorkspaceNavigationService.GetAsync(
+            f.Current, f.Db, principal);
+        Assert.Equal(2, Assert.Single(afterRevoke!).Items.Count);
+
+        // Subject/Tenant and live context must agree; no client-supplied
+        // TenantId or RoleId can select a new navigation scope.
+        Assert.Null(await TenantWorkspaceNavigationService.GetAsync(
+            f.Current, f.Db, f.Principal(user, "tenant", foreign)));
+        Assert.Null(await TenantWorkspaceNavigationService.GetAsync(
+            f.Current, f.Db, f.Principal(user, "system")));
+        var crossTenant = new TenantContext();
+        crossTenant.InitializeTenant(user.Id, foreign.Id,
+            [foreign.Id], [foreign.Id], foreign.Id);
+        Assert.Null(await TenantWorkspaceNavigationService.GetAsync(
+            crossTenant, f.Db, principal));
+    }
+
+    [Fact]
     public async Task Disabled_ancestor_category_and_bad_parent_graph_fail_closed()
     {
         await using var f = await Fixture.CreateAsync();
@@ -145,15 +242,21 @@ public sealed class CurrentUserNavigationTests
     private sealed class Fixture : IAsyncDisposable
     {
         public IdentityDbContext Db { get; }
-        private Fixture(IdentityDbContext db) => Db = db;
+        public TenantContext Current { get; }
+        private Fixture(IdentityDbContext db, TenantContext current)
+        {
+            Db = db;
+            Current = current;
+        }
 
         public static async Task<Fixture> CreateAsync()
         {
             var options = new DbContextOptionsBuilder<IdentityDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options;
-            var db = new IdentityDbContext(options, new TenantContext());
+            var current = new TenantContext();
+            var db = new IdentityDbContext(options, current);
             await db.Database.EnsureCreatedAsync();
-            return new Fixture(db);
+            return new Fixture(db, current);
         }
 
         public Tenant Tenant(Guid id, string slug)
