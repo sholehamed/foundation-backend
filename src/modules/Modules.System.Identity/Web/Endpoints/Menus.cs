@@ -28,7 +28,7 @@ public class Menus : EndpointGroupBase
     }
     public static async Task<IResult> GetMyNavigation(
         HttpContext http,
-        Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext db,
+        global::Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext db,
         ITenantContext current,
         CancellationToken cancellationToken)
     {
