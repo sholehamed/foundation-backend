@@ -98,6 +98,12 @@ public static class TenantWorkspace
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/groups", GetGroups)
             .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/groups", CreateGroup)
+            .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/groups/{{id:guid}}", UpdateGroup)
+            .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPatch($"/{backendPrefix.Trim('/')}/tenant/workspace/groups/{{id:guid}}/state", ChangeGroupState)
+            .RequireAuthorization().WithTags("Tenant Workspace");
     }
 
     private static async Task<IResult> Get(
@@ -279,6 +285,9 @@ public static class TenantWorkspace
             // Writable scope is a separate mandatory bound for write actions.
             if (definition.Key is TenantWorkspacePermissionCatalog.BranchesManage
                 or TenantWorkspacePermissionCatalog.RolesAssignPermissions
+                or TenantWorkspacePermissionCatalog.GroupsCreate
+                or TenantWorkspacePermissionCatalog.GroupsUpdate
+                or TenantWorkspacePermissionCatalog.GroupsChangeState
                 or TenantWorkspacePermissionCatalog.RolesCreate
                 or TenantWorkspacePermissionCatalog.RolesUpdate
                 or TenantWorkspacePermissionCatalog.RolesChangeState
@@ -290,6 +299,9 @@ public static class TenantWorkspace
             // IAM writes also require a live local Owner, independent of
             // delegated read/group permissions.
             if (definition.Key is TenantWorkspacePermissionCatalog.RolesAssignPermissions
+                or TenantWorkspacePermissionCatalog.GroupsCreate
+                or TenantWorkspacePermissionCatalog.GroupsUpdate
+                or TenantWorkspacePermissionCatalog.GroupsChangeState
                 or TenantWorkspacePermissionCatalog.RolesCreate
                 or TenantWorkspacePermissionCatalog.RolesUpdate
                 or TenantWorkspacePermissionCatalog.RolesChangeState
@@ -329,6 +341,12 @@ public static class TenantWorkspace
                 await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(current, db, ct),
             canViewRoles = roles,
             canViewGroups = groups,
+            canCreateGroups = await TenantGroupLifecycleWriter.CanWriteAsync(
+                current, db, TenantWorkspacePermissionCatalog.GroupsCreate, ct),
+            canUpdateGroups = await TenantGroupLifecycleWriter.CanWriteAsync(
+                current, db, TenantWorkspacePermissionCatalog.GroupsUpdate, ct),
+            canChangeGroupState = await TenantGroupLifecycleWriter.CanWriteAsync(
+                current, db, TenantWorkspacePermissionCatalog.GroupsChangeState, ct),
             canManageBranches = await CanManageBranchesAsync(current, db, ct),
             canCreateRoles = await TenantRoleLifecycleWriter.CanWriteAsync(
                 current, db, TenantWorkspacePermissionCatalog.RolesCreate, ct),
@@ -351,7 +369,8 @@ public static class TenantWorkspace
         Guid Id, string UserName, string? Email, string? FirstName, string? LastName, bool IsActive);
     public sealed record WorkspaceRoleDto(
         Guid Id, string Name, string? Description, bool IsActive, bool IsOwner, string Version);
-    public sealed record WorkspaceGroupDto(Guid Id, string Name, string? Description, bool IsActive);
+    public sealed record WorkspaceGroupDto(
+        Guid Id, string Name, string? Description, bool IsActive, string Version = "");
     private const int DirectoryPageSize = 20;
 
     public static async Task<IResult> GetMembers(
@@ -877,6 +896,63 @@ public static class TenantWorkspace
         }
     }
 
+    // Group metadata/state ONLY. Privileged UserGroup/GroupRole links remain
+    // fail-closed in TenantSaveChangesInterceptor until separately audited.
+    public static async Task<IResult> CreateGroup(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        TenantGroupLifecycleWriter.CreateRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try { return Results.Ok(await TenantGroupLifecycleWriter.CreateAsync(current, db, request, ct)); }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
+        catch (TenantGroupLifecycleValidationException e)
+        { return Results.Problem(statusCode: 400, title: "Invalid Tenant Group", detail: e.Message); }
+        catch (TenantGroupLifecycleConflictException e)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group already exists", detail: e.Message); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group create conflict"); }
+        catch (SqlException e) when (e.Number is 2601 or 2627 or 1205 or 3960)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group SQL conflict"); }
+    }
+
+    public static async Task<IResult> UpdateGroup(
+        ITenantContext current, IdentityDbContext db, HttpContext http, Guid id,
+        TenantGroupLifecycleWriter.UpdateRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try { return Results.Ok(await TenantGroupLifecycleWriter.UpdateAsync(current, db, id, request, ct)); }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
+        catch (TenantGroupLifecycleValidationException e)
+        { return Results.Problem(statusCode: 400, title: "Invalid Tenant Group", detail: e.Message); }
+        catch (TenantGroupLifecycleConflictException e)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group version conflict", detail: e.Message); }
+        catch (DbUpdateConcurrencyException)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group concurrency conflict"); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group write conflict"); }
+        catch (SqlException e) when (e.Number is 2601 or 2627 or 1205 or 3960)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group SQL conflict"); }
+    }
+
+    public static async Task<IResult> ChangeGroupState(
+        ITenantContext current, IdentityDbContext db, HttpContext http, Guid id,
+        TenantGroupLifecycleWriter.ChangeStateRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try { return Results.Ok(await TenantGroupLifecycleWriter.ChangeStateAsync(current, db, id, request, ct)); }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
+        catch (TenantGroupLifecycleValidationException e)
+        { return Results.Problem(statusCode: 400, title: "Invalid Tenant Group", detail: e.Message); }
+        catch (TenantGroupLifecycleConflictException e)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group version conflict", detail: e.Message); }
+        catch (DbUpdateConcurrencyException)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group concurrency conflict"); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group state conflict"); }
+        catch (SqlException e) when (e.Number is 1205 or 3960)
+        { return Results.Problem(statusCode: 409, title: "Tenant Group SQL conflict"); }
+    }
+
     public static async Task<IResult> GetGroups(
         ITenantContext current, IdentityDbContext db, HttpContext http,
         int page = 1, CancellationToken ct = default)
@@ -893,9 +969,13 @@ public static class TenantWorkspace
             .OrderBy(g => g.Name).ThenBy(g => g.Id)
             .Skip((page - 1) * DirectoryPageSize)
             .Take(DirectoryPageSize + 1)
-            .Select(g => new WorkspaceGroupDto(g.Id, g.Name, g.Description, g.IsActive))
+            .Select(g => new { g.Id, g.Name, g.Description, g.IsActive, g.RowVersion })
             .ToListAsync(ct);
         return Results.Ok(new DirectoryPage<WorkspaceGroupDto>(
-            rows.Take(DirectoryPageSize).ToArray(), page, rows.Count > DirectoryPageSize));
+            rows.Take(DirectoryPageSize)
+                .Select(g => new WorkspaceGroupDto(g.Id, g.Name, g.Description,
+                    g.IsActive, g.RowVersion is { Length: > 0 }
+                        ? Convert.ToBase64String(g.RowVersion) : ""))
+                .ToArray(), page, rows.Count > DirectoryPageSize));
     }
 }
