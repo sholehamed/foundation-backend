@@ -932,6 +932,13 @@ public sealed class TenantRoleGrantSqlServerTests
                 var before = await GetVersionAsync(db, targetRole);
                 Assert.False(await TenantRolePermissionGrantWriter.CanEditAsync(
                     owner, db, targetRole, default));
+                var response = await TenantWorkspace.GetRolePermissions(
+                    owner, db, new DefaultHttpContext(), targetRole, default);
+                var matrix = Assert.IsType<TenantWorkspace.TenantRolePermissionMatrix>(
+                    Assert.IsAssignableFrom<IValueHttpResult>(response).Value);
+                Assert.False(matrix.CanEdit);
+                Assert.All(matrix.Permissions, item =>
+                    Assert.True(TenantWorkspacePermissionCatalog.IsKnownKey(item.Code)));
 
                 // A valid owner cannot use an ordinary Tenant role PUT to
                 // normalize, retain, replace or delete this foreign link.
