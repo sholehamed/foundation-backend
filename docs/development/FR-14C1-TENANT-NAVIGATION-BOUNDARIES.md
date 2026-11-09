@@ -1,4 +1,4 @@
-> **SUPERSEDED — 2026-11-10.** The user confirmed that only **System Admin defines menus, routes and permission definitions**. This earlier Tenant-owned menu design is retired and **must not be deployed**. See [the authoritative decision](FR-14C-CENTRAL-MENU-AUTHORITY.md). Historical content below is retained solely to explain previous commits.
+> **Clarification (2026-11-10).** FR-14C-1's read-only central Menu projection is retained. Only its former follow-up plan for Tenant-owned menu definitions is superseded: **System Admin alone defines menus and permissions**. See [the authoritative decision](FR-14C-CENTRAL-MENU-AUTHORITY.md).
 
 # FR-14C-1 — Live Tenant navigation and page ownership boundary
 
