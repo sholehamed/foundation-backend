@@ -123,7 +123,12 @@ public sealed class Fr14aSystemEndpointAuthorizationTests
         await SaveFixtureAsync(db);
         Assert.False(await Allowed(db, principal, requirement, true));
 
-        db.UserPermissions.Remove(db.UserPermissions.Single());
+        // The fixture's TenantContext has no read scope, so the global tenant
+        // query filter hides this seeded System override from ordinary queries.
+        // Match the exact seeded override; production authorization still uses
+        // its own explicit live tenant-scoped permission checks.
+        db.UserPermissions.Remove(db.UserPermissions.IgnoreQueryFilters().Single(
+            p => p.UserId == user.Id && p.PermissionId == permission.Id));
         await SaveFixtureAsync(db);
         Assert.True(await Allowed(db, principal, requirement, true));
 
