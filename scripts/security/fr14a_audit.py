@@ -58,7 +58,7 @@ class AuditError(RuntimeError):
 
 def method_calls(source: str):
     """Yield registrations with balanced call expressions (not handler bodies)."""
-    exp = re.compile(r"\.Map(Get|Post|Put|Patch|Delete|Methods)\s*\(")
+    exp = re.compile(r"\.Map(Get|Post|Put|Patch|Delete|Methods|File)\s*\(")
     matches = list(exp.finditer(source))
     for ordinal, match in enumerate(matches):
         depth = 1
@@ -232,16 +232,64 @@ def audit_sources(endpoint_sources: dict[str, str], feature_source: str,
     return rows
 
 
+def audit_protocol_and_media(repo_root: Path) -> list[Row]:
+    """Audit separately-owned BFF, authenticated media, dev-only Scalar maps.
+
+    These cannot be given System Feature permissions. They remain explicit,
+    non-granular boundaries and media ownership is NOT certified here.
+    """
+    result = []
+    bff = repo_root / "src/modules/Modules.System.Bff"
+    for file in sorted(bff.glob("*Endpoints*.cs")) + sorted(
+            bff.glob("BffEndpointRouteBuilderExtensions.cs")):
+        contents = file.read_text(encoding="utf-8-sig")
+        if "BffEndpointRouteBuilderExtensions" in file.name and (
+                'Identity:Bff:Enabled' not in contents):
+            raise AuditError("BFF feature flag boundary removed")
+        for method, handler, body, tail in method_calls(contents):
+            if ".AllowAnonymous()" not in tail:
+                raise AuditError("BFF protocol route changed cookie boundary: " +
+                                 file.name + "/" + handler)
+            result.append(Row("bff_protocol", file.name, method, handler,
+                              None, None, "BFF_EXPLICIT_COOKIE_CSRF_LIFECYCLE"))
+
+    media = (repo_root / "src/modules/Modules.System.FileStorage/Web/Endpoints/"
+             "MediaStorageEndpoints.cs")
+    media_source = media.read_text(encoding="utf-8-sig")
+    for method, handler, body, tail in method_calls(media_source):
+        if ".RequireAuthorization()" not in body + tail:
+            raise AuditError("Media route lost RequireAuthorization: " + handler)
+        result.append(Row("media", media.name, method, handler, None, None,
+                          "AUTHENTICATED_MEDIA_OWNERSHIP_NOT_CERTIFIED"))
+
+    host = (repo_root / "src/Web/DependencyInjections.cs").read_text(
+        encoding="utf-8-sig")
+    if "if (app.Environment.IsDevelopment())" not in host or (
+            "app.MapScalarClientGenerationAssets();" not in host):
+        raise AuditError("Dev-only Scalar route registration gate changed")
+    scalar = (repo_root / "src/modules/Modules.System.Scalar.ClientGeneration/"
+              "ScalarEndpointExtensions.cs")
+    for method, handler, body, tail in method_calls(
+            scalar.read_text(encoding="utf-8-sig")):
+        result.append(Row("dev_tooling", scalar.name, method, handler,
+                          None, None, "DEVELOPMENT_ONLY_OPENAPI_SCALAR"))
+    if len(result) != 11:
+        raise AuditError("BFF/media/developer protocol inventory unexpectedly changed: " +
+                         str(len(result)))
+    return result
+
+
 def audit(repo_root: Path = ROOT) -> list[Row]:
     source_dir = repo_root / "src/modules/Modules.System.Identity/Web/Endpoints"
     files = {x.stem: x.read_text(encoding="utf-8-sig")
              for x in source_dir.glob("*.cs")}
-    return audit_sources(
+    identity_rows = audit_sources(
         files,
         (repo_root / "src/modules/Modules.System.Identity/Web/Util/FeatureRegistryDefinitions.cs")
         .read_text(encoding="utf-8-sig"),
         (source_dir / "TenantWorkspacePermissionCatalog.cs").read_text(encoding="utf-8-sig"),
     )
+    return identity_rows + audit_protocol_and_media(repo_root)
 
 
 def main():
@@ -255,11 +303,13 @@ def main():
         return 2
     payload = {
         "schemaVersion": 1,
-        "scope": "identity-endpoint-map",
+        "scope": "identity-bff-media-dev-tools-source-maps",
         "limitations": [
             "Live System granular API grants require opt-in and reviewed Master catalog.",
             "Tenant route handler authorization is covered by separate HTTP/SQL tests.",
             "OAuth/CAPTCHA/BFF protocols require independent lifecycle validation.",
+            "Authenticated media ID ownership is not proven by endpoint authentication.",
+            "Scalar/OpenAPI tooling is gated to Development only in the Web host.",
             "This is a source contract audit, not production permission inventory.",
         ],
         "counts": {name: sum(x.surface == name for x in rows)
