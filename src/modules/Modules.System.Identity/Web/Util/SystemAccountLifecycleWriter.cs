@@ -284,7 +284,13 @@ public static class SystemAccountLifecycleWriter
                     StringComparison.Ordinal))
                 throw new SystemAccountMutationConflictException();
 
-            if (target.IsLockedOut == input.IsLockedOut)
+            // A legacy 15-minute password-failure lock has IsLockedOut=true
+            // but must not be mistaken for a durable administrator lock.
+            // Setting locked=true explicitly upgrades that short lock to the
+            // reviewed long-lived administrative lock.
+            if (target.IsLockedOut == input.IsLockedOut &&
+                (!input.IsLockedOut ||
+                 target.LockoutEndUtc > DateTime.UtcNow.AddYears(10)))
             {
                 await tx.CommitAsync(ct);
                 return View(target);
