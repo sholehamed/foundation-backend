@@ -48,6 +48,18 @@ public sealed class Fr14aSystemEndpointAuthorizationTests
         return context.HasSucceeded;
     }
 
+    // SQL Server generates 8-byte RowVersion in the database. The EF
+    // InMemory fixture has no database-generated concurrency token; seed
+    // it explicitly without changing production entity mappings.
+    private static async Task SaveFixtureAsync(IdentityDbContext db)
+    {
+        foreach (var entry in db.ChangeTracker.Entries()
+                     .Where(entry => entry.State == EntityState.Added &&
+                         entry.Metadata.FindProperty("RowVersion") != null))
+            entry.Property("RowVersion").CurrentValue = new byte[] { 1, 0, 0, 0, 0, 0, 0, 0 };
+        await db.SaveChangesAsync();
+    }
+
     [Fact]
     public void Permission_code_must_belong_to_its_registered_System_resource()
     {
@@ -85,7 +97,7 @@ public sealed class Fr14aSystemEndpointAuthorizationTests
         db.Roles.Add(role);
         db.Permissions.Add(permission);
         db.UserRoles.Add(new UserRole(masterId, user.Id, role.Id));
-        await db.SaveChangesAsync();
+        await SaveFixtureAsync(db);
 
         var principal = Principal(user.Id);
         var requirement = new SystemFeatureEndpointPermissionRequirement(
@@ -95,7 +107,7 @@ public sealed class Fr14aSystemEndpointAuthorizationTests
 
         // A grant comes from the live database, never a JWT permission claim.
         db.RolePermissions.Add(new RolePermission(masterId, role.Id, permission.Id));
-        await db.SaveChangesAsync();
+        await SaveFixtureAsync(db);
         Assert.True(await Allowed(db, principal, requirement, true));
 
         db.UserPermissions.Add(new UserPermission(Guid.NewGuid())
@@ -103,19 +115,19 @@ public sealed class Fr14aSystemEndpointAuthorizationTests
             TenantId = masterId, UserId = user.Id,
             PermissionId = permission.Id, IsGranted = false
         });
-        await db.SaveChangesAsync();
+        await SaveFixtureAsync(db);
         Assert.False(await Allowed(db, principal, requirement, true));
 
         db.UserPermissions.Remove(db.UserPermissions.Single());
-        await db.SaveChangesAsync();
+        await SaveFixtureAsync(db);
         Assert.True(await Allowed(db, principal, requirement, true));
 
         role.IsActive = false;
-        await db.SaveChangesAsync();
+        await SaveFixtureAsync(db);
         Assert.False(await Allowed(db, principal, requirement, true));
         role.IsActive = true;
         user.IsActive = false;
-        await db.SaveChangesAsync();
+        await SaveFixtureAsync(db);
         Assert.False(await Allowed(db, principal, requirement, true));
     }
 
