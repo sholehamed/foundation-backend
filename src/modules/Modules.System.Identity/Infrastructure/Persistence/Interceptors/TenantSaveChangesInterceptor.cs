@@ -84,7 +84,7 @@ public sealed class TenantSaveChangesInterceptor(
             // FR-12E: tenant write scope alone is NOT grant-management
             // authorization. A target-bound grant intent is required for
             // ordinary Tenant UserRole/RolePermission changes.
-            if (entry.Entity is UserRole or RolePermission or UserGroup)
+            if (entry.Entity is UserRole or RolePermission or UserGroup or GroupRole)
             {
                 if (entry.State == EntityState.Modified)
                     throw new UnauthorizedAccessException(
@@ -104,13 +104,10 @@ public sealed class TenantSaveChangesInterceptor(
                         "Tenant grant mutation requires a reviewed, target-bound operation.");
             }
 
-            // No Tenant UserPermission / GroupRole / UserGroup audit/write
-            // endpoints exist yet. Never let a generic CRUD handler use
-            // WritableTenantIds to create an unreviewed privilege path.
-            // UserGroup is only allowed through a group+single-user intent
-            // above; arbitrary group role / direct-user permission mutations
-            // remain fully prohibited for ordinary Tenant handlers.
-            if (entry.Entity is UserPermission or GroupRole)
+            // GroupRole/UserGroup now require exact target-bound trusted intents
+            // above, while direct UserPermission remains categorically denied.
+            // Never let generic CRUD write privileged relationships.
+            if (entry.Entity is UserPermission)
                 throw new UnauthorizedAccessException(
                     "Tenant group/user permission grants require a dedicated audited API.");
         }
