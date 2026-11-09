@@ -108,6 +108,24 @@ public static class TenantFirstLoginWriter
         return target;
     }
 
+    /// <summary>Syntax prefilter only; never establishes account state or trust.</summary>
+    public static bool LooksLikeIssuedPassword(string? value)
+    {
+        if (value is not { Length: 27 }) return false;
+        for (var i = 0; i < value.Length; i++)
+        {
+            if (i is 6 or 13 or 20)
+            {
+                if (value[i] != '-') return false;
+            }
+            else if (!Alphabet.Contains(value[i]))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     internal static string GenerateTemporaryPassword()
     {
         Span<char> chars = stackalloc char[27];
@@ -187,9 +205,7 @@ public static class TenantFirstLoginWriter
         IdentityDbContext db, IPasswordHasher<User> hasher,
         StartRequest? request, CancellationToken ct = default)
     {
-        if (request?.TemporaryPassword is not { } password ||
-            !Regex.IsMatch(password, @"\A[A-Za-z0-9]{6}(?:-[A-Za-z0-9]{6}){3}\z",
-                RegexOptions.CultureInvariant))
+        if (!LooksLikeIssuedPassword(request?.TemporaryPassword))
             return new LoginDecision("continue_login");
 
         try

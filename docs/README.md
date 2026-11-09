@@ -50,3 +50,5 @@
 - [FR-13B-3 — One-time temporary password and forced first login change](development/FR-13B3-TEMP-PASSWORD-FIRST-LOGIN.md)
 
 - [FR-13B-3B — unified Tenant Login, first-password forced change](development/FR-13B3B-UNIFIED-TENANT-LOGIN.md)
+
+- [FR-13B-3C — BFF Identity-host first-password change](development/FR-13B3C-BFF-IDENTITY-FORCED-CHANGE.md)

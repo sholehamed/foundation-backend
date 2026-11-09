@@ -1,3 +1,8 @@
+## FR-13B-3C — Identity-host BFF first-login (2026-11-09)
+
+- Continued FR-13B-3B into the separate Identity-host browser sign-in, [Issue #81](https://github.com/sholehamed/foundation-backend/issues/81). Same CAPTCHA+antiforgery interactive-login 204 for normal credentials; 200 only for proven temporary Tenant password, yielding restricted 10-minute change challenge, never an Identity or BFF login session. A new Identity-host XSRF-protected completion endpoint uses the existing SQL atomic single-use password activation and forces a fresh normal Identity login before OIDC code issuance.
+- Both first-login and BFF flags remain OFF by default. No migrations, Registry Apply, grants, production/staging rollout, SMTP, or real end-to-end OIDC activation done by code merge. [Security contract](development/FR-13B3C-BFF-IDENTITY-FORCED-CHANGE.md). Existing Tenant direct login and email invite remain intact.
+
 ## FR-13B-3B — unified Tenant Login (2026-11-09)
 
 - [Issue #79](https://github.com/sholehamed/foundation-backend/issues/79): Owner optional atomic inactive member + initial password, and new HTTPS Tenant login decision `/api/public/tenant-login/resolve`. Server produces password-change-only challenge **only** for a valid 4x6 one-time secret; normal credentials fall through unchanged. No authenticated session before reset; new password then fresh normal login.

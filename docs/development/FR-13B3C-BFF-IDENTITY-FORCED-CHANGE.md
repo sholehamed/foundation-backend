@@ -1,0 +1,32 @@
+# FR-13B-3C — BFF Identity-host mandatory first password change
+
+Date: 2026-11-09. [Issue #81](https://github.com/sholehamed/foundation-backend/issues/81), following [#79](https://github.com/sholehamed/foundation-backend/issues/79) and parent [#70](https://github.com/sholehamed/foundation-backend/issues/70).
+
+## Trust boundary and decision
+
+The customer always enters credentials on the **existing login form**; there must be no need to select "first login". On an active Tenant subdomain, the FR-13B-3B normal Tenant flow is unchanged. For the **separate Identity origin** used by Code+PKCE BFF, the existing `POST /api/system/Auth/interactive-login` remains authoritative and CAPTCHA/XSRF-protected:
+
+1. Normal System or Tenant credentials are verified through `UserCredentialAuthenticator`; successful login continues to return **204 and the host-only `__Host-Foundation.Identity` cookie**, never OAuth tokens. The browser then follows only the validated local `/api/connect/authorize` continuation, which issues a code for the BFF confidential client.
+2. Only if normal Tenant authentication fails, the feature `Identity:TenantFirstLogin:Enabled` is explicitly enabled, the request uses HTTPS on **exact `identity.`/`auth.` workspace host** (also exact `Identity:Bff:Authority` when configured), and the password has the server-generated temporary-credential shape, the SQL first-login resolver attempts verification. Tenant comes from the signed-in UI's OIDC continuation context, not from a client-selected TenantId. A valid unused hashed credential (60-minute TTL, <=5 bad attempts) yields HTTP **200 `{status:'password_change_required',challenge,expiresAtUtc}`**. It signs out any existing Identity cookie. **No OAuth access token, BFF ticket, Identity login session, authorization code or role is created.**
+3. Invalid, expired, unknown, revoked and wrong-Tenant credentials return the same **401** generic authentication failure as normal login. A matching syntactic form is only an optimization, not authority; SQL performs the real check. UI may not branch on account status before proving possession.
+4. New `POST /api/system/Auth/interactive-first-login/complete` is **Identity-origin only**, default-OFF, anonymous, independent 5/min/IP throttle and ASP.NET Core antiforgery-validated. JSON `{tenantSlug,challenge,newPassword}`; neither cookie nor principal authorizes the operation, only the SQL-backed 10-minute challenge. `TenantFirstLoginWriter.CompleteAsync` atomically validates Tenant/user/credential, hashes the permanent password, activates the user, rotates stamps, consumes/revokes secrets, and appends audit. Existing transactional rollback behavior is preserved.
+5. Completion returns **200 `{passwordChanged:true,requiresRelogin:true}`**. It explicitly signs out the Identity cookie, and issues no new one. Angular clears challenge and password, returns to **/auth/login** with validated LOCAL authorization continuation only, and requires the employee to re-enter permanent password/CAPTCHA. Only that later **204** can navigate to OpenIddict, producing a code and eventually an application BFF cookie.
+6. Existing direct Tenant /api/public/tenant-login/resolve and /api/public/tenant-first-login/complete, legacy /auth/first-login compatibility, and email-invitation flows stay intact. System and ordinary Tenant login still have their previous HTTP success and failure behavior.
+
+## Threat model
+
+- **Cookie isolation:** Identity host-only cookie and Tenant BFF host-only cookie never share Domain, and the change-only challenge never appears in either cookie, URLs, local/sessionStorage, Authorization headers or server audit.
+- **CSRF:** Interactive sign-in and change-password completion require a fresh same-origin XSRF header + antiforgery cookie. Temporary-password exchange occurs only after the existing CAPTCHA validates.
+- **Origin:** The new endpoint rejects HTTP, arbitrary hosts, Tenant application hosts, root/System hosts and nonmatching configured issuer Authority. Trusted Forwarded Host/Scheme ingress configuration and explicit origin allowlisting are deployment gates, not implied by test doubles. No wildcard CORS or external redirect has been added.
+- **Attempts and enumeration:** Existing interactive-login 20/min/IP policy plus per-credential 5 failed SQL attempts, completion 5/min/IP, no username/tenant existence distinctions in errors. For Production multi-node topology use gateway distributed rate limits. The server does not accept a client-declared account-state flag.
+- **Races/replay:** Existing SQL SERIALIZABLE, row locking, expires/check-and-set and audit rollback on `CompleteAsync` remain the only activation path. Stolen temporary secrets still enable account takeover before legitimate handoff; physically verify staff before sharing. Old active Identity sessions are signed out on the restricted path; upstream SSO/session-wide revocation is a separately tracked risk.
+
+## Feature gates and acceptance
+
+- `Identity:TenantFirstLogin:Enabled=false` and Angular `tenantFirstLoginEnabled=false` in all default builds. This code makes no SQL migrations, Feature Registry Apply, Owner grants or Production toggles. FR-13B-3 earlier migration `20261109030000_tenantmemberfirstlogin` and manual catalog registration/grants are prerequisites.
+- Backends must be deployed with exactly matching Angular Identity-host client build; same-origin HTTPS reverse proxy for `/api` on Identity origin. Operator must verify real configured `Identity:Bff:Authority`, DNS/TLS, trusted forwarded scheme, CORS, CSRF cookie config, and SQL migrations before activating the flags on controlled isolated Staging.
+- Unit tests: exact Identity-host HTTPS/Authority matrix and Angular 204 vs 200 vs invalid response, CSRF before completion, and Owner role/no-cookie baseline. Existing disposable SQL tests assert valid/invalid/replayed credentials, expiry, rollback and zero auto grants.
+- Remaining integration gate: real HTTPS/Chromium two-host first-login → change → fresh Identity sign-in → actual OIDC code → Tenant BFF cookie → local role/revoke behavior, including negative CSRF and replay, on **approved Staging**. A local/PR CI green state is not a deployed SMTP/tenant/Identity acceptance.
+- Email remains required for new employee creation until [FR-13B-3A #78](https://github.com/sholehamed/foundation-backend/issues/78) lands. Do not use fake email to work around this.
+
+**No claim of an operational Production or hosted Staging rollout is made by merging code.**
