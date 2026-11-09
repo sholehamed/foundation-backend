@@ -913,6 +913,60 @@ public sealed class TenantRoleGrantSqlServerTests
     }
 
     [Fact]
+    public async Task Legacy_system_permission_on_local_role_is_quarantined_without_silent_replacement()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (db, owner, _, targetRole, _) = await SeedAsync(setup, options);
+            await using (db)
+            {
+                var tenantId = owner.ActiveTenantId!.Value;
+                var foreignPermission = new Permission(Guid.NewGuid(),
+                    "SYSTEM.USERS.READ", null, "Foreign System permission", null);
+                var foreignLink = new RolePermission(
+                    tenantId, targetRole, foreignPermission.Id);
+                setup.Permissions.Add(foreignPermission);
+                setup.RolePermissions.Add(foreignLink);
+                await setup.SaveChangesAsync();
+
+                var before = await GetVersionAsync(db, targetRole);
+                Assert.False(await TenantRolePermissionGrantWriter.CanEditAsync(
+                    owner, db, targetRole, default));
+
+                // A valid owner cannot use an ordinary Tenant role PUT to
+                // normalize, retain, replace or delete this foreign link.
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                    TenantRolePermissionGrantWriter.ReplaceAsync(
+                        owner, db, targetRole,
+                        new TenantRolePermissionGrantWriter.ReplaceRequest(
+                            before, [TenantWorkspacePermissionCatalog.MembersRead])));
+                Assert.Equal(before, await GetVersionAsync(db, targetRole));
+                Assert.Equal(0, await AuditCountAsync(db));
+                Assert.True(await db.RolePermissions.AsNoTracking().AnyAsync(x =>
+                    x.TenantId == tenantId && x.RoleId == targetRole &&
+                    x.PermissionId == foreignPermission.Id));
+
+                // Explicit operator reconciliation of the invalid link is
+                // outside this Tenant editor. Simulate that intervention in
+                // the disposable test to prove normal approved grants recover.
+                setup.RolePermissions.Remove(foreignLink);
+                await setup.SaveChangesAsync();
+                Assert.True(await TenantRolePermissionGrantWriter.CanEditAsync(
+                    owner, db, targetRole, default));
+
+                var next = await TenantRolePermissionGrantWriter.ReplaceAsync(
+                    owner, db, targetRole,
+                    new TenantRolePermissionGrantWriter.ReplaceRequest(
+                        before, [TenantWorkspacePermissionCatalog.MembersRead]));
+                Assert.NotEqual(before, next);
+                Assert.Equal(1, await AuditCountAsync(db));
+                Assert.False(await db.RolePermissions.AsNoTracking().AnyAsync(x =>
+                    x.RoleId == targetRole && x.PermissionId == foreignPermission.Id));
+            }
+        });
+    }
+
+    [Fact]
     public async Task Unknown_grants_and_actor_assigned_role_are_rejected()
     {
         await WithDisposableDatabaseAsync(async (setup, options) =>
