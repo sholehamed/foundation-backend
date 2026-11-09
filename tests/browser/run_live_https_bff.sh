@@ -74,6 +74,7 @@ dotnet run --project backend/tests/Shinera.Identity.E2E.SqlMutator \
   --no-build -c Release -- seed-tenant-iam
 python3 backend/tests/http/tenant_iam_chain_e2e.py
 cp backend/tests/browser/tenant-bff-real.spec.ts frontend/e2e/tenant-bff-real.spec.ts
+cp backend/tests/browser/tenant-first-login-real.spec.ts frontend/e2e/tenant-first-login-real.spec.ts
 cp backend/tests/browser/playwright.bff-real.config.ts frontend/playwright.bff-real.config.ts
 cd frontend
 npx playwright install --with-deps chromium

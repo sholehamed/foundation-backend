@@ -2,7 +2,7 @@
 
 Date: 2026-11-09. Parent [FR-13 #70](https://github.com/sholehamed/foundation-backend/issues/70).
 Workflow: [tenant-bff-live-browser-e2e.yml](../../.github/workflows/tenant-bff-live-browser-e2e.yml).
-Browser spec: [tenant-bff-real.spec.ts](../../tests/browser/tenant-bff-real.spec.ts).
+Browser specs: existing [tenant-bff-real.spec.ts](../../tests/browser/tenant-bff-real.spec.ts) and sensitive [tenant-first-login-real.spec.ts](../../tests/browser/tenant-first-login-real.spec.ts).
 
 ## Purpose
 
@@ -57,8 +57,11 @@ than replacing its independently proven BFF/permission-revocation scenario.
   Production DNS, externally issued CA certificate or developer auth bypass.
 - The one-time password is ONLY in the authenticated Owner response and in the
   employee's temporary in-memory test variable. It is never printed.
-- First-login Playwright test sets **trace, video, and screenshot OFF** so a
+- First-login Playwright spec file sets **trace, video, and screenshot OFF** so a
   failure does not upload browser artifacts containing a one-time secret.
+  This separate file is necessary because Playwright worker-scoped use options
+  cannot be applied inside test.describe; keeping the existing E2E file separate
+  preserves its normal trace-on-failure diagnostics.
   Assertions avoid interpolating plaintext in error messages.
 - The prior BFF browser test retains its existing trace-on-failure diagnostics.
 - The test uses a disposable CI-only account, SQL database and domain ending
