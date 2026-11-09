@@ -40,7 +40,7 @@ public sealed class TrustedTenantWriteScope(ILogger<TrustedTenantWriteScope> log
             !subject.WritableTenantIds.Contains(tenantId) ||
             !subject.ReadableTenantIds.Contains(tenantId) ||
             targetId == Guid.Empty || targetId == actor ||
-            kind is not ("UserRole" or "RolePermission" or "UserGroup") ||
+            kind is not ("UserRole" or "RolePermission" or "UserGroup" or "GroupRole") ||
             relatedIds.Count == 0 || relatedIds.Any(id => id == Guid.Empty) ||
             relatedIds.Distinct().Count() != relatedIds.Count ||
             _tenantGrantIntent is not null || _platformActor is not null ||
@@ -68,6 +68,10 @@ public sealed class TrustedTenantWriteScope(ILogger<TrustedTenantWriteScope> log
                 ug.TenantId == intent.TenantId &&
                 ug.GroupId == intent.TargetId &&
                 intent.RelatedIds.Contains(ug.UserId),
+            GroupRole gr => intent.Kind == "GroupRole" &&
+                gr.TenantId == intent.TenantId &&
+                gr.GroupId == intent.TargetId &&
+                intent.RelatedIds.Contains(gr.RoleId),
             _ => false
         };
 
