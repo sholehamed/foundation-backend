@@ -99,6 +99,92 @@ public static class TenantPendingMemberWriter
             email, email.ToUpperInvariant(), firstName, lastName);
     }
 
+    public sealed record CreateWithInitialPasswordResult(
+        MemberView Member, string TemporaryPassword, DateTime ExpiresAtUtc);
+
+    /// <summary>
+    /// Atomic Owner onboarding: local inactive User + one-time initial password
+    /// + both immutable audit records commit in ONE SQL transaction. This is
+    /// opt-in, in addition to unchanged CreateAsync and email invitation.
+    /// Caller verifies the separately default-OFF feature toggle and HTTPS.
+    /// </summary>
+    public static async Task<CreateWithInitialPasswordResult> CreateWithInitialPasswordAsync(
+        ITenantContext current, IdentityDbContext db, IPasswordHasher<User> hasher,
+        CreateRequest? input, CancellationToken ct = default)
+    {
+        if (!await CanCreateAsync(current, db, ct) ||
+            !await TenantFirstLoginWriter.CanIssueAsync(current, db, ct))
+            throw new UnauthorizedAccessException("Creating an initial credential is not authorized.");
+        var fields = Validate(input);
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable, ct);
+            if (!await CanCreateAsync(current, db, ct) ||
+                !await TenantFirstLoginWriter.CanIssueAsync(current, db, ct))
+                throw new UnauthorizedAccessException("Tenant onboarding authorization was revoked.");
+
+            var tenantId = current.ActiveTenantId!.Value;
+            var actor = current.UserId!.Value;
+            if (await db.Users.AsNoTracking().AnyAsync(u =>
+                    u.TenantId == tenantId && u.UserType == UserType.Tenant &&
+                    (u.NormalizedUserName == fields.NormalizedUserName ||
+                     u.NormalizedEmail == fields.NormalizedEmail), ct))
+                throw new TenantMemberCreateConflictException(
+                    "A member with this username or email already exists in this Tenant.");
+            if (await db.Users.AsNoTracking().CountAsync(u =>
+                    u.TenantId == tenantId && u.UserType == UserType.Tenant, ct) >= 10000)
+                throw new TenantMemberCreateConflictException("Tenant member limit reached.");
+
+            var member = new User(tenantId, fields.UserName, fields.Email,
+                fields.FirstName, fields.LastName, UserType.Tenant, isActive: false)
+            {
+                NormalizedUserName = fields.NormalizedUserName,
+                NormalizedEmail = fields.NormalizedEmail,
+                EmailConfirmed = false,
+                IsActive = false,
+                SecurityStamp = Guid.NewGuid().ToString("N"),
+                ConcurrencyStamp = Guid.NewGuid().ToString("N")
+            };
+            // No temporary password can ever be mistaken for the real
+            // login password: a separate random unknown hash stays on User.
+            member.PasswordHash = hasher.HashPassword(member,
+                Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)));
+            db.Users.Add(member);
+            await db.SaveChangesAsync(ct);
+
+            var temporaryPassword = TenantFirstLoginWriter.GenerateTemporaryPassword();
+            var hash = hasher.HashPassword(member, temporaryPassword);
+            var now = DateTime.UtcNow;
+            var expiry = now.AddMinutes(60);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO [dbo].[TenantMemberTemporaryCredentials]
+                    ([Id],[TenantId],[TargetUserId],[IssuedByUserId],
+                     [PasswordHash],[CreatedAtUtc],[ExpiresAtUtc],[FailedAttempts])
+                VALUES ({Guid.NewGuid()},{tenantId},{member.Id},{actor},
+                    {hash},{now},{expiry},{0})
+                """, ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO [dbo].[TenantMemberLifecycleAuditEntries]
+                    ([Id],[TenantId],[ActorUserId],[TargetUserId],[Action],[OccurredAtUtc])
+                VALUES ({Guid.NewGuid()},{tenantId},{actor},{member.Id},
+                    {"create_inactive"},SYSUTCDATETIME())
+                """, ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO [dbo].[TenantMemberLifecycleAuditEntries]
+                    ([Id],[TenantId],[ActorUserId],[TargetUserId],[Action],[OccurredAtUtc])
+                VALUES ({Guid.NewGuid()},{tenantId},{actor},{member.Id},
+                    {"temp_issued"},SYSUTCDATETIME())
+                """, ct);
+            await tx.CommitAsync(ct);
+            return new CreateWithInitialPasswordResult(
+                new MemberView(member.Id, member.UserName, member.Email,
+                    member.FirstName, member.LastName, member.IsActive),
+                temporaryPassword, expiry);
+        });
+    }
+
     public static async Task<MemberView> CreateAsync(
         ITenantContext current, IdentityDbContext db, IPasswordHasher<User> hasher,
         CreateRequest? input, CancellationToken ct = default)

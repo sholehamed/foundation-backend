@@ -24,6 +24,9 @@ public static class TenantFirstLoginWriter
 {
     public sealed record IssueResult(string TemporaryPassword, DateTime ExpiresAtUtc);
     public sealed record StartRequest(string? TenantSlug, string? UserName, string? TemporaryPassword);
+    public sealed record LoginDecision(string Status, string? Challenge = null,
+        DateTime? ExpiresAtUtc = null);
+
     public sealed record StartResult(string Challenge, DateTime ExpiresAtUtc, bool RequiresPasswordChange);
     public sealed record CompleteRequest(string? TenantSlug, string? Challenge, string? NewPassword);
 
@@ -105,7 +108,7 @@ public static class TenantFirstLoginWriter
         return target;
     }
 
-    private static string GenerateTemporaryPassword()
+    internal static string GenerateTemporaryPassword()
     {
         Span<char> chars = stackalloc char[27];
         for (var index = 0; index < 24; index++)
@@ -170,6 +173,38 @@ public static class TenantFirstLoginWriter
             await tx.CommitAsync(ct);
             return new IssueResult(password, expiry);
         });
+    }
+
+    /// <summary>
+    /// Called transparently by the ordinary Tenant Login form.
+    /// A normal login password never becomes a restricted session and the
+    /// server does not expose whether the name identifies an inactive user.
+    /// Only an EXACT generated temporary-password shape enters the
+    /// single-use challenge protocol; all other credentials fall through to
+    /// the pre-existing, independently authenticated normal login.
+    /// </summary>
+    public static async Task<LoginDecision> ResolveForLoginAsync(
+        IdentityDbContext db, IPasswordHasher<User> hasher,
+        StartRequest? request, CancellationToken ct = default)
+    {
+        if (request?.TemporaryPassword is not { } password ||
+            !Regex.IsMatch(password, @"\A[A-Za-z0-9]{6}(?:-[A-Za-z0-9]{6}){3}\z",
+                RegexOptions.CultureInvariant))
+            return new LoginDecision("continue_login");
+
+        try
+        {
+            var restricted = await StartAsync(db, hasher, request, ct);
+            return new LoginDecision("password_change_required",
+                restricted.Challenge, restricted.ExpiresAtUtc);
+        }
+        catch (FirstLoginValidationException)
+        {
+            // Same response whether the username is unknown, the temporary
+            // password is expired/invalid, or it belongs to another Tenant.
+            // Normal authenticator decides if conventional login can proceed.
+            return new LoginDecision("continue_login");
+        }
     }
 
     public static async Task<StartResult> StartAsync(

@@ -50,6 +50,10 @@ public static class TenantWorkspace
             .RequireAuthorization()
             .RequireRateLimiting("tenant-member-create")
             .WithTags("Tenant Workspace");
+        app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/members/with-initial-password", CreateMemberWithInitialPassword)
+            .RequireAuthorization()
+            .RequireRateLimiting("tenant-member-create")
+            .WithTags("Tenant Workspace");
         app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/members/{{id:guid}}/invitations", InvitePendingMember)
             .RequireAuthorization()
             .RequireRateLimiting("tenant-member-invite")
@@ -58,6 +62,10 @@ public static class TenantWorkspace
             .RequireAuthorization()
             .RequireRateLimiting("tenant-member-invite")
             .WithTags("Tenant Workspace");
+        app.MapPost($"/{backendPrefix.Trim('/')}/public/tenant-login/resolve", ResolveTenantLogin)
+            .AllowAnonymous()
+            .RequireRateLimiting("tenant-first-login")
+            .WithTags("Tenant Login");
         app.MapPost($"/{backendPrefix.Trim('/')}/public/tenant-first-login/start", StartFirstLogin)
             .AllowAnonymous()
             .RequireRateLimiting("tenant-first-login")
@@ -402,6 +410,36 @@ public static class TenantWorkspace
         }
     }
 
+    // FR-13B-3B: optional atomic creation + initial credential. Both explicit
+    // Tenant Actions are rechecked inside the SQL transaction. The one-time
+    // password is returned ONLY in this no-store, authenticated HTTPS response.
+    public static async Task<IResult> CreateMemberWithInitialPassword(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        IConfiguration configuration, IPasswordHasher<User> hasher,
+        TenantPendingMemberWriter.CreateRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        http.Response.Headers.Pragma = "no-cache";
+        if (!configuration.GetValue<bool>("Identity:TenantFirstLogin:Enabled"))
+            return Results.NotFound();
+        if (!http.Request.IsHttps)
+            return Results.Problem(statusCode: 400, title: "HTTPS required");
+        try
+        {
+            return Results.Ok(await TenantPendingMemberWriter.CreateWithInitialPasswordAsync(
+                current, db, hasher, request, ct));
+        }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
+        catch (TenantMemberCreateValidationException e)
+        { return Results.Problem(statusCode: 400, title: "Invalid Tenant member", detail: e.Message); }
+        catch (TenantMemberCreateConflictException e)
+        { return Results.Problem(statusCode: 409, title: "Tenant member already exists", detail: e.Message); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Tenant member conflict"); }
+        catch (SqlException e) when (e.Number is 2601 or 2627 or 1205 or 3960)
+        { return Results.Problem(statusCode: 409, title: "Concurrent Tenant member creation"); }
+    }
+
     // FR-13B-2: SMTP relay acceptance is not proof of inbox delivery.
     // No token enters an Owner API response. Missing relay -> fail closed 503.
     public static async Task<IResult> InvitePendingMember(
@@ -496,6 +534,28 @@ public static class TenantWorkspace
         var expectedHost = slug + "." + baseDomain;
         return string.Equals(http.Request.Host.Host, expectedHost,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Opt-in companion to the EXISTING Tenant login form. Not an OAuth
+    /// endpoint and never signs in an inactive user. A verified temporary
+    /// password yields only a short-lived change-only challenge. Unknown
+    /// and ordinary credentials get the same continue_login response.
+    /// The normal login/captcha handler still owns normal authentication.
+    /// </summary>
+    public static async Task<IResult> ResolveTenantLogin(
+        HttpContext http, IConfiguration configuration, IHostEnvironment environment,
+        IdentityDbContext db, IPasswordHasher<User> hasher,
+        TenantFirstLoginWriter.StartRequest request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        http.Response.Headers.Pragma = "no-cache";
+        if (!configuration.GetValue<bool>("Identity:TenantFirstLogin:Enabled"))
+            return Results.NotFound();
+        if (!FirstLoginTransportAllowed(http, configuration, environment, request.TenantSlug))
+            return Results.Problem(statusCode: 400, title: "Secure tenant host required");
+        return Results.Ok(await TenantFirstLoginWriter.ResolveForLoginAsync(
+            db, hasher, request, ct));
     }
 
     public static async Task<IResult> StartFirstLogin(
