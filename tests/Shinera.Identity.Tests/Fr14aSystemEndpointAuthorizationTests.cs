@@ -85,7 +85,12 @@ public sealed class Fr14aSystemEndpointAuthorizationTests
         var user = new User(null, "fr14a-system",
             "fr14a@example.test", "System", "Operator", UserType.System)
         {
-            IsActive = true, IsLockedOut = false
+            IsActive = true,
+            IsLockedOut = false,
+            NormalizedUserName = "FR14A-SYSTEM",
+            NormalizedEmail = "FR14A@EXAMPLE.TEST",
+            PasswordHash = "fixture-only-not-a-real-credential",
+            SecurityStamp = "fixture-security-stamp"
         };
         var role = new Role(masterId, "superadmin", null)
         { Scope = RoleScope.System, IsActive = true };
