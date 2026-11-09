@@ -29,10 +29,10 @@ public static class SystemAccountLifecycleWriter
         string? FirstName, string? LastName, string? Email, string? ExpectedVersion);
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-    public sealed record StateRequest(bool IsActive, string? ExpectedVersion);
+    public sealed record StateRequest([property: JsonRequired] bool IsActive, string? ExpectedVersion);
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-    public sealed record LockRequest(bool IsLockedOut, string? ExpectedVersion);
+    public sealed record LockRequest([property: JsonRequired] bool IsLockedOut, string? ExpectedVersion);
 
     public sealed record AccountView(
         Guid Id, string UserName, string? Email, string? FirstName, string? LastName,
