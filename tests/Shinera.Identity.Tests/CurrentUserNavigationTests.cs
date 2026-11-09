@@ -155,6 +155,12 @@ public sealed class CurrentUserNavigationTests
             top.Items.Select(x => x.Title));
         Assert.Equal("Members", Assert.Single(top.Items[2].Childs).Title);
 
+        // With owned-catalog mode selected on a provider without the reviewed
+        // SQL schema, the old global menu MUST NOT reappear as a fallback.
+        var noSqlOwned = await TenantWorkspaceNavigationService.GetAsync(
+            f.Current, f.Db, principal, ownedCatalogEnabled: true);
+        Assert.Empty(noSqlOwned!);
+
         // The HTTP endpoint is a scoped read-only view, not permission grant.
         var http = new DefaultHttpContext { User = principal };
         var httpResult = await TenantWorkspace.GetTenantNavigation(
