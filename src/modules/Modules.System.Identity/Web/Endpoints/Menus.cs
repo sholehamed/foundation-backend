@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Modules.System.Identity.Application.Features.Menus.Commands;
 using Modules.System.Identity.Application.Features.Menus.Queries;
 using Modules.System.Identity.Application.Abstractions;
