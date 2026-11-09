@@ -8,6 +8,7 @@ Tracking: [Issue #78](https://github.com/sholehamed/foundation-backend/issues/78
 - Migration `20261109040000_tenantstaffoptionalemail` alters the two SQL Server columns to NULL and replaces `IX_Users_TenantId_NormalizedEmail` with a **unique filtered index** on `TenantId,NormalizedEmail` applying only when both `TenantId IS NOT NULL` **and** `NormalizedEmail IS NOT NULL`. Thus two or more members without emails are legal while case-normalized real emails remain unique within each Tenant. The existing normalized UserName index remains untouched.
 - The EF model snapshot is updated alongside UserConfigurations, so drift tests will detect later accidental changes.
 - Migration Down explicitly **THROWs** if even one email-less user exists. It will not generate fictitious values or silently delete accounts; to restore NOT NULL the operator must first establish genuine email addresses. Never run an unreviewed reverse migration on Production.
+- The normal Identity/BFF principal factory must **omit the `email` claim** for genuinely email-less staff (a null `Claim` value would otherwise throw at real Login). Normal Tenant password authentication after forced reset is verified in SQL integration; no fabricated claim is emitted.
 - `User.EmailConfirmed` remains **false** for staff created without an email. Successfully changing a first-login password must not change it to true. No fake/placeholder domains or inferred recipient addresses.
 
 ## Endpoints
