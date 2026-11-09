@@ -104,6 +104,10 @@ public static class TenantWorkspace
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapPatch($"/{backendPrefix.Trim('/')}/tenant/workspace/groups/{{id:guid}}/state", ChangeGroupState)
             .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/groups/{{id:guid}}/members", GetGroupMembers)
+            .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/groups/{{id:guid}}/members/{{userId:guid}}", ChangeGroupMember)
+            .RequireAuthorization().WithTags("Tenant Workspace");
     }
 
     private static async Task<IResult> Get(
@@ -288,6 +292,7 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.GroupsCreate
                 or TenantWorkspacePermissionCatalog.GroupsUpdate
                 or TenantWorkspacePermissionCatalog.GroupsChangeState
+                or TenantWorkspacePermissionCatalog.GroupsAssignMembers
                 or TenantWorkspacePermissionCatalog.RolesCreate
                 or TenantWorkspacePermissionCatalog.RolesUpdate
                 or TenantWorkspacePermissionCatalog.RolesChangeState
@@ -302,6 +307,7 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.GroupsCreate
                 or TenantWorkspacePermissionCatalog.GroupsUpdate
                 or TenantWorkspacePermissionCatalog.GroupsChangeState
+                or TenantWorkspacePermissionCatalog.GroupsAssignMembers
                 or TenantWorkspacePermissionCatalog.RolesCreate
                 or TenantWorkspacePermissionCatalog.RolesUpdate
                 or TenantWorkspacePermissionCatalog.RolesChangeState
@@ -347,6 +353,8 @@ public static class TenantWorkspace
                 current, db, TenantWorkspacePermissionCatalog.GroupsUpdate, ct),
             canChangeGroupState = await TenantGroupLifecycleWriter.CanWriteAsync(
                 current, db, TenantWorkspacePermissionCatalog.GroupsChangeState, ct),
+            canAssignGroupMembers = await TenantGroupMemberAssignmentWriter.CanManageAsync(
+                current, db, ct),
             canManageBranches = await CanManageBranchesAsync(current, db, ct),
             canCreateRoles = await TenantRoleLifecycleWriter.CanWriteAsync(
                 current, db, TenantWorkspacePermissionCatalog.RolesCreate, ct),
@@ -951,6 +959,50 @@ public static class TenantWorkspace
         { return Results.Problem(statusCode: 409, title: "Tenant Group state conflict"); }
         catch (SqlException e) when (e.Number is 1205 or 3960)
         { return Results.Problem(statusCode: 409, title: "Tenant Group SQL conflict"); }
+    }
+
+    public static async Task<IResult> GetGroupMembers(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        Guid id, int page = 1, CancellationToken ct = default)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (page is < 1 or > 1000) return Results.BadRequest();
+        if (!await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.GroupsRead, ct) ||
+            !await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.MembersRead, ct))
+            return DeniedAfterAuthentication();
+        var matrix = await TenantGroupMemberAssignmentWriter.ReadAsync(
+            current, db, id, page, ct);
+        return matrix is null ? Results.NotFound() : Results.Ok(matrix);
+    }
+
+    public static async Task<IResult> ChangeGroupMember(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        Guid id, Guid userId, TenantGroupMemberAssignmentWriter.ChangeRequest request,
+        TrustedTenantWriteScope trustedWrites, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            var version = await TenantGroupMemberAssignmentWriter.ChangeAsync(
+                current, db, id, userId, request, trustedWrites, ct);
+            return Results.Ok(new { version });
+        }
+        catch (UnauthorizedAccessException) { return DeniedAfterAuthentication(); }
+        catch (TenantGroupMemberValidationException error)
+        { return Results.Problem(statusCode: 400,
+            title: "Invalid Group member request", detail: error.Message); }
+        catch (TenantGroupMemberConflictException error)
+        { return Results.Problem(statusCode: 409,
+            title: "Group membership conflict", detail: error.Message); }
+        catch (DbUpdateConcurrencyException)
+        { return Results.Problem(statusCode: 409, title: "Group membership concurrent edit"); }
+        catch (DbUpdateException)
+        { return Results.Problem(statusCode: 409, title: "Group membership storage conflict"); }
+        catch (SqlException error) when (error.Number is 1205 or 2601 or 2627 or 3960)
+        { return Results.Problem(statusCode: 409,
+            title: "Group membership concurrent SQL operation"); }
     }
 
     public static async Task<IResult> GetGroups(
