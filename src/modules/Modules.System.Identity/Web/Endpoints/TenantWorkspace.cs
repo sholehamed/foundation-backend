@@ -28,6 +28,9 @@ public static class TenantWorkspace
 
     public static void Map(WebApplication app, string backendPrefix)
     {
+        // FR-14C-2B authoring routes share the Tenant Session boundary, but
+        // have an independent default-OFF flag and live Owner permission.
+        TenantNavigationManagement.Map(app, backendPrefix);
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace", Get)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
@@ -327,7 +330,8 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.MembersAssignRoles
                 or TenantWorkspacePermissionCatalog.MembersCreate
                 or TenantWorkspacePermissionCatalog.MembersInvite
-                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword)
+                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword
+                or TenantWorkspacePermissionCatalog.NavigationManage)
                 allowed = allowed && current.WritableTenantIds.Contains(tenantId);
             // IAM writes also require a live local Owner, independent of
             // delegated read/group permissions.
@@ -343,7 +347,8 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.MembersAssignRoles
                 or TenantWorkspacePermissionCatalog.MembersCreate
                 or TenantWorkspacePermissionCatalog.MembersInvite
-                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword)
+                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword
+                or TenantWorkspacePermissionCatalog.NavigationManage)
                 allowed = allowed && await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(
                     current, db, ct);
             entries.Add(new UiAccessItem(
