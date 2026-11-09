@@ -1,3 +1,8 @@
+## FR-13B-3B — unify initial password into normal Tenant Login (2026-11-09)
+
+- Implement and test [#79](https://github.com/sholehamed/foundation-backend/issues/79): in-place forced change UX triggered by server verified temp credential; new atomic Owner create + credential issuance (two existing live Actions), SQL rollback, strict login fallback. [Contract](development/FR-13B3B-UNIFIED-TENANT-LOGIN.md).
+- Next acceptance gates: BFF Identity-host interactive flow (separate signed continuation), email-less Tenant members #78 and real TLS Staging two-account browser acceptance. Defaults OFF; no production SQL/catalog grant or toggle changes.
+
 ## FR-13B-3 — temporary credential first-login branch (2026-11-09)
 
 - Next reviewed [Issue #76](https://github.com/sholehamed/foundation-backend/issues/76): Owner creates inactive staff, manually issues unique short-lived temporary credential (never shared across users), staff enters **separate** first-login flow, receives only password-change challenge not JWT, changes permanent password, and logs in again normally. This route complements existing SMTP invitation activation. [Security acceptance](development/FR-13B3-TEMP-PASSWORD-FIRST-LOGIN.md).
