@@ -1,3 +1,8 @@
+## FR-14C-2A — separate Tenant-owned menu storage, read-only pilot (2026-11-09)
+
+- New additive SQL catalog supports Tenant-owned category and menu trees with composite same-Tenant/same-category foreign keys; secure read-only opt-in never falls back to global menus. Existing default-off Angular dynamic menu pilot from FR-14C-1 needs no activation for this change.
+- **Still open:** owned menu editor APIs and explicit reviewed grants/audit/CAS; approved legacy global Menu classification and import; branch membership and delegated Role scope; live browser/BFF tests and Migration/flag rollout. No Staging or Production activity. [FR-14C-2A design](development/FR-14C2A-TENANT-OWNED-NAVIGATION.md).
+
 ## FR-14C-1 — live authorized Tenant menu projection (2026-11-09)
 
 - Existing database-backed Menu tree can now be exposed to the Tenant workspace through a read-only Tenant endpoint and a code-owned, fail-closed route/page map; direct denials and Tenant RoleScope are respected. Companion Angular dynamic navigation pilot remains independently **OFF** and does not replace underlying API authorization.
