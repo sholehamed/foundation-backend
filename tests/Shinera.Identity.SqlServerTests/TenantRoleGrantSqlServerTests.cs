@@ -1546,6 +1546,145 @@ public sealed class TenantRoleGrantSqlServerTests
         }
     }
 
+    [Fact]
+    public async Task Email_less_Tenant_staff_can_be_created_twice_and_initial_password_activates_without_email()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var first = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "no.email.one", null, "First", "NoEmail"));
+            var second = await TenantPendingMemberWriter.CreateWithInitialPasswordAsync(
+                actor, db, hasher, new TenantPendingMemberWriter.CreateRequest(
+                    "no.email.two", "   ", "Second", "NoEmail"));
+            Assert.Null(first.Email);
+            Assert.Null(second.Member.Email);
+            Assert.False(first.IsActive);
+            Assert.False(second.Member.IsActive);
+            Assert.Equal(27, second.TemporaryPassword.Length);
+
+            db.ChangeTracker.Clear();
+            var rows = await db.Users.AsNoTracking().Where(u =>
+                u.Id == first.Id || u.Id == second.Member.Id).ToListAsync();
+            Assert.Equal(2, rows.Count);
+            Assert.All(rows, u =>
+            {
+                Assert.Null(u.Email);
+                Assert.Null(u.NormalizedEmail);
+                Assert.False(u.EmailConfirmed);
+                Assert.False(u.IsActive);
+            });
+            Assert.Equal(2, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[Users] WHERE [Email] IS NULL AND [NormalizedEmail] IS NULL AND [TenantId] = {0}",
+                actor.ActiveTenantId!.Value).SingleAsync());
+
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+            var resolved = await TenantFirstLoginWriter.ResolveForLoginAsync(
+                anonymous, hasher, new TenantFirstLoginWriter.StartRequest(
+                    "tenant-role-grants", "no.email.two", second.TemporaryPassword));
+            Assert.Equal("password_change_required", resolved.Status);
+            Assert.NotNull(resolved.Challenge);
+            await TenantFirstLoginWriter.CompleteAsync(
+                anonymous, hasher, new TenantFirstLoginWriter.CompleteRequest(
+                    "tenant-role-grants", resolved.Challenge,
+                    "New-Long-Employee-Password-2026!"));
+            anonymous.ChangeTracker.Clear();
+            var activated = await anonymous.Users.AsNoTracking()
+                .SingleAsync(u => u.Id == second.Member.Id);
+            Assert.True(activated.IsActive);
+            Assert.Null(activated.Email);
+            Assert.False(activated.EmailConfirmed);
+            Assert.Equal(PasswordVerificationResult.Success,
+                hasher.VerifyHashedPassword(activated, activated.PasswordHash,
+                    "New-Long-Employee-Password-2026!"));
+            Assert.False(await anonymous.UserRoles.IgnoreQueryFilters(["tenant"])
+                .AnyAsync(r => r.UserId == activated.Id));
+        });
+    }
+
+    [Fact]
+    public async Task Email_invitations_reject_missing_recipient_without_creating_token_or_audit()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "no.email.invite", null, "No", "Email"));
+            var fake = new FakeInvitationSender();
+            await Assert.ThrowsAsync<TenantInvitationTargetException>(() =>
+                TenantMemberInvitationWriter.InviteAsync(actor, db, fake, member.Id));
+            Assert.Null(fake.Token);
+            Assert.Null(fake.Recipient);
+            Assert.Equal(0, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberInvitations]")
+                .SingleAsync());
+            Assert.Equal(0, await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberLifecycleAuditEntries] WHERE [Action] LIKE 'invite_%'")
+                .SingleAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Actual_emails_stay_unique_per_Tenant_while_multiple_missing_emails_are_allowed()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "mail.one", "staff.real@example.test", "Actual", "Email"));
+            await Assert.ThrowsAsync<TenantMemberCreateConflictException>(() =>
+                TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                    new TenantPendingMemberWriter.CreateRequest(
+                        "mail.two", "STAFF.REAL@example.test", "Duplicate", "Email")));
+            await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "mail.empty.one", null, "No", "Mail"));
+            await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "mail.empty.two", null, "No", "Mail"));
+
+            var filter = await db.Database.SqlQueryRaw<string>(
+                """
+                SELECT [filter_definition] AS [Value]
+                FROM sys.indexes
+                WHERE [object_id] = OBJECT_ID('dbo.Users')
+                  AND [name] = 'IX_Users_TenantId_NormalizedEmail'
+                """).SingleAsync();
+            Assert.Contains("[NormalizedEmail] IS NOT NULL", filter);
+            Assert.Contains("[TenantId] IS NOT NULL", filter);
+            Assert.Equal(2, await db.Users.AsNoTracking().CountAsync(u =>
+                u.TenantId == actor.ActiveTenantId && u.NormalizedEmail == null));
+        });
+    }
+
+    [Fact]
+    public async Task Member_create_rejects_malformed_nonempty_email_but_accepts_null()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            await Assert.ThrowsAsync<TenantMemberCreateValidationException>(() =>
+                TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                    new TenantPendingMemberWriter.CreateRequest(
+                        "bad.email", "invalid@@mail", "Bad", "Email")));
+            var accepted = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "valid.no.email", null, "Valid", "Employee"));
+            Assert.Null(accepted.Email);
+        });
+    }
+
     private static Task<int> MemberAuditCountAsync(IdentityDbContext db) =>
         db.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberRoleAuditEntries]")
