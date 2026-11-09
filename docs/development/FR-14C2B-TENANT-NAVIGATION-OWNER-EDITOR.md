@@ -1,3 +1,5 @@
+> **SUPERSEDED — 2026-11-10.** The user confirmed that only **System Admin defines menus, routes and permission definitions**. This earlier Tenant-owned menu design is retired and **must not be deployed**. See [the authoritative decision](FR-14C-CENTRAL-MENU-AUTHORITY.md). Historical content below is retained solely to explain previous commits.
+
 # FR-14C-2B — Tenant-owned menu authoring (Owner-only)
 
 Checkpoint: 2026-11-09. This release creates a restricted editor API and audit. It does NOT enable delegation, branch RBAC or any Staging/Production deployment.
