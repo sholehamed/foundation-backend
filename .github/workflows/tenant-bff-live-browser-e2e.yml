@@ -102,5 +102,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fr-12g-c-live-browser-failure
-          path: frontend/test-results/
+          # Only the original BFF test may export failure diagnostics.
+          # The first-login spec displays a one-time password in Owner DOM;
+          # its error-context snapshots must NEVER become uploaded artifacts.
+          path: frontend/test-results/tenant-bff-real-*/
           if-no-files-found: ignore

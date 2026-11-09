@@ -62,6 +62,14 @@ than replacing its independently proven BFF/permission-revocation scenario.
   This separate file is necessary because Playwright worker-scoped use options
   cannot be applied inside test.describe; keeping the existing E2E file separate
   preserves its normal trace-on-failure diagnostics.
+- The workflow **uploads only** `tenant-bff-real-*/` failure artifacts. It never
+  uploads `tenant-first-login-real-*/` error-context snapshots, even if
+  Playwright creates such files locally on the disposable runner.
+- The secret used by the employee is read from the **actual Owner one-time
+  dialog**; do not parse Playwright response bodies that may disappear when
+  Angular refreshes the directory. Member identity/NULL email are verified
+  independently with the authenticated directory GET.
+
   Assertions avoid interpolating plaintext in error messages.
 - The prior BFF browser test retains its existing trace-on-failure diagnostics.
 - The test uses a disposable CI-only account, SQL database and domain ending
