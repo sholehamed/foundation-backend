@@ -1853,9 +1853,26 @@ public sealed class TenantWriteIsolationSqlServerTests
             Assert.Null((await guarded.Users.AsNoTracking()
                 .SingleAsync(x => x.Id == target.Id)).LockoutEndUtc);
 
+            // A failed-login lock (15 minutes) must NOT make the
+            // administrator's explicit lock(true) call a misleading no-op.
+            setup.ChangeTracker.Clear();
+            var transientlyLocked = await setup.Users.SingleAsync(x => x.Id == target.Id);
+            transientlyLocked.IsLockedOut = true;
+            transientlyLocked.LockoutEndUtc = DateTime.UtcNow.AddMinutes(15);
+            await setup.SaveChangesAsync();
+            var longLocked = await SystemAccountLifecycleWriter.LockAsync(
+                guarded, gateway, principal, target.Id,
+                new(true, unlocked.Version), enabled: true);
+            Assert.True((await guarded.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == target.Id))
+                .LockoutEndUtc > DateTime.UtcNow.AddYears(20));
+            var finalUnlocked = await SystemAccountLifecycleWriter.LockAsync(
+                guarded, gateway, principal, target.Id,
+                new(false, longLocked.Version), enabled: true);
+
             var suspended = await SystemAccountLifecycleWriter.StateAsync(
                 guarded, gateway, principal, target.Id,
-                new(false, unlocked.Version), enabled: true);
+                new(false, finalUnlocked.Version), enabled: true);
             Assert.False(suspended.IsActive);
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
                 SystemAccountLifecycleWriter.StateAsync(guarded, gateway, principal,
@@ -1887,7 +1904,7 @@ public sealed class TenantWriteIsolationSqlServerTests
                 SystemAccountLifecycleWriter.LockAsync(guarded, gateway, principal,
                     target.Id, new(true, resumed.Version), enabled: true));
 
-            Assert.Equal(5, await guarded.Database.SqlQueryRaw<int>(
+            Assert.Equal(7, await guarded.Database.SqlQueryRaw<int>(
                 "SELECT COUNT(*) AS [Value] FROM [dbo].[SystemAccountLifecycleAuditEntries] " +
                 "WHERE [TargetUserId]={0} AND [Action] IN " +
                 "('profile_updated','locked','unlocked','suspended','reactivated')",
