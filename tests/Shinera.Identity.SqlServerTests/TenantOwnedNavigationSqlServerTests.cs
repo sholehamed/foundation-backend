@@ -108,7 +108,7 @@ public sealed class TenantOwnedNavigationSqlServerTests
             db.Menus.Add(new Menu(Guid.NewGuid())
             {
                 CategoryId = globalCategory.Id, Title = "Global home",
-                Route = "/dashboard", IsActive = true, IsHidden = false
+                Icon = "home", Route = "/dashboard", IsActive = true, IsHidden = false
             });
             await db.SaveChangesAsync();
             await db.Database.ExecuteSqlInterpolatedAsync($"""
