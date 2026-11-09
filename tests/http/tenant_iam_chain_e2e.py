@@ -131,7 +131,7 @@ def run():
     preview = check("GET", REGISTRY_PATH + "/preview", 200, token=admin)
     assert preview["canApply"], "The disposable catalog unexpectedly conflicts"
     assert preview["hasPending"], "The fixture must exercise real SQL registration"
-    assert len([x for x in preview["changes"] if x["entity"] == "Permission"]) == 16
+    assert len([x for x in preview["changes"] if x["entity"] == "Permission"]) == 17
     check("POST", REGISTRY_PATH + "/apply", 403, token=owner,
           data={"fingerprint": preview["fingerprint"]})
     check("POST", REGISTRY_PATH + "/apply", 409, token=admin,
