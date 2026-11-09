@@ -32,6 +32,8 @@ SPECIAL_SYSTEM_HANDLERS = {
 PROTOCOL_ENDPOINT_GROUPS = {"Auth", "Connect", "PublicSignup"}
 SYSTEM_IGNORED = {"TenantWorkspace", "TenantWorkspacePermissionCatalog",
                   "TenantWorkspacePermissionEvaluator"}
+# Legacy POST search uses a request body for paging but never changes grants.
+REVIEWED_POST_READ_EXCEPTIONS = {"SYSTEM.GROUPS.MEMBERS-LIST"}
 
 
 @dataclass(frozen=True)
@@ -206,7 +208,8 @@ def audit_sources(endpoint_sources: dict[str, str], feature_source: str,
             # POST paged searches are explicitly read-only; every POST mapped
             # to READ must be reviewed in this restricted set.
             if method == "POST" and permission.endswith(".READ") and (
-                    not handler.lower().endswith(("pagedlist", "lookup"))):
+                    not handler.lower().endswith(("pagedlist", "lookup")) and
+                    key not in REVIEWED_POST_READ_EXCEPTIONS):
                 raise AuditError("Review POST-to-READ endpoint: " + key)
             rows.append(Row("system", name + ".cs", method, handler,
                             key, permission, "SYSTEM_ADMIN_PLUS_GRANULAR_OPT_IN"))
