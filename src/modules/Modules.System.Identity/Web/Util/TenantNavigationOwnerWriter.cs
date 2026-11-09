@@ -203,7 +203,7 @@ public static class TenantNavigationOwnerWriter
                 ([Id],[TenantId],[ActorUserId],[EntityId],[EntityType],[Action],
                  [PreviousVersion],[CurrentVersion])
             VALUES ({Guid.NewGuid()},{tenantId},{actor},{target},{entity},{action},
-                    {before},{after})
+                    CONVERT(binary(8),{before}),CONVERT(binary(8),{after}))
             """, ct);
 
     private static async Task EnsureRouteAsync(
