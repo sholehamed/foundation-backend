@@ -108,7 +108,7 @@ public static class TenantFirstLoginWriter
         return target;
     }
 
-    private static string GenerateTemporaryPassword()
+    internal static string GenerateTemporaryPassword()
     {
         Span<char> chars = stackalloc char[27];
         for (var index = 0; index < 24; index++)
