@@ -1,3 +1,9 @@
+## FR-14C — Tenant role grant integrity after central Registry correction (2026-11-10)
+
+- System Admin remains sole owner of definitions. A local Tenant Owner's role editor now **quarantines** an ordinary Tenant role containing any legacy/out-of-catalog/inactive/foreign-owned Permission link. The editor reports `canEdit:false`, and the CAS/audited PUT denies rather than silently preserving or deleting the unknown link.
+- Added real disposable SQL regression covering a System permission manually linked to a Tenant role, denied Owner editing with no mutation/audit, and recovery only after explicit test-side cleanup. No migration, grant/flag Apply, data modifications or operational deployment.
+- [Detailed contract and operator checks](development/FR-14C-TENANT-ROLE-GRANT-INTEGRITY.md). Next: centralized Registry completeness, grant entitlement review, read-only dynamic menu browser pilot, Branch-level RBAC. Staging/Production remain deferred.
+
 ## FR-14C architecture correction — System-only menu ownership (2026-11-10)
 
 - **Confirmed:** System Admin alone defines Menu, Page, Route, Resource, Action, Endpoint and permission catalog; Tenant Owner assigns only permitted, centrally registered capabilities to local roles and users. There is no Tenant menu authoring. The FR-14C-2A/2B owned menu implementation was superseded and removed from source; previously merged PRs remain historical records.
