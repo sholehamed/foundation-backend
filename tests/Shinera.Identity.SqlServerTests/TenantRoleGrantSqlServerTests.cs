@@ -1220,6 +1220,64 @@ public sealed class TenantRoleGrantSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Unified_Tenant_login_decision_preserves_normal_auth_and_limits_temp_password_to_change_challenge()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (owned, actor, _, _, _) = await SeedAsync(setup, options);
+            await using var db = owned;
+            var hasher = new PasswordHasher<User>();
+            var member = await TenantPendingMemberWriter.CreateAsync(actor, db, hasher,
+                new TenantPendingMemberWriter.CreateRequest(
+                    "unified.staff", "unified.staff@example.test", "Unified", "Staff"));
+            var issued = await TenantFirstLoginWriter.IssueAsync(actor, db, hasher, member.Id);
+            await using var anonymous = new IdentityDbContext(options, new TenantContext());
+
+            var ordinary = await TenantFirstLoginWriter.ResolveForLoginAsync(anonymous, hasher,
+                new TenantFirstLoginWriter.StartRequest(
+                    "tenant-role-grants", "unified.staff", "Ordinary-Password-Only"));
+            Assert.Equal("continue_login", ordinary.Status);
+            Assert.Null(ordinary.Challenge);
+
+            var unknown = await TenantFirstLoginWriter.ResolveForLoginAsync(anonymous, hasher,
+                new TenantFirstLoginWriter.StartRequest(
+                    "tenant-role-grants", "not-registered",
+                    "ABCDEF-GHJKLM-NPQRST-UVWXYZ"));
+            Assert.Equal("continue_login", unknown.Status);
+            Assert.Null(unknown.Challenge);
+
+            var wrong = await TenantFirstLoginWriter.ResolveForLoginAsync(anonymous, hasher,
+                new TenantFirstLoginWriter.StartRequest(
+                    "tenant-role-grants", "unified.staff",
+                    "ABCDEF-GHJKLM-NPQRST-UVWXYZ"));
+            Assert.Equal("continue_login", wrong.Status);
+            Assert.Null(wrong.Challenge);
+
+            var restricted = await TenantFirstLoginWriter.ResolveForLoginAsync(anonymous, hasher,
+                new TenantFirstLoginWriter.StartRequest(
+                    "tenant-role-grants", "unified.staff", issued.TemporaryPassword));
+            Assert.Equal("password_change_required", restricted.Status);
+            Assert.Equal(64, restricted.Challenge?.Length);
+            Assert.NotNull(restricted.ExpiresAtUtc);
+            Assert.False((await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id)).IsActive);
+            await TenantFirstLoginWriter.CompleteAsync(anonymous, hasher,
+                new TenantFirstLoginWriter.CompleteRequest(
+                    "tenant-role-grants", restricted.Challenge,
+                    "New-Permanent-Strong-Passphrase-2026!"));
+            anonymous.ChangeTracker.Clear();
+            var activated = await anonymous.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == member.Id);
+            Assert.True(activated.IsActive);
+            var after = await TenantFirstLoginWriter.ResolveForLoginAsync(anonymous, hasher,
+                new TenantFirstLoginWriter.StartRequest(
+                    "tenant-role-grants", "unified.staff", issued.TemporaryPassword));
+            Assert.Equal("continue_login", after.Status);
+            Assert.Null(after.Challenge);
+        });
+    }
+
     private static Task<int> MemberAuditCountAsync(IdentityDbContext db) =>
         db.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantMemberRoleAuditEntries]")
