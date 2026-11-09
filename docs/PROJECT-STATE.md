@@ -1,3 +1,8 @@
+## FR-13C-2A — Tenant Group lifecycle (2026-11-09)
+
+- Added separate Owner-only Tenant Group create/update/activate/deactivate endpoints with live `TENANT.GROUPS.READ` plus three exact ACTIONs, writable home scope and direct deny precedence. SQL SERIALIZABLE transaction + RowVersion CAS and new append-only `TenantGroupChangeAuditEntries` ledger. Existing UserGroup/GroupRole privilege links remain fail-closed and are NEVER created or modified here. Catalog expands 12 -> 15; no automatic Apply or grants.
+- Existing Group directory now returns SQL `version` and Angular has a dedicated create/edit/state page with confirmation, 403/409 handling and no membership controls yet. [Implementation and boundary](development/FR-13C2A-TENANT-GROUP-LIFECYCLE.md). Next FR-13C-2B: audited membership and GroupRole intent. Staging/Production untouched.
+
 ## FR-13C-1 — read-only Tenant member security audit (2026-11-09)
 
 - Added an Owner-only, authenticated, Tenant-scoped read of existing append-only lifecycle and direct member-role ledgers. New `GET /api/tenant/workspace/members/audit` uses live `TENANT.MEMBERS.READ` + current local Owner role, explicit SQL TenantId joins, bounded 20-row paging and optional member filtering. No credential fields or SQL mutation; System/non-Owner/mismatched-Tenant access denied.

@@ -51,7 +51,7 @@ public sealed class TenantRolePermissionMatrixTests
         var http = new DefaultHttpContext();
         var response = Assert.IsType<Ok<TenantWorkspace.TenantRolePermissionMatrix>>(
             await TenantWorkspace.GetRolePermissions(current, db, http, operatorRole.Id, default));
-        Assert.Equal(12, response.Value!.Permissions.Count);
+        Assert.Equal(15, response.Value!.Permissions.Count);
         Assert.Equal("Operator", response.Value.RoleName);
         var group = Assert.Single(response.Value.Permissions.Where(x =>
             x.Code == TenantWorkspacePermissionCatalog.GroupsRead));

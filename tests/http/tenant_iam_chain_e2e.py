@@ -131,7 +131,7 @@ def run():
     preview = check("GET", REGISTRY_PATH + "/preview", 200, token=admin)
     assert preview["canApply"], "The disposable catalog unexpectedly conflicts"
     assert preview["hasPending"], "The fixture must exercise real SQL registration"
-    assert len([x for x in preview["changes"] if x["entity"] == "Permission"]) == 12
+    assert len([x for x in preview["changes"] if x["entity"] == "Permission"]) == 15
     check("POST", REGISTRY_PATH + "/apply", 403, token=owner,
           data={"fingerprint": preview["fingerprint"]})
     check("POST", REGISTRY_PATH + "/apply", 409, token=admin,
@@ -146,6 +146,44 @@ def run():
     capabilities = check("GET", TENANT_PATH + "/admin-capabilities", 200, token=owner)
     assert capabilities["canCreateRoles"] and capabilities["canAssignMemberRoles"]
     assert capabilities["canUpdateRoles"] and capabilities["canChangeRoleState"]
+    assert capabilities["canCreateGroups"] and capabilities["canUpdateGroups"]
+    assert capabilities["canChangeGroupState"]
+    check("POST", TENANT_PATH + "/groups", 401,
+          data={"name": "Anonymous Group", "description": None})
+    check("POST", TENANT_PATH + "/groups", 403, token=staff,
+          data={"name": "Staff Group", "description": None})
+    check("POST", TENANT_PATH + "/groups", 403, token=admin,
+          data={"name": "System Group", "description": None})
+    group = check("POST", TENANT_PATH + "/groups", 200, token=owner,
+                  data={"name": "  E2E Front Desk  ", "description": "Reception"})
+    group_id = str(uuid.UUID(group["id"]))
+    assert group["name"] == "E2E Front Desk" and group["isActive"] and group["version"]
+    check("POST", TENANT_PATH + "/groups", 409, token=owner,
+          data={"name": "e2e front desk", "description": None})
+    check("POST", TENANT_PATH + "/groups", 400, token=owner,
+          data={"name": "Owner", "description": None})
+    groups = check("GET", TENANT_PATH + "/groups", 200, token=owner)
+    assert any(x["id"] == group_id and x["version"] == group["version"]
+               for x in groups["items"])
+    renamed_group = check("PUT", f"{TENANT_PATH}/groups/{group_id}", 200, token=owner,
+                          data={"name": "E2E Desk Updated", "description": None,
+                                "expectedVersion": group["version"]})
+    assert renamed_group["version"] != group["version"]
+    check("PUT", f"{TENANT_PATH}/groups/{group_id}", 409, token=owner,
+          data={"name": "Stale", "description": None, "expectedVersion": group["version"]})
+    check("PUT", f"{TENANT_PATH}/groups/{FOREIGN_ID}", 403, token=owner,
+          data={"name": "Foreign", "description": None,
+                "expectedVersion": renamed_group["version"]})
+    disabled_group = check("PATCH", f"{TENANT_PATH}/groups/{group_id}/state",
+                           200, token=owner,
+                           data={"isActive": False,
+                                 "expectedVersion": renamed_group["version"]})
+    assert not disabled_group["isActive"]
+    check("PATCH", f"{TENANT_PATH}/groups/{group_id}/state", 409, token=owner,
+          data={"isActive": True, "expectedVersion": renamed_group["version"]})
+    check("PATCH", f"{TENANT_PATH}/groups/{group_id}/state", 200, token=owner,
+          data={"isActive": True, "expectedVersion": disabled_group["version"]})
+    check("GET", TENANT_PATH + "/groups", 403, token=staff)
 
     # Role is born with NO permissions. Independent role direct grants follow.
     new_role = check("POST", TENANT_PATH + "/roles", 200, token=owner,

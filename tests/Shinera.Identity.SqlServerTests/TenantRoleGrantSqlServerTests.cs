@@ -130,6 +130,132 @@ public sealed class TenantRoleGrantSqlServerTests
     }
 
     [Fact]
+    public async Task Tenant_group_lifecycle_is_owner_only_CAS_scoped_and_append_only()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (db, owner, _, ordinaryRole, _) = await SeedAsync(setup, options);
+            await using (db)
+            {
+                var tenantId = owner.ActiveTenantId!.Value;
+                var group = await TenantGroupLifecycleWriter.CreateAsync(
+                    owner, db, new("  Reception Team  ", "  Customer service  "));
+                Assert.Equal("Reception Team", group.Name);
+                Assert.Equal("Customer service", group.Description);
+                Assert.True(group.IsActive);
+                Assert.NotEmpty(group.Version);
+                Assert.False(await db.UserGroups.AsNoTracking().AnyAsync(
+                    x => x.GroupId == group.Id));
+                Assert.False(await db.GroupRoles.AsNoTracking().AnyAsync(
+                    x => x.GroupId == group.Id));
+
+                await Assert.ThrowsAsync<TenantGroupLifecycleConflictException>(() =>
+                    TenantGroupLifecycleWriter.CreateAsync(
+                        owner, db, new("RECEPTION TEAM", null)));
+                await Assert.ThrowsAsync<TenantGroupLifecycleValidationException>(() =>
+                    TenantGroupLifecycleWriter.CreateAsync(
+                        owner, db, new("OWNER", null)));
+
+                var renamed = await TenantGroupLifecycleWriter.UpdateAsync(
+                    owner, db, group.Id, new("Front Desk Team", "Public lobby", group.Version));
+                Assert.NotEqual(group.Version, renamed.Version);
+                Assert.Equal("Front Desk Team", renamed.Name);
+                await Assert.ThrowsAsync<TenantGroupLifecycleConflictException>(() =>
+                    TenantGroupLifecycleWriter.UpdateAsync(
+                        owner, db, group.Id, new("Stale group", null, group.Version)));
+                var noOp = await TenantGroupLifecycleWriter.UpdateAsync(
+                    owner, db, group.Id, new(renamed.Name, renamed.Description, renamed.Version));
+                Assert.Equal(renamed.Version, noOp.Version);
+
+                var disabled = await TenantGroupLifecycleWriter.ChangeStateAsync(
+                    owner, db, group.Id, new(false, renamed.Version));
+                Assert.False(disabled.IsActive);
+                await Assert.ThrowsAsync<TenantGroupLifecycleConflictException>(() =>
+                    TenantGroupLifecycleWriter.ChangeStateAsync(
+                        owner, db, group.Id, new(true, renamed.Version)));
+                var enabled = await TenantGroupLifecycleWriter.ChangeStateAsync(
+                    owner, db, group.Id, new(true, disabled.Version));
+                Assert.True(enabled.IsActive);
+
+                Assert.Equal(4, await db.Database.SqlQueryRaw<int>(
+                    "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantGroupChangeAuditEntries]")
+                    .SingleAsync());
+                var events = await db.Database.SqlQueryRaw<string>(
+                    "SELECT [Action] AS [Value] FROM [dbo].[TenantGroupChangeAuditEntries]")
+                    .ToArrayAsync();
+                Assert.Contains("create", events);
+                Assert.Contains("update", events);
+                Assert.Equal(2, events.Count(x => x == "state"));
+                await Assert.ThrowsAsync<SqlException>(() => db.Database.ExecuteSqlRawAsync(
+                    "DELETE FROM [dbo].[TenantGroupChangeAuditEntries]"));
+
+                // A user granted read via a Tenant role must not mutate Groups.
+                var user = new User(Guid.NewGuid(), tenantId,
+                    "group-staff", "group-staff@example.test", "Group", "Staff", UserType.Tenant)
+                {
+                    IsActive = true, NormalizedUserName = "GROUP-STAFF",
+                    NormalizedEmail = "GROUP-STAFF@EXAMPLE.TEST", PasswordHash = "fixture"
+                };
+                setup.Users.Add(user);
+                setup.UserRoles.Add(new UserRole(tenantId, user.Id, ordinaryRole));
+                await setup.SaveChangesAsync();
+                var role = await db.Roles.AsNoTracking().SingleAsync(x => x.Id == ordinaryRole);
+                await TenantRolePermissionGrantWriter.ReplaceAsync(
+                    owner, db, ordinaryRole,
+                    new(Convert.ToBase64String(role.RowVersion),
+                        [TenantWorkspacePermissionCatalog.GroupsRead]));
+                var staffContext = new TenantContext();
+                staffContext.InitializeTenant(user.Id, tenantId,
+                    [tenantId], [tenantId], tenantId);
+                await using var staffDb = new IdentityDbContext(options, staffContext);
+                Assert.True(await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                    staffContext, staffDb, TenantWorkspacePermissionCatalog.GroupsRead, default));
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                    TenantGroupLifecycleWriter.CreateAsync(
+                        staffContext, staffDb, new("Unauthorized group", null)));
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                    TenantGroupLifecycleWriter.ChangeStateAsync(
+                        staffContext, staffDb, group.Id, new(false, enabled.Version)));
+
+                var foreignTenant = await setup.Tenants.AsNoTracking()
+                    .Where(x => x.Slug == "other-role-grants")
+                    .Select(x => x.Id).SingleAsync();
+                var foreignGroup = new Group(Guid.NewGuid())
+                {
+                    TenantId = foreignTenant, Name = "Other workspace group",
+                    NormalizedName = "OTHER WORKSPACE GROUP", IsActive = true
+                };
+                setup.Groups.Add(foreignGroup);
+                await setup.SaveChangesAsync();
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                    TenantGroupLifecycleWriter.UpdateAsync(
+                        owner, db, foreignGroup.Id, new("Hijack", null,
+                            Convert.ToBase64String(foreignGroup.RowVersion))));
+            }
+        });
+    }
+
+    [Fact]
+    public async Task Group_create_rollback_when_append_only_audit_cannot_be_written()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (db, owner, _, _, _) = await SeedAsync(setup, options);
+            await using (db)
+            {
+                await setup.Database.ExecuteSqlRawAsync(
+                    "DROP TABLE [dbo].[TenantGroupChangeAuditEntries]");
+                await Assert.ThrowsAsync<SqlException>(() =>
+                    TenantGroupLifecycleWriter.CreateAsync(
+                        owner, db, new("Rollback group", "Must never persist")));
+                db.ChangeTracker.Clear();
+                Assert.False(await db.Groups.AsNoTracking()
+                    .AnyAsync(x => x.Name == "Rollback group"));
+            }
+        });
+    }
+
+    [Fact]
     public async Task Owner_grants_revokes_with_version_CAS_and_append_only_audit()
     {
         await WithDisposableDatabaseAsync(async (setup, options) =>
