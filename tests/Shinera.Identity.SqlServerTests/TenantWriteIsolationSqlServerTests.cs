@@ -1697,6 +1697,257 @@ public sealed class TenantWriteIsolationSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task System_account_profile_state_lock_are_scoped_versioned_and_audited()
+    {
+        await WithTestDatabaseAsync(async (setup, tenant, guarded, trusted) =>
+        {
+            var masterId = DefaultSeedData.MasterTenant.Id;
+            var master = new Tenant(masterId, null, "Master",
+                "lifecycle-master", "localhost");
+            var foreign = new Tenant(null, "Other",
+                "lifecycle-foreign", "localhost");
+            var actor = new User(null, "lifecycle-admin", "lc-admin@example.test",
+                "System", "Administrator", UserType.System)
+            {
+                NormalizedUserName = "LIFECYCLE-ADMIN",
+                NormalizedEmail = "LC-ADMIN@EXAMPLE.TEST",
+                PasswordHash = "unchanged-actor", SecurityStamp = "actor-stamp",
+                ConcurrencyStamp = "actor-version"
+            };
+            var target = new User(null, "lifecycle-target", "lc-target@example.test",
+                "Old", "Profile", UserType.System)
+            {
+                NormalizedUserName = "LIFECYCLE-TARGET",
+                NormalizedEmail = "LC-TARGET@EXAMPLE.TEST",
+                PasswordHash = "never-overwrite-credential",
+                SecurityStamp = "initial-security-stamp",
+                ConcurrencyStamp = "version-001",
+                EmailConfirmed = true
+            };
+            var foreignUser = new User(foreign.Id, "lifecycle-foreign",
+                "lc-foreign@example.test", "Foreign", "Tenant", UserType.Tenant)
+            {
+                NormalizedUserName = "LIFECYCLE-FOREIGN",
+                NormalizedEmail = "LC-FOREIGN@EXAMPLE.TEST",
+                PasswordHash = "tenant-credential", SecurityStamp = "tenant-stamp",
+                ConcurrencyStamp = "tenant-version"
+            };
+            var reservedUser = new User(null, "lifecycle-reserved",
+                "lc-reserved@example.test", "Reserved", "User", UserType.System)
+            {
+                NormalizedUserName = "LIFECYCLE-RESERVED",
+                NormalizedEmail = "LC-RESERVED@EXAMPLE.TEST",
+                PasswordHash = "reserved-credential", SecurityStamp = "reserved-stamp",
+                ConcurrencyStamp = "reserved-version"
+            };
+            var superRole = new Role(masterId, "superadmin", null);
+            setup.AddRange(master, foreign, actor, target, foreignUser, reservedUser,
+                superRole, new UserRole(masterId, actor.Id, superRole.Id),
+                new UserRole(masterId, reservedUser.Id, superRole.Id));
+            await setup.SaveChangesAsync();
+
+            tenant.InitializeSystem(actor.Id, isSuperAdmin: true);
+            var principal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim(OpenIddictConstants.Claims.Subject, actor.Id.ToString()),
+                new Claim("account_type", "system"),
+                new Claim(OpenIddictConstants.Claims.Role, "superadmin")
+            ], "test"));
+            var gateway = new AuthorizedPlatformMasterWrite(guarded, tenant, trusted,
+                NullLogger<AuthorizedPlatformMasterWrite>.Instance);
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemAccountLifecycleWriter.ReadAsync(guarded, gateway,
+                    principal, target.Id, enabled: false));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemAccountLifecycleWriter.ReadAsync(guarded, gateway,
+                    principal, foreignUser.Id, enabled: true));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemAccountLifecycleWriter.ReadAsync(guarded, gateway,
+                    principal, reservedUser.Id, enabled: true));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemAccountLifecycleWriter.ReadAsync(guarded, gateway,
+                    principal, actor.Id, enabled: true));
+
+            var versioned = await SystemAccountLifecycleWriter.ReadAsync(
+                guarded, gateway, principal, target.Id, enabled: true);
+            Assert.Equal("version-001", versioned.Version);
+
+            await Assert.ThrowsAsync<SystemAccountMutationValidationException>(() =>
+                SystemAccountLifecycleWriter.ProfileAsync(guarded, gateway, principal,
+                    target.Id, new("New", "Person", "bad-email", versioned.Version),
+                    enabled: true));
+
+            var updated = await SystemAccountLifecycleWriter.ProfileAsync(
+                guarded, gateway, principal, target.Id,
+                new("New", "Person", "new.person@example.test", versioned.Version),
+                enabled: true);
+            Assert.Equal("New", updated.FirstName);
+            Assert.Equal("new.person@example.test", updated.Email);
+            Assert.NotEqual("version-001", updated.Version);
+            var stored = await guarded.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == target.Id);
+            Assert.False(stored.EmailConfirmed);
+            Assert.Equal("never-overwrite-credential", stored.PasswordHash);
+            Assert.Null(stored.TenantId);
+            Assert.Equal(UserType.System, stored.UserType);
+            Assert.NotEqual("initial-security-stamp", stored.SecurityStamp);
+            Assert.Equal("LC-FOREIGN@EXAMPLE.TEST",
+                (await setup.Users.AsNoTracking().SingleAsync(x => x.Id == foreignUser.Id))
+                    .NormalizedEmail); // Tenant unaffected
+            Assert.Equal("tenant-credential",
+                (await setup.Users.AsNoTracking().SingleAsync(x => x.Id == foreignUser.Id))
+                    .PasswordHash);
+
+            await Assert.ThrowsAsync<SystemAccountMutationConflictException>(() =>
+                SystemAccountLifecycleWriter.ProfileAsync(guarded, gateway, principal,
+                    target.Id, new("Stale", "Writer", "stale@example.test", versioned.Version),
+                    enabled: true));
+
+            var locked = await SystemAccountLifecycleWriter.LockAsync(
+                guarded, gateway, principal, target.Id,
+                new(true, updated.Version), enabled: true);
+            Assert.True(locked.IsLockedOut);
+            var duringLock = await guarded.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == target.Id);
+            Assert.True(duringLock.LockoutEndUtc > DateTime.UtcNow.AddYears(20));
+            Assert.NotEqual(stored.SecurityStamp, duringLock.SecurityStamp);
+
+            await Assert.ThrowsAsync<SystemAccountMutationConflictException>(() =>
+                SystemAccountLifecycleWriter.LockAsync(guarded, gateway, principal,
+                    target.Id, new(false, updated.Version), enabled: true));
+            var unlocked = await SystemAccountLifecycleWriter.LockAsync(
+                guarded, gateway, principal, target.Id,
+                new(false, locked.Version), enabled: true);
+            Assert.False(unlocked.IsLockedOut);
+            Assert.Null((await guarded.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == target.Id)).LockoutEndUtc);
+
+            var suspended = await SystemAccountLifecycleWriter.StateAsync(
+                guarded, gateway, principal, target.Id,
+                new(false, unlocked.Version), enabled: true);
+            Assert.False(suspended.IsActive);
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemAccountLifecycleWriter.StateAsync(guarded, gateway, principal,
+                    target.Id, new(true, suspended.Version), enabled: true));
+
+            // A reviewed first-login completion record is mandatory for
+            // resumption; pending new System identities cannot be activated
+            // through the privileged state endpoint alone.
+            await guarded.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO [dbo].[SystemAccountLifecycleAuditEntries]
+                    ([Id],[ActorUserId],[TargetUserId],[Action],[OccurredAtUtc])
+                VALUES ({Guid.NewGuid()},{actor.Id},{target.Id},
+                    {"temp_activated"},SYSUTCDATETIME())
+                """);
+            var resumed = await SystemAccountLifecycleWriter.StateAsync(
+                guarded, gateway, principal, target.Id,
+                new(true, suspended.Version), enabled: true);
+            Assert.True(resumed.IsActive);
+            Assert.Equal("never-overwrite-credential",
+                (await guarded.Users.AsNoTracking().SingleAsync(x => x.Id == target.Id))
+                    .PasswordHash);
+
+            // Actor is read live inside every mutation, not trusted from JWT
+            // role claims after its Master grant has been revoked.
+            setup.UserRoles.Remove(await setup.UserRoles.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.UserId == actor.Id));
+            await setup.SaveChangesAsync();
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemAccountLifecycleWriter.LockAsync(guarded, gateway, principal,
+                    target.Id, new(true, resumed.Version), enabled: true));
+
+            Assert.Equal(5, await guarded.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[SystemAccountLifecycleAuditEntries] " +
+                "WHERE [TargetUserId]={0} AND [Action] IN " +
+                "('profile_updated','locked','unlocked','suspended','reactivated')",
+                target.Id).SingleAsync());
+            Assert.Equal("firstName,lastName,email",
+                await guarded.Database.SqlQueryRaw<string>(
+                    "SELECT [ChangedFields] AS [Value] FROM [dbo].[SystemAccountLifecycleAuditEntries] " +
+                    "WHERE [TargetUserId]={0} AND [Action]='profile_updated'",
+                    target.Id).SingleAsync());
+            await Assert.ThrowsAsync<SqlException>(() =>
+                guarded.Database.ExecuteSqlRawAsync(
+                    "DELETE FROM [dbo].[SystemAccountLifecycleAuditEntries]"));
+            Assert.False(trusted.AllowsPlatformTenant(masterId));
+            Assert.False(tenant.IsFilterDisabled);
+        });
+    }
+
+    [Fact]
+    public async Task System_account_profile_audit_failure_rolls_back_user_and_version()
+    {
+        await WithTestDatabaseAsync(async (setup, tenant, guarded, trusted) =>
+        {
+            var masterId = DefaultSeedData.MasterTenant.Id;
+            var actor = new User(null, "rollback-admin", "rollback-admin@example.test",
+                "System", "Admin", UserType.System)
+            {
+                NormalizedUserName = "ROLLBACK-ADMIN",
+                NormalizedEmail = "ROLLBACK-ADMIN@EXAMPLE.TEST",
+                PasswordHash = "fixture", SecurityStamp = "actor-stamp"
+            };
+            var target = new User(null, "rollback-account", "rollback-account@example.test",
+                "Before", "Person", UserType.System)
+            {
+                NormalizedUserName = "ROLLBACK-ACCOUNT",
+                NormalizedEmail = "ROLLBACK-ACCOUNT@EXAMPLE.TEST",
+                PasswordHash = "original-password",
+                SecurityStamp = "original-stamp", ConcurrencyStamp = "original-version"
+            };
+            var role = new Role(masterId, "superadmin", null);
+            setup.AddRange(new Tenant(masterId, null, "Master", "mutation-audit-master", "localhost"),
+                actor, target, role, new UserRole(masterId, actor.Id, role.Id));
+            await setup.SaveChangesAsync();
+            tenant.InitializeSystem(actor.Id, isSuperAdmin: true);
+            var principal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim(OpenIddictConstants.Claims.Subject, actor.Id.ToString()),
+                new Claim("account_type", "system"),
+                new Claim(OpenIddictConstants.Claims.Role, "superadmin")
+            ], "test"));
+            var gateway = new AuthorizedPlatformMasterWrite(guarded, tenant, trusted,
+                NullLogger<AuthorizedPlatformMasterWrite>.Instance);
+
+            await setup.Database.ExecuteSqlRawAsync("""
+                CREATE TRIGGER [dbo].[TR_SystemAccountLifecycleAudit_TestRejectProfile]
+                ON [dbo].[SystemAccountLifecycleAuditEntries]
+                AFTER INSERT AS
+                BEGIN
+                    IF EXISTS(SELECT 1 FROM inserted WHERE [Action]='profile_updated')
+                        THROW 51087, 'Injected profile audit failure', 1;
+                END
+                """);
+            try
+            {
+                await Assert.ThrowsAsync<SqlException>(() =>
+                    SystemAccountLifecycleWriter.ProfileAsync(guarded, gateway, principal,
+                        target.Id,
+                        new("After", "Person", "after@example.test", "original-version"),
+                        enabled: true));
+            }
+            finally
+            {
+                await setup.Database.ExecuteSqlRawAsync(
+                    "DROP TRIGGER IF EXISTS [dbo].[TR_SystemAccountLifecycleAudit_TestRejectProfile]");
+                guarded.ChangeTracker.Clear();
+            }
+            var afterRollback = await guarded.Users.AsNoTracking()
+                .SingleAsync(x => x.Id == target.Id);
+            Assert.Equal("Before", afterRollback.FirstName);
+            Assert.Equal("original-version", afterRollback.ConcurrencyStamp);
+            Assert.Equal("original-stamp", afterRollback.SecurityStamp);
+            Assert.Equal("original-password", afterRollback.PasswordHash);
+
+            var updated = await SystemAccountLifecycleWriter.ProfileAsync(
+                guarded, gateway, principal, target.Id,
+                new("After", "Person", "after@example.test", "original-version"),
+                enabled: true);
+            Assert.Equal("After", updated.FirstName);
+            Assert.NotEqual("original-version", updated.Version);
+        });
+    }
+
     private static Task<int> CountAuditEventsAsync(IdentityDbContext db, string kind) =>
         db.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*) AS [Value] FROM [dbo].[PlatformGrantAuditEntries] WHERE [Kind] = @kind",
