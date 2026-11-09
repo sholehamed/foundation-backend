@@ -1,3 +1,8 @@
+## FR-13C-2C — Tenant GroupRole grants (2026-11-09)
+
+- Reviewed `TENANT.GROUPS.ASSIGN-ROLES` ACTION, Owner-only group/role-pair SQL CAS grant/revoke, live tenant authorization, extra actor-member/Owner-group denial, immutable grant history with rollback and 20-row Group role reader. Raw generic GroupRole and UserPermission writes stay denied.
+- Backend SQL Server + signed HTTP acceptance, Angular companion guarded route planned; [contract](development/FR-13C2C-TENANT-GROUP-ROLE-GRANTS.md). Staging stays deferred. Next: broader security history and legacy membership reconciliation.
+
 ## FR-13C-2B — single-member Tenant Group grants (2026-11-09)
 
 - New explicit reviewed `TENANT.GROUPS.ASSIGN-MEMBERS` ACTION and owner-only, tenant-scoped, SQL CAS/audited UserGroup grant and revoke. Group+single-user temporary write intent, 20-row eligible-member reader, no Owner/self/foreign targets, no bulk membership truncation. Existing GroupRole/UserPermission generic writes remain denied.
