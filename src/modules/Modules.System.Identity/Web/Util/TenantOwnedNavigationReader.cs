@@ -51,7 +51,6 @@ public static class TenantOwnedNavigationReader
             SELECT [Id], [Title], [SortOrder]
             FROM [dbo].[TenantNavigationCategories]
             WHERE [TenantId] = @tenantId AND [IsActive] = 1
-            ORDER BY [SortOrder], [Id]
             """, parameter).ToListAsync(ct);
 
         var items = await db.Database.SqlQueryRaw<ItemRow>(
@@ -60,7 +59,6 @@ public static class TenantOwnedNavigationReader
                    [Title], [Icon], [Route], [SortOrder]
             FROM [dbo].[TenantNavigationItems]
             WHERE [TenantId] = @tenantId AND [IsActive] = 1
-            ORDER BY [SortOrder], [Id]
             """, new SqlParameter("@tenantId", tenantId)).ToListAsync(ct);
 
         return Project(categories, items, allowedRoutes);
