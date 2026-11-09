@@ -102,14 +102,14 @@ public sealed class FeatureRegistrySqlServerTests
             var preview = await registry.PreviewAsync();
             Assert.True(preview.CanApply);
             Assert.True(preview.HasPending);
-            Assert.Equal(53, preview.Changes.Count); // module + resource + 17x(permission, UI, link)
+            Assert.Equal(59, preview.Changes.Count); // module + resource + 19x(permission, UI, link)
             Assert.Empty(await db.Permissions.AsNoTracking().ToListAsync());
 
             var accepted = await registry.ApplyAsync(preview.Fingerprint);
             Assert.True(accepted.CanApply);
-            Assert.Equal(17, await db.Permissions.CountAsync());
-            Assert.Equal(17, await db.UiResources.CountAsync());
-            Assert.Equal(17, await db.PermissionUiResources.CountAsync());
+            Assert.Equal(19, await db.Permissions.CountAsync());
+            Assert.Equal(19, await db.UiResources.CountAsync());
+            Assert.Equal(19, await db.PermissionUiResources.CountAsync());
             Assert.Single(await db.Modules.ToListAsync());
             Assert.Single(await db.Resources.ToListAsync());
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
@@ -121,7 +121,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.False(stable.HasPending);
             Assert.NotEqual(preview.Fingerprint, stable.Fingerprint);
             await registry.ApplyAsync(stable.Fingerprint);
-            Assert.Equal(17, await db.Permissions.CountAsync());
+            Assert.Equal(19, await db.Permissions.CountAsync());
 
             var p = await db.Permissions.SingleAsync(x =>
                 x.Code == TenantWorkspacePermissionCatalog.MembersRead);
