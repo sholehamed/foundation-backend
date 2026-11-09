@@ -374,7 +374,7 @@ public static class TenantNavigationOwnerWriter
 
             await EnsureRouteAsync(current, db, existing.Route, ct);
             await EnsureRouteAsync(current, db, route, ct);
-            if (!await db.Database.SqlQueryRaw<int>(
+            if (await db.Database.SqlQueryRaw<int>(
                     "SELECT COUNT(*) AS [Value] FROM [dbo].[TenantNavigationCategories] " +
                     "WHERE [TenantId]={0} AND [Id]={1} AND [IsActive]=1",
                     tenant, existing.CategoryId).SingleAsync(ct) == 0)
