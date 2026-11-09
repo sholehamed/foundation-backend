@@ -2,7 +2,7 @@
 
 - Extended existing trusted-main-only FR-12G-C Action; real local HTTPS Identity + Tenant, SQL Server, Angular form, real OpenIddict Code+PKCE and BFF session. New browser scenario covers Owner atomic create of email-less inactive staff, one-time credential, forced password change inside ordinary Identity login, no pre-change session, CSRF rejection, consumed-secret replay denial, fresh login and real role grant/revoke effects (401 stale ticket, 403 fresh ticket, UI access decision).
 - First-login feature flags enabled ONLY for disposable Action runtime; normal Frontend/Backend Production and Staging flags unchanged. One-time secret is never printed; sensitive first-login test isolated in its own Playwright file with tracing/screenshot/video disabled. Existing BFF E2E preserved.
-- **Acceptance not assumed:** requires a successful post-merge main-branch live workflow run. This is CI infrastructure, NOT a remotely deployed Staging server or Production rollout. [Implementation/runbook](development/FR-13C-DISPOSABLE-LIVE-FIRST-LOGIN-E2E.md).
+- **Verified live acceptance:** Backend main `919f636b97c34b7886bda87964fe523758654b90`; [GitHub Action run #42601232203](https://github.com/sholehamed/foundation-backend/actions/runs/42601232203) **success** on 2026-11-09. Real SQL fixture and HTTP IAM 51 checks passed; Chromium/HTTPS Playwright **2/2**: original BFF (13.6 s) and email-less mandatory first-login with grant/revoke (13.1 s). This is disposable CI infrastructure, NOT a remotely deployed Staging or Production server. [Implementation/runbook](development/FR-13C-DISPOSABLE-LIVE-FIRST-LOGIN-E2E.md).
 
 ## FR-13B-3A — email-less local Tenant staff creation (2026-11-09)
 
