@@ -89,7 +89,7 @@ public static class SystemAccountLifecycleWriter
                 x.Role.NormalizedName == "SUPERADMIN", ct);
         var viaGroup = await db.UserGroups.IgnoreQueryFilters(["tenant"])
             .AsNoTracking().AnyAsync(x => x.UserId == targetId &&
-                db.GroupRoles.IgnoreQueryFilters(["tenant"]).Any(gr =>
+                db.GroupRoles.Any(gr =>
                     gr.GroupId == x.GroupId && gr.Role.NormalizedName == "SUPERADMIN"), ct);
         if (directReserved || viaGroup)
             throw new UnauthorizedAccessException(
