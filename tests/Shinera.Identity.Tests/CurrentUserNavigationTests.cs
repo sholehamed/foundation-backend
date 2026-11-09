@@ -168,6 +168,15 @@ public sealed class CurrentUserNavigationTests
         Assert.IsType<Ok<List<CurrentNavigationCategory>>>(httpResult);
         Assert.Equal("no-store", http.Response.Headers.CacheControl.ToString());
 
+        var ownedConfig = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> {
+                ["Identity:TenantNavigation:OwnedCatalogEnabled"] = "true"
+            }).Build();
+        var featureOnResult = await TenantWorkspace.GetTenantNavigation(
+            f.Current, f.Db, http, ownedConfig);
+        Assert.Empty(Assert.IsType<Ok<List<CurrentNavigationCategory>>>(
+            featureOnResult).Value!);
+
         // A live direct user DENY wins over the role. Parent containers with
         // zero children disappear rather than leaking a hidden section name.
         f.Direct(user, members, tenant.Id, false);
