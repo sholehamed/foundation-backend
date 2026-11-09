@@ -32,7 +32,8 @@ public static class TenantWorkspaceNavigationService
 
     public static async Task<List<CurrentNavigationCategory>?> GetAsync(
         ITenantContext current, IdentityDbContext db, ClaimsPrincipal principal,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool ownedCatalogEnabled = false)
     {
         if (principal.Identity?.IsAuthenticated != true ||
             principal.FindFirstValue("account_type") != "tenant" ||
@@ -60,6 +61,14 @@ public static class TenantWorkspaceNavigationService
                     current, db, entry.Value, ct))
                 allowed.Add(entry.Key);
         }
+
+        // Ownership cutover is one-way: an empty, unavailable or unseeded
+        // owned catalog never falls back to a global shared Menu tree.
+        // All route decisions are still computed by the existing live PAGE
+        // evaluator above and not by tenant-controlled catalog fields.
+        if (ownedCatalogEnabled)
+            return await TenantOwnedNavigationReader.ReadAsync(
+                db, tenantId, allowed, ct);
 
         List<CurrentNavigationItem> Project(IReadOnlyList<CurrentNavigationItem> source)
         {
