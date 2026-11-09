@@ -305,6 +305,30 @@ def run():
     assert not ui_allowed(staff, MEMBERS_READ)
     assert revoked_role["version"] != relink["version"]
 
+    # FR-13C-2D: Owner-only, read-only unified Group timeline and
+    # historical (non-repairing) relationship health counters.
+    group_audit_path = f"{TENANT_PATH}/groups/{group_id}/audit"
+    check("GET", group_audit_path, 401)
+    check("GET", group_audit_path, 403, token=admin)
+    check("GET", group_audit_path, 403, token=staff)
+    check("GET", group_audit_path + "?page=0", 400, token=owner)
+    check("GET", f"{TENANT_PATH}/groups/{FOREIGN_ID}/audit", 404, token=owner)
+    review = check("GET", group_audit_path, 200, token=owner)
+    assert review["groupId"] == group_id and review["pageNumber"] == 1
+    assert review["groupName"] == "E2E Desk Updated"
+    assert all(e["category"] in ("group", "group_member", "group_role")
+               for e in review["items"])
+    assert any(e["category"] == "group_role" and e["action"] == "revoke"
+               for e in review["items"])
+    assert any(e["category"] == "group_member" and e["action"] == "grant"
+               for e in review["items"])
+    integrity = review["integrity"]
+    assert integrity["memberLinks"] >= 1
+    assert integrity["roleLinks"] == 0
+    assert integrity["ownerMemberLinks"] == 0
+    assert integrity["invalidRoleLinks"] == 0
+    assert integrity["invalidMemberLinks"] == 0
+
     links = member_matrix(owner, staff_id)
     assert links["canEdit"] and links["version"]
     assert any(x["id"] == role_id and not x["assigned"] for x in links["roles"])
