@@ -29,6 +29,107 @@ namespace Shinera.Identity.SqlServerTests;
 public sealed class TenantRoleGrantSqlServerTests
 {
     [Fact]
+    public async Task Member_audit_is_owner_only_bounded_and_cannot_cross_tenants()
+    {
+        await WithDisposableDatabaseAsync(async (setup, options) =>
+        {
+            var (db, owner, _, ordinaryRoleId, _) = await SeedAsync(setup, options);
+            await using (db)
+            {
+                var tenantId = owner.ActiveTenantId!.Value;
+                var ownerId = owner.UserId!.Value;
+                var foreignTenantId = await setup.Tenants.AsNoTracking()
+                    .Where(x => x.Slug == "other-role-grants").Select(x => x.Id).SingleAsync();
+                var now = DateTime.UtcNow;
+
+                // Use real migrated, append-only SQL ledgers; deliberately
+                // inject one foreign row with the SAME target user ID.
+                for (var i = 0; i < 22; i++)
+                {
+                    await setup.Database.ExecuteSqlInterpolatedAsync($"""
+                        INSERT INTO [dbo].[TenantMemberLifecycleAuditEntries]
+                            ([Id],[TenantId],[ActorUserId],[TargetUserId],[Action],[OccurredAtUtc])
+                        VALUES ({Guid.NewGuid()},{tenantId},{ownerId},{ownerId},
+                            {"create_inactive"},{now.AddSeconds(i)})
+                        """);
+                }
+                await setup.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO [dbo].[TenantMemberRoleAuditEntries]
+                        ([Id],[TenantId],[ActorUserId],[TargetUserId],
+                         [RoleId],[RoleName],[Action],[OccurredAtUtc])
+                    VALUES ({Guid.NewGuid()},{tenantId},{ownerId},{ownerId},
+                        {ordinaryRoleId},{"Reception"},{"grant"},{now.AddMinutes(5)})
+                    """);
+                await setup.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO [dbo].[TenantMemberLifecycleAuditEntries]
+                        ([Id],[TenantId],[ActorUserId],[TargetUserId],[Action],[OccurredAtUtc])
+                    VALUES ({Guid.NewGuid()},{foreignTenantId},{ownerId},{ownerId},
+                        {"invite_failed"},{now.AddMinutes(10)})
+                    """);
+
+                var context = new DefaultHttpContext();
+                var first = await TenantWorkspace.GetMemberAudit(owner, db, context, 1);
+                var result = Assert.IsAssignableFrom<IValueHttpResult>(first);
+                var page = Assert.IsType<TenantMemberAuditReader.Page>(result.Value);
+                Assert.Equal("no-store", context.Response.Headers.CacheControl.ToString());
+                Assert.Equal(20, page.Items.Count);
+                Assert.True(page.HasNext);
+                Assert.Equal("member_role", page.Items[0].Category);
+                Assert.Equal("grant", page.Items[0].Action);
+                Assert.Equal("Reception", page.Items[0].RoleName);
+                Assert.DoesNotContain(page.Items, x => x.Action == "invite_failed");
+                Assert.All(page.Items, x => Assert.Equal(ownerId, x.TargetUserId));
+
+                var second = await TenantWorkspace.GetMemberAudit(
+                    owner, db, new DefaultHttpContext(), 2, ownerId);
+                var last = Assert.IsType<TenantMemberAuditReader.Page>(
+                    Assert.IsAssignableFrom<IValueHttpResult>(second).Value);
+                Assert.Equal(3, last.Items.Count);
+                Assert.False(last.HasNext);
+                var otherTarget = await TenantWorkspace.GetMemberAudit(
+                    owner, db, new DefaultHttpContext(), 1, Guid.NewGuid());
+                Assert.Empty(Assert.IsType<TenantMemberAuditReader.Page>(
+                    Assert.IsAssignableFrom<IValueHttpResult>(otherTarget).Value).Items);
+                Assert.Equal(400, Assert.IsAssignableFrom<IStatusCodeHttpResult>(
+                    await TenantWorkspace.GetMemberAudit(
+                        owner, db, new DefaultHttpContext(), 0)).StatusCode);
+
+                // Real ordinary staff is allowed MEMBERS.READ through its
+                // role, but must still be forbidden from Owner security audit.
+                var staff = new User(tenantId, "audit-staff",
+                    "audit-staff@example.test", "Audit", "Staff", UserType.Tenant)
+                {
+                    IsActive = true, NormalizedUserName = "AUDIT-STAFF",
+                    NormalizedEmail = "AUDIT-STAFF@EXAMPLE.TEST", PasswordHash = "fixture"
+                };
+                setup.Users.Add(staff);
+                setup.UserRoles.Add(new UserRole(tenantId, staff.Id, ordinaryRoleId));
+                await setup.SaveChangesAsync();
+                var readPermission = await setup.Permissions.SingleAsync(
+                    x => x.Code == TenantWorkspacePermissionCatalog.MembersRead);
+                // The role's permission is applied via the existing audited Owner CAS.
+                var version = Convert.ToBase64String(
+                    (await db.Roles.AsNoTracking().SingleAsync(
+                        x => x.Id == ordinaryRoleId)).RowVersion);
+                await TenantRolePermissionGrantWriter.ReplaceAsync(
+                    owner, db, ordinaryRoleId,
+                    new TenantRolePermissionGrantWriter.ReplaceRequest(
+                        version, [readPermission.Code]));
+
+                var staffContext = new TenantContext();
+                staffContext.InitializeTenant(staff.Id, tenantId,
+                    [tenantId], [tenantId], tenantId);
+                await using var staffDb = new IdentityDbContext(options, staffContext);
+                Assert.True(await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                    staffContext, staffDb, TenantWorkspacePermissionCatalog.MembersRead, default));
+                var denied = await TenantWorkspace.GetMemberAudit(
+                    staffContext, staffDb, new DefaultHttpContext());
+                Assert.Equal(403, Assert.IsAssignableFrom<IStatusCodeHttpResult>(denied).StatusCode);
+            }
+        });
+    }
+
+    [Fact]
     public async Task Owner_grants_revokes_with_version_CAS_and_append_only_audit()
     {
         await WithDisposableDatabaseAsync(async (setup, options) =>
