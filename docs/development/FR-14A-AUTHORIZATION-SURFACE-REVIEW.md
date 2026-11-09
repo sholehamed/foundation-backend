@@ -13,7 +13,9 @@
 | Tenant Workspace | Every private API has `RequireAuthorization` and handler-local active Tenant/Home/Writable Owner and current target/grant checks. A group Owner flag alone is not an API permission. | Explicit 17-code `TenantWorkspacePermissionCatalog`; especially sensitive actions enforce live PAGE+ACTION, exact row-version CAS, audited transaction. No generic automatic cross-endpoint policy is claimed. | Classified with independent SQL and real JWT HTTP suite |
 | Public signup/first login/invitation | Explicit `AllowAnonymous` plus per-action rate limiting, CAPTCHA/XSRF and short-lived proofs where applicable | Not Tenant admin grants | Rate-limit declarations checked, protocol controls separately tested |
 | Identity Auth / OpenIddict Connect | Identity login, CAPTCHA, Identity cookie, authorization code/PKCE, OIDC state/nonce | This is a distinct OAuth protocol with mixed anonymous/challenge endpoints, **not** System feature CRUD; a uniform RequireSystemPermission would break authentication | Classified but requires separate BFF-05/06 lifecycle/operational certification |
-| BFF cookie endpoints | Opaque host-scoped cookie, CSRF and live identity/session validation | Outside Identity endpoint group; security evidence comes from BFF/SQL/HTTPS browser tests and rollout gates | Separate protocol (outside this source scanner) |
+| BFF cookie endpoints (5 mappings) | Opaque host-scoped cookie, CSRF and live identity/session validation; mapped anonymous by design with explicit cookie checks | Outside System/Tenant Registry; the FR-14A source scanner now inventories these as `BFF_EXPLICIT_COOKIE_CSRF_LIFECYCLE` | Protocol classified; full BFF rollout still pending |
+| Media (3 mappings) | Explicit `RequireAuthorization` on upload/download/preview | No evidence of Tenant ownership verification for caller-controlled file GUIDs from mapping alone | **Security review required: potential cross-Tenant file IDOR; authorization ≠ resource ownership** |
+| Scalar/OpenAPI (3 mapped client-generation routes) | Host checks `app.Environment.IsDevelopment()` around registration | No System/Tenant catalog grants; not intended for Production | Classified as development-only route family |
 
 ### Automated evidence
 
@@ -25,7 +27,7 @@
 2. Unknown mutation using a READ code; new POST-as-READ routes except the reviewed read-only paged `SYSTEM.GROUPS.MEMBERS-LIST`.
 3. A private Tenant Workspace route without `RequireAuthorization`, a new unreviewed public Tenant route or a supported public flow missing explicit rate-limit/anonymous routing.
 4. Public Signup route missing rate limiting.
-5. Accidental loss of the recognized source inventory; one JSON row per classified HTTP registration is emitted as the `fr14a-identity-security-inventory` Actions artifact. **The artifact proves declared route registration, not successful authorization against a deployed DB**.
+5. Accidental loss of the recognized source inventory; one JSON row per classified Identity/BFF/media/developer HTTP registration is emitted as the `fr14a-identity-security-inventory` Actions artifact. BFF includes five cookie/protocol routes, Media has three authenticated routes, and Scalar has three Development-only routes. The review never upgrades these intentionally distinct protocols into System Feature endpoints. **The artifact proves declared route registration, not successful authorization against a deployed DB**.
 
 Frontend companion verifies all 13 root System routes, 32 nested lazy pages via existing tests, guard inheritance on all Tenant Admin children and independent Owner capability gates on sensitive views.
 
@@ -42,6 +44,7 @@ Before FR-14A, most System endpoints had `WithFeatureEndpoint` **descriptions** 
 - **FR-14C / high:** Tenant menu/feature ownership, complete tenant resource/endpoint semantics and delegated role/branch/Own/Child policies are not finalized. Tenant reads/Owner writes already have server checks, but generic tenant admin permission delegation is not a completed contract.
 - **BFF-05/06/07 / high:** Angular still uses legacy Password Grant/localStorage, and BFF remains OFF in shipped builds; upstream Identity refresh/SSO revocation, replay/refresh coordination, production HA/Data Protection key rotation, real deployed proxy and client migration remain release gates.
 - **Operational FR-13 / critical release gate:** no real Staging infrastructure. SQL schema migrations, explicit Legacy catalog collision cleanup, approved Preview/Apply, backup/restore, trusted TLS/proxy, secrets/keyring, rollback and multi-account deployed browser acceptance require independent authorized operator work.
+- **FR-14D / high, independently scoped:** FileStorage upload/download/preview APIs require authentication but do not advertise verifiable Tenant/owner binding in the HTTP route contract. Audit Media entity tenancy and repository lookup with real multi-Tenant test; deny cross-Tenant GUID access server-side before treating storage as safe. Do not retroactively claim this is fixed by the FR-14A static inventory.
 - **FR-14B / medium:** Legacy menu category reorder lacks a full backend-supported contract; additional positive browser CRUD tests for System editors are required. Subscription status is a placeholder rather than paid entitlement.
 
 ## Acceptance and boundaries
