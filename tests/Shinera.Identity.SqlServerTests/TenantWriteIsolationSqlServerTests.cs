@@ -4,6 +4,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Modules.System.Identity.Web.Util;
+using Modules.System.Identity.Web.Endpoints;
 using Modules.System.Identity.Application.Features.Roles.Commands;
 using Modules.System.Identity.Application.Features.Groups.Commands;
 using OpenIddict.Abstractions;
