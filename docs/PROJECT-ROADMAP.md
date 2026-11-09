@@ -1,3 +1,9 @@
+## FR-14A — source-complete security contract and opt-in live endpoint enforcement (2026-11-09)
+
+- **This phase's exit criteria:** all known Identity System / Tenant / signup / OAuth routes, BFF lifecycle routes, authenticated FileStorage and Development Scalar routes explicitly classified, with CI source mutation tests and downloadable per-endpoint inventory. Angular companion validates 13 System roots + 32 nested views and Tenant admin inherited/independent PAGE guards.
+- New mandatory `SystemFeatureEndpointPermissionRequirement` on every `WithFeatureEndpoint`: when the already existing Master rollout flag is independently approved and enabled, each registered API demands a live matching Resource.Permission in addition to coarse SystemAdministrator (including direct-deny precedence). Flag stays **OFF**, catalog Apply and grants remain manual; no staging or production operations.
+- **Explicit uncovered authorization work** (do not merge into a false 'done'): FR-14B unsafe legacy System User/Admin mutation contracts + positive CRUD; FR-14C tenant menu ownership and delegated role/branch restrictions; FR-14D cross-Tenant media resource ownership validation; BFF-05/06/07 deployed/proxy/session hardening; FR-13 Staging approval. [Detailed matrix and acceptance](development/FR-14A-AUTHORIZATION-SURFACE-REVIEW.md).
+
 ## FR-13C-2D — Group security audit and legacy assessment (2026-11-09)
 
 - Implemented next Owner-only read model: combined Group lifecycle, UserGroup membership and GroupRole history in one bounded timeline, with no TenantId leaks or sensitive data. Read-only current-link integrity counters distinguish invalid/Owner targets from **unattributed old links**; a missing event is *not* proof of unauthorized access. No automatic repair. [Acceptance contract](development/FR-13C2D-GROUP-SECURITY-REVIEW.md).
