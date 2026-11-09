@@ -78,6 +78,14 @@ than replacing its independently proven BFF/permission-revocation scenario.
 - This does not enable BFF, FirstLogin, Registry Apply, SMTP, SQL migration,
   granular System UI permissions, rate-limits or credentials outside CI.
 
+## Recorded success (2026-11-09)
+
+- **Approved code SHA:** `919f636b97c34b7886bda87964fe523758654b90` (Backend main, after PRs #84, #85 and #86).
+- **Successful main-only job:** [FR-12G-C GitHub Actions run #42601232203](https://github.com/sholehamed/foundation-backend/actions/runs/42601232203), `angular-identity-bff-live` success.
+- **Independent run log evidence:** disposable SQL initialized; 51 signed real-HTTP Tenant IAM permission/revocation checks passed; Playwright **2 of 2 passed** (original OIDC/Code+PKCE/BFF Cookie/role revoke, 13.6s; new email-less Owner atomic create / in-place mandatory first-password change / fresh BFF authentication / grant/revoke, 13.1s).
+- Earlier first-live runs #42598865380 and #42600063128 failed on test harness issues (Playwright worker-scoped `test.use`, then response body lost on UI navigation). These were fixed in PRs #85 and #86, respectively, without weakening the security assertions. PR #86 also prevents sensitive first-login failure snapshots from being uploaded.
+- **Boundary:** This proves the disposable GitHub runner integration only. No remotely hosted Staging or Production deployment or acceptance is certified by this run.
+
 ## Execution and acceptance
 
 The workflow is main-only by design and supports manual workflow_dispatch.
