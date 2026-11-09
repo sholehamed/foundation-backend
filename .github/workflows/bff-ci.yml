@@ -17,6 +17,18 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/staging -p 'test_*.py' -v
           python3 scripts/staging/preflight.py --config scripts/staging/staging.example.json
+      - name: FR-14A route authorization contract audit (offline; no SQL writes)
+        run: |
+          python3 -m unittest discover -s scripts/security -p 'test_*.py' -v
+          python3 scripts/security/fr14a_audit.py --out /tmp/fr14a-identity-surface.json
+      - name: Archive reviewed FR-14A endpoint inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr14a-identity-security-inventory
+          path: /tmp/fr14a-identity-surface.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Restore solution
         run: dotnet restore foundation-backend.slnx
       - name: Build solution
