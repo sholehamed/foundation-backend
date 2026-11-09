@@ -131,7 +131,7 @@ def run():
     preview = check("GET", REGISTRY_PATH + "/preview", 200, token=admin)
     assert preview["canApply"], "The disposable catalog unexpectedly conflicts"
     assert preview["hasPending"], "The fixture must exercise real SQL registration"
-    assert len([x for x in preview["changes"] if x["entity"] == "Permission"]) == 16
+    assert len([x for x in preview["changes"] if x["entity"] == "Permission"]) == 17
     check("POST", REGISTRY_PATH + "/apply", 403, token=owner,
           data={"fingerprint": preview["fingerprint"]})
     check("POST", REGISTRY_PATH + "/apply", 409, token=admin,
@@ -258,6 +258,52 @@ def run():
           data={"expectedVersion": grants["version"],
                 "codes": ["SYSTEM.ROLES.CREATE"]})
     check("GET", TENANT_PATH + "/members", 403, token=staff)
+
+    # FR-13C-2C: real signed GroupRole grant/revoke; same staff token sees
+    # inherited permission immediately after linking a role through a group.
+    roles_path = f"{TENANT_PATH}/groups/{group_id}/roles"
+    check("GET", roles_path, 401)
+    check("GET", roles_path, 403, token=admin)
+    check("GET", roles_path, 403, token=staff)
+    gr_matrix = check("GET", roles_path, 200, token=owner)
+    assert gr_matrix["canEdit"] and gr_matrix["groupIsActive"]
+    assert any(x["id"] == role_id and not x["assigned"] for x in gr_matrix["items"])
+    assert all(x["name"].upper() != "OWNER" for x in gr_matrix["items"])
+    pair_url = f"{roles_path}/{role_id}"
+    check("PUT", pair_url, 401,
+          data={"assigned": True, "expectedVersion": gr_matrix["version"]})
+    check("PUT", pair_url, 403, token=staff,
+          data={"assigned": True, "expectedVersion": gr_matrix["version"]})
+    check("PUT", pair_url, 403, token=admin,
+          data={"assigned": True, "expectedVersion": gr_matrix["version"]})
+    check("PUT", f"{roles_path}/{FOREIGN_ID}", 403, token=owner,
+          data={"assigned": True, "expectedVersion": gr_matrix["version"]})
+    check("PUT", pair_url, 400, token=owner,
+          data={"assigned": True, "expectedVersion": "invalid"})
+
+    # A GroupRole alone doesn't grant staff until staff is a Group member.
+    first_role = check("PUT", pair_url, 200, token=owner,
+                       data={"assigned": True, "expectedVersion": gr_matrix["version"]})
+    assert first_role["version"] != gr_matrix["version"]
+    check("GET", TENANT_PATH + "/members", 403, token=staff)
+    check("PUT", pair_url, 409, token=owner,
+          data={"assigned": False, "expectedVersion": gr_matrix["version"]})
+    current_members = check("GET", f"{TENANT_PATH}/groups/{group_id}/members",
+                            200, token=owner)
+    relink = check("PUT", member_path, 200, token=owner,
+                   data={"assigned": True, "expectedVersion": current_members["version"]})
+    check("GET", TENANT_PATH + "/members", 200, token=staff)
+    assert ui_allowed(staff, MEMBERS_READ)
+    check("PUT", pair_url, 409, token=owner,
+          data={"assigned": False, "expectedVersion": first_role["version"]})
+    current_roles = check("GET", roles_path, 200, token=owner)
+    assert current_roles["version"] == relink["version"]
+    assert any(x["id"] == role_id and x["assigned"] for x in current_roles["items"])
+    revoked_role = check("PUT", pair_url, 200, token=owner,
+                         data={"assigned": False, "expectedVersion": relink["version"]})
+    check("GET", TENANT_PATH + "/members", 403, token=staff)
+    assert not ui_allowed(staff, MEMBERS_READ)
+    assert revoked_role["version"] != relink["version"]
 
     links = member_matrix(owner, staff_id)
     assert links["canEdit"] and links["version"]
