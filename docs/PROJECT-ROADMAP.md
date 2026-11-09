@@ -1,3 +1,8 @@
+## FR-14B-1 — containment before System account CRUD (2026-11-09)
+
+- Fail-closed the ten historically unsafe System Users/Admins lifecycle write mappings (no legacy CQRS dispatch), preserving separately audited grant APIs. Prevent re-opening via C# endpoint tests and mutation-tested Python CI inventory. This is **only the containment slice**, not operational CRUD.
+- Continue FR-14B with a new System-only account contract and first-login credential rotation, audit and SQL CAS, then positive HTTP/Angular acceptance before enabling editors. [Detailed decisions and remaining work](development/FR-14B1-LEGACY-ACCOUNT-WRITE-CONTAINMENT.md). Staging remains deferred.
+
 ## FR-14A — source-complete security contract and opt-in live endpoint enforcement (2026-11-09)
 
 - **This phase's exit criteria:** all known Identity System / Tenant / signup / OAuth routes, BFF lifecycle routes, authenticated FileStorage and Development Scalar routes explicitly classified, with CI source mutation tests and downloadable per-endpoint inventory. Angular companion validates 13 System roots + 32 nested views and Tenant admin inherited/independent PAGE guards.
