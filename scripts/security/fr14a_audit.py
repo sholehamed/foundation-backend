@@ -28,6 +28,9 @@ PUBLIC_TENANT_HANDLERS = {
 SPECIAL_SYSTEM_HANDLERS = {
     "UiAccess": {"GetMyUiAccessSnapshot", "GetMyUiAccess"},
     "Tenants": {"TenantResolveBySlug"},
+    # /system/Menus/me is a current-user, System/Tenant-scoped lookup with
+    # its own live grant query; NOT a SystemAdministrator-only admin route.
+    "Menus": {"GetMyNavigation"},
 }
 PROTOCOL_ENDPOINT_GROUPS = {"Auth", "Connect", "PublicSignup"}
 SYSTEM_IGNORED = {"TenantWorkspace", "TenantWorkspacePermissionCatalog",
@@ -185,9 +188,13 @@ def audit_sources(endpoint_sources: dict[str, str], feature_source: str,
                     raise AuditError("System internal exception unexpectedly cataloged")
                 if name == "Tenants" and ".AllowAnonymous()" not in body:
                     raise AuditError("Tenant resolve exception missing explicit AllowAnonymous")
+                if name == "Menus" and "app.MapGroup(this).RequireAuthorization()" not in source:
+                    raise AuditError("Current-user navigation must require authenticated scope")
+                boundary = ("PUBLIC_RESOLVE" if name == "Tenants" else
+                            "CURRENT_USER_LIVE_NAV" if name == "Menus" else
+                            "ADMIN_READ_INTERNAL")
                 rows.append(Row("system_internal", name + ".cs", method, handler,
-                                None, None,
-                                "PUBLIC_RESOLVE" if name == "Tenants" else "ADMIN_READ_INTERNAL"))
+                                None, None, boundary))
                 continue
 
             if not meta:
