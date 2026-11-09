@@ -22,7 +22,7 @@ public static class TenantGroupMemberAssignmentWriter
     public sealed record ChangeRequest(bool Assigned, string? ExpectedVersion);
     public sealed record MemberItem(Guid Id, string UserName, bool Assigned);
     public sealed record MembersPage(
-        Guid GroupId, string GroupName, string Version, bool CanEdit,
+        Guid GroupId, string GroupName, string Version, bool GroupIsActive, bool CanEdit,
         IReadOnlyList<MemberItem> Items, int Page, bool HasNext);
 
     public static async Task<bool> CanManageAsync(
@@ -98,7 +98,7 @@ public static class TenantGroupMemberAssignmentWriter
 
         var group = await db.Groups.AsNoTracking()
             .Where(g => g.Id == groupId && g.TenantId == tenantId)
-            .Select(g => new { g.Id, g.Name, g.RowVersion }).SingleOrDefaultAsync(ct);
+            .Select(g => new { g.Id, g.Name, g.IsActive, g.RowVersion }).SingleOrDefaultAsync(ct);
         if (group is null) return null;
 
         // Page through eligible members, rather than a whole-tenant
@@ -119,7 +119,7 @@ public static class TenantGroupMemberAssignmentWriter
                     ug.UserId == u.Id)))
             .ToListAsync(ct);
         return new MembersPage(group.Id, group.Name,
-            Convert.ToBase64String(group.RowVersion ?? []),
+            Convert.ToBase64String(group.RowVersion ?? []), group.IsActive,
             await CanManageAsync(current, db, ct),
             rows.Take(20).ToArray(), page, rows.Count > 20);
     }
