@@ -2,7 +2,7 @@
 import unittest
 from pathlib import Path
 
-from fr14a_audit import AuditError, ENDPOINTS, FEATURES, TENANT_CATALOG, audit_sources
+from fr14a_audit import AuditError, ENDPOINTS, FEATURES, TENANT_CATALOG, audit_sources, audit_protocol_and_media, ROOT
 
 def sources():
     return {p.stem: p.read_text(encoding="utf-8-sig")
@@ -24,6 +24,14 @@ class SecurityInventoryTests(unittest.TestCase):
         self.assertTrue(any(x.surface == "identity_protocol" for x in rows))
         self.assertEqual(len([x.endpoint_key for x in rows if x.endpoint_key]),
                          len(set(x.endpoint_key for x in rows if x.endpoint_key)))
+
+    def test_separate_protocol_inventory_includes_BFF_media_and_dev_tooling(self):
+        rows = audit_protocol_and_media(ROOT)
+        self.assertEqual(len([r for r in rows if r.surface == "bff_protocol"]), 5)
+        self.assertEqual(len([r for r in rows if r.surface == "media"]), 3)
+        self.assertEqual(len([r for r in rows if r.surface == "dev_tooling"]), 3)
+        self.assertTrue(all(r.security_boundary != "SYSTEM_ADMIN_PLUS_GRANULAR_OPT_IN"
+                            for r in rows))
 
     def test_new_system_endpoint_without_metadata_is_blocked(self):
         data = sources()
