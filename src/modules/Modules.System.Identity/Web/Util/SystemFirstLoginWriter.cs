@@ -2,6 +2,7 @@ using System.Data;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Domain.Entities;
@@ -12,8 +13,8 @@ using OpenIddict.Abstractions;
 
 namespace Modules.System.Identity.Web.Util;
 
-public sealed class SystemFirstLoginValidationException : Exception;
-public sealed class SystemFirstLoginTargetException : Exception;
+public sealed class SystemFirstLoginValidationException : Exception { }
+public sealed class SystemFirstLoginTargetException : Exception { }
 
 /// <summary>
 /// A System-scoped password-change proof, separate from Tenant invitations.
@@ -23,9 +24,11 @@ public sealed class SystemFirstLoginTargetException : Exception;
 public static class SystemFirstLoginWriter
 {
     public sealed record IssueResult(string TemporaryPassword, DateTime ExpiresAtUtc);
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     public sealed record StartRequest(string? UserName, string? TemporaryPassword);
     public sealed record LoginDecision(
         string Status, string? Challenge = null, DateTime? ExpiresAtUtc = null);
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     public sealed record CompleteRequest(string? Challenge, string? NewPassword);
 
     public sealed class TemporaryCredentialRow
@@ -90,7 +93,6 @@ public static class SystemFirstLoginWriter
     private static async Task<bool> HasAnyGrantsCoreAsync(
         IdentityDbContext db, Guid id, CancellationToken ct)
     {
-        var master = DefaultSeedData.MasterTenant.Id;
         // Reject even a stray foreign relationship. A new inert account must
         // have no privilege, including an assignment added by another writer.
         return await db.UserRoles.IgnoreQueryFilters(["tenant"]).AsNoTracking()
