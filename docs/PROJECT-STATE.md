@@ -1,3 +1,9 @@
+## FR-14C-2B — Tenant Owner navigation authoring (2026-11-09)
+
+- Dedicated default-OFF HTTPS Tenant navigation catalog GET + category/item POST/PUT API. Real local Owner and live MANAGE ACTION required for writes; registered READ PAGE required for editor access. Strict DTO allowlists, immutable Tenant/Category, route/parent validation, SQL RowVersion CAS, reorder and soft disable, no DELETE.
+- New append-only TenantNavigationAuditEntries SQL migration 20261109090000 with transaction-bound before/after version and retention guard; existing owned-catalog migration 20261109080000 still unapplied. SQL and HTTP/contract tests included in CI. See [security and operations](development/FR-14C2B-TENANT-NAVIGATION-OWNER-EDITOR.md).
+- Explicit exclusions: non-Owner delegated editing, historical global-menu import, branch membership/RBAC, operational grant Apply and flags, live proxy/Chrome certification. Staging/Production deferred.
+
 ## FR-14C-2A — isolated Tenant-owned menu catalog (2026-11-09)
 
 - Created additive `TenantNavigationCategories` / `TenantNavigationItems` schema with composite Tenant/Category/Parent FKs, a per-Tenant unique Route index, RowVersion, and guarded non-destructive rollback. Global System Menu/MenuCategory unchanged; **no legacy migration/backfill**.
