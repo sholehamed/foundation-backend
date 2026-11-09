@@ -47,6 +47,28 @@ public static class TenantRolePermissionGrantWriter
                 r.NormalizedName != "OWNER", ct))
             return false;
 
+        // FR-14C: this role editor can only replace centrally registered
+        // Tenant-applicable grants. A legacy/foreign/inactive permission link
+        // must never be silently preserved while the UI shows a complete
+        // editable matrix. Quarantine the entire target role for explicit
+        // System Admin review; neither delete nor adopt its foreign grants.
+        // This is a READ check; ReplaceAsync repeats it inside SERIALIZABLE.
+        var allowedCodes = TenantWorkspacePermissionCatalog.Definitions
+            .Select(x => x.Key).ToArray();
+        var centrallyOwnedIds = await db.Permissions.AsNoTracking()
+            .Where(p => allowedCodes.Contains(p.Code) && p.IsActive &&
+                p.Resource != null &&
+                p.Resource.Code == TenantPermissionCatalogSync.ResourceCode &&
+                p.Resource.IsActive &&
+                p.Resource.Module != null &&
+                p.Resource.Module.Code == TenantPermissionCatalogSync.ModuleCode &&
+                p.Resource.Module.IsActive)
+            .Select(p => p.Id).ToArrayAsync(ct);
+        if (await db.RolePermissions.AsNoTracking().AnyAsync(rp =>
+                rp.TenantId == tenantId && rp.RoleId == roleId &&
+                !centrallyOwnedIds.Contains(rp.PermissionId), ct))
+            return false;
+
         // Prevent writing a role the actor already holds, whether directly or
         // through a group. No self-privilege escalation through RolePermission.
         if (await db.UserRoles.AsNoTracking().AnyAsync(x =>

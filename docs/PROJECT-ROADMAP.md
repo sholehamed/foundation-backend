@@ -1,3 +1,8 @@
+## FR-14C — System-owned Tenant permission boundary (2026-11-10)
+
+- Scoped hardening: Tenant role editor fails closed when a role contains any Permission link outside the active central `tenant-workspace/tenant-administration` allowlisted catalog. No data is repaired implicitly, and cross-Tenant assignment/Owner controls remain unchanged. [Tests and rollout gate](development/FR-14C-TENANT-ROLE-GRANT-INTEGRITY.md).
+- Remaining: review all System-owned Menu/Page/Resource/Endpoint mappings, operator-approved reconciliation of historic rogue links, entitlement boundaries, read-only sidebar pilot and FR-14C-3 branch-scoped access. No Staging/Production action.
+
 ## FR-14C architecture correction — System-only menu ownership (2026-11-10)
 
 - **Confirmed:** System Admin alone defines Menu, Page, Route, Resource, Action, Endpoint and permission catalog; Tenant Owner assigns only permitted, centrally registered capabilities to local roles and users. There is no Tenant menu authoring. The FR-14C-2A/2B owned menu implementation was superseded and removed from source; previously merged PRs remain historical records.
