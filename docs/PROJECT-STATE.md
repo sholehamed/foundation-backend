@@ -1,3 +1,10 @@
+## FR-14B-1 — legacy System account write containment (2026-11-09)
+
+- Both System `Users` and `Admins` lifecycle routes now fail closed with explicit 403 for five unsafe legacy operations each: create/update/delete/change-state/change-lock. The old shared User commands hard-code TenantId or overwrite PasswordHash and must not be dispatched by privileged HTTP APIs.
+- Existing audited role/permission grant APIs remain available. A C# endpoint regression plus Python source/mutation gate runs under normal CI; no new account lifecycle CRUD is claimed.
+- **Next:** an audited System-only account lifecycle, forced first-login credential rotation, self/SuperAdmin protection, exact SQL CAS and active-session invalidation; then guarded Angular editors. [Security note](development/FR-14B1-LEGACY-ACCOUNT-WRITE-CONTAINMENT.md).
+- Staging deferred; no migration, grants, feature toggle or deployment.
+
 ## FR-14A — authorization endpoint/route inventory and enforceable opt-in System grants (2026-11-09)
 
 - Reviewed and source-classified all Identity System, Tenant Workspace, public signup, current-user navigation and Identity OAuth mappings. CI also classifies BFF cookie/CSRF, authenticated media and Development-only Scalar routes, publishing a per-mapping JSON inventory artifact. Mutation tests reject missing `SystemAdministrator`, unregistered/wrong Resource metadata, new unguarded Tenant routes and unthrottled public signup.
