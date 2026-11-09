@@ -231,11 +231,11 @@ public static class SystemAccountLifecycleWriter
             // bypass FR-14B-2B. Re-activation requires prior temp_activated
             // audit proving that the permanent password was set in the
             // reviewed one-time System first-login protocol.
-            if (input.IsActive && !await db.Database.SqlQueryRaw<int>(
+            if (input.IsActive && await db.Database.SqlQueryRaw<int>(
                 """
                 SELECT COUNT(*) AS [Value] FROM [dbo].[SystemAccountLifecycleAuditEntries]
                 WHERE [TargetUserId]={0} AND [Action]='temp_activated'
-                """, target.Id).SingleAsync(ct) > 0)
+                """, target.Id).SingleAsync(ct) == 0)
                 throw new UnauthorizedAccessException(
                     "Pending System accounts cannot be directly activated.");
 
