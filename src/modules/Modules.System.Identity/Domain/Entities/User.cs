@@ -12,7 +12,7 @@ namespace Modules.System.Identity.Domain.Entities
         public User() : base(17) { }
         public User(ulong id) : base(id, 17) { }
         public User(Guid id) : base(id) { }
-        public User(Guid? tenantId, string userName, string email,  string? firstName, string? lastName,UserType userType, bool isActive=true) : base(17)
+        public User(Guid? tenantId, string userName, string? email,  string? firstName, string? lastName,UserType userType, bool isActive=true) : base(17)
         {
             UserType = userType;
             TenantId = tenantId;
@@ -24,7 +24,7 @@ namespace Modules.System.Identity.Domain.Entities
             IsActive = isActive;
            
         }
-        public User(Guid id,Guid? tenantId, string userName, string email, string? firstName, string? lastName,UserType userType, bool isActive = true) : base(id)
+        public User(Guid id,Guid? tenantId, string userName, string? email, string? firstName, string? lastName,UserType userType, bool isActive = true) : base(id)
         {
             UserType = userType;
             TenantId = tenantId;
@@ -42,8 +42,8 @@ namespace Modules.System.Identity.Domain.Entities
         public string UserName { get; set; } = default!;
         public string NormalizedUserName { get; set; } = default!;
 
-        public string Email { get; set; } = default!;
-        public string NormalizedEmail { get; set; } = default!;
+        public string? Email { get; set; }
+        public string? NormalizedEmail { get; set; }
         public bool EmailConfirmed { get; set; }
 
         public string PasswordHash { get; set; } = default!;
