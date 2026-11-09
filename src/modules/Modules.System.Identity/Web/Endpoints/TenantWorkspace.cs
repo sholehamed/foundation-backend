@@ -46,6 +46,8 @@ public static class TenantWorkspace
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members", GetMembers)
             .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/members/audit", GetMemberAudit)
+            .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/members", CreatePendingMember)
             .RequireAuthorization()
             .RequireRateLimiting("tenant-member-create")
@@ -323,6 +325,8 @@ public static class TenantWorkspace
         {
             canViewAdministration = members || roles || groups,
             canViewMembers = members,
+            canViewMemberAudit = members &&
+                await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(current, db, ct),
             canViewRoles = roles,
             canViewGroups = groups,
             canManageBranches = await CanManageBranchesAsync(current, db, ct),
@@ -373,6 +377,31 @@ public static class TenantWorkspace
             rows.Take(DirectoryPageSize).ToArray(), page, rows.Count > DirectoryPageSize));
     }
 
+
+    /// <summary>
+    /// Read-only, Owner-only member security audit. A normal member with
+    /// MEMBERS.READ still cannot read staff lifecycle/role-change history.
+    /// The SQL reader further restricts all rows and joins to the live tenant.
+    /// </summary>
+    public static async Task<IResult> GetMemberAudit(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        int page = 1, Guid? memberId = null, CancellationToken ct = default)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (page is < 1 or > 1000 || memberId == Guid.Empty)
+            return Results.BadRequest();
+        if (current.ActiveTenantId is not Guid tenantId ||
+            !await TenantWorkspacePermissionEvaluator.AllowsAsync(
+                current, db, TenantWorkspacePermissionCatalog.MembersRead, ct) ||
+            !await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(current, db, ct))
+            return DeniedAfterAuthentication();
+        if (!db.Database.IsSqlServer())
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+
+        var audit = await TenantMemberAuditReader.ReadAsync(
+            db, tenantId, page, memberId, ct);
+        return Results.Ok(audit);
+    }
 
     // FR-13B-1: only create a disabled, non-login local member with a
     // random undisclosed password and append-only SQL audit. Invitation and
