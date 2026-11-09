@@ -1,4 +1,7 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Modules.System.Identity.Web.Endpoints;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure.Persistence;
@@ -151,6 +154,13 @@ public sealed class CurrentUserNavigationTests
             top.Items.Select(x => x.Title));
         Assert.Equal("Members", Assert.Single(top.Items[2].Childs).Title);
 
+        // The HTTP endpoint is a scoped read-only view, not permission grant.
+        var http = new DefaultHttpContext { User = principal };
+        var httpResult = await TenantWorkspace.GetTenantNavigation(
+            f.Current, f.Db, http);
+        Assert.IsType<Ok<List<CurrentNavigationCategory>>>(httpResult);
+        Assert.Equal("no-store", http.Response.Headers.CacheControl.ToString());
+
         // A live direct user DENY wins over the role. Parent containers with
         // zero children disappear rather than leaking a hidden section name.
         f.Direct(user, members, tenant.Id, false);
@@ -189,6 +199,10 @@ public sealed class CurrentUserNavigationTests
             [foreign.Id], [foreign.Id], foreign.Id);
         Assert.Null(await TenantWorkspaceNavigationService.GetAsync(
             crossTenant, f.Db, principal));
+        var deniedHttp = await TenantWorkspace.GetTenantNavigation(
+            crossTenant, f.Db, http);
+        Assert.Equal(StatusCodes.Status403Forbidden,
+            Assert.IsType<StatusCodeHttpResult>(deniedHttp).StatusCode);
     }
 
     [Fact]
