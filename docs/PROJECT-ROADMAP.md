@@ -1,3 +1,8 @@
+## FR-14C-2B — Owner-only Tenant navigation editor backend (2026-11-09)
+
+- Safe owner-scoped category/item configuration with versioned reorder/enable/disable, SQL immutable audit and new code-owned READ/MANAGE catalog permissions. Backend default OFF. Frontend companion must be validated and separately flagged.
+- Before operational release: approve/apply both migrations and permission catalog, seed owned menus, perform two-Tenant negative tests and browser/BFF acceptance. Remaining FR-14C-2C delegated management/import; FR-14C-3 BranchMembership. [Protocol](development/FR-14C2B-TENANT-NAVIGATION-OWNER-EDITOR.md).
+
 ## FR-14C-2A — separate Tenant-owned menu storage, read-only pilot (2026-11-09)
 
 - New additive SQL catalog supports Tenant-owned category and menu trees with composite same-Tenant/same-category foreign keys; secure read-only opt-in never falls back to global menus. Existing default-off Angular dynamic menu pilot from FR-14C-1 needs no activation for this change.
