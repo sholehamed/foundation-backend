@@ -185,7 +185,8 @@ public static class SystemAccountLifecycleWriter
                 UPDATE [dbo].[Users]
                 SET [FirstName]={fields.FirstName}, [LastName]={fields.LastName},
                     [Email]={fields.Email}, [NormalizedEmail]={fields.NormalizedEmail},
-                    [EmailConfirmed]={false}, [SecurityStamp]={stamp},
+                    [EmailConfirmed]={target.Email == fields.Email && target.EmailConfirmed},
+                    [SecurityStamp]={stamp},
                     [ConcurrencyStamp]={version}, [LastModifiedAt]={now}
                 WHERE [Id]={target.Id} AND [TenantId] IS NULL AND [UserType]={(byte)UserType.System}
                   AND [ConcurrencyStamp]={input.ExpectedVersion}
