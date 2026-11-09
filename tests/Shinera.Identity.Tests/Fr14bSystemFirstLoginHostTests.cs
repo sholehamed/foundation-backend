@@ -66,10 +66,10 @@ public sealed class Fr14bSystemFirstLoginHostTests
     public void System_secret_shape_has_24_generated_characters_and_dashes()
     {
         Assert.True(SystemFirstLoginWriter.LooksLikeIssuedPassword(
-            "ABCDEF-GHIJKL-MNPQRS-TUVWXY"));
+            "ABCDEF-GHJKLM-NPQRST-UVWXYZ"));
         Assert.False(SystemFirstLoginWriter.LooksLikeIssuedPassword(
             "ordinary-password"));
         Assert.False(SystemFirstLoginWriter.LooksLikeIssuedPassword(
-            "ABCDEF-GHIJKL-MNPQRS-TUVWXY-extra"));
+            "ABCDEF-GHJKLM-NPQRST-UVWXYZ-extra"));
     }
 }
