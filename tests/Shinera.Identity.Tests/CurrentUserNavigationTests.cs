@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.Extensions.Configuration;
 using Modules.System.Identity.Web.Endpoints;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Domain.Entities;
@@ -157,7 +158,7 @@ public sealed class CurrentUserNavigationTests
         // The HTTP endpoint is a scoped read-only view, not permission grant.
         var http = new DefaultHttpContext { User = principal };
         var httpResult = await TenantWorkspace.GetTenantNavigation(
-            f.Current, f.Db, http);
+            f.Current, f.Db, http, new ConfigurationBuilder().Build());
         Assert.IsType<Ok<List<CurrentNavigationCategory>>>(httpResult);
         Assert.Equal("no-store", http.Response.Headers.CacheControl.ToString());
 
@@ -200,7 +201,7 @@ public sealed class CurrentUserNavigationTests
         Assert.Null(await TenantWorkspaceNavigationService.GetAsync(
             crossTenant, f.Db, principal));
         var deniedHttp = await TenantWorkspace.GetTenantNavigation(
-            crossTenant, f.Db, http);
+            crossTenant, f.Db, http, new ConfigurationBuilder().Build());
         Assert.Equal(StatusCodes.Status403Forbidden,
             Assert.IsType<StatusCodeHttpResult>(deniedHttp).StatusCode);
     }
