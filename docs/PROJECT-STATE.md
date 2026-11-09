@@ -1,3 +1,9 @@
+## FR-13C-2E — member effective Tenant permission explanations (2026-11-09)
+
+- Owner-only read endpoint for an individual ordinary Tenant member: reports all 17 code-owned PAGE/ACTION permission decisions using the *actual live* `TenantWorkspacePermissionEvaluator`, together with bounded provenance for direct UserPermission allow/deny, active direct UserRole, inherited UserGroup→GroupRole and legacy Owner fallback. No writes, grants, tokens, arbitrary Tenant IDs or new permission catalog entries.
+- Explicitly distinguishes the raw permission decision from the extra Owner/writable/target/feature gates on privileged endpoints; cannot assume permission alone guarantees write access.
+- Disposable SQL equivalence and signed HTTP real-token inheritance/revoke tests; [security contract](development/FR-13C2E-TENANT-EFFECTIVE-PERMISSIONS.md). Companion Angular route in progress. **Staging deferred.**
+
 ## FR-13C-2D — Group security history and legacy-link review (2026-11-09)
 
 - Added local Owner-only `GET /api/tenant/workspace/groups/{id}/audit?page=1` requiring **Groups.Read + Members.Read + Roles.Read**; 20-row unified append-only lifecycle, UserGroup and GroupRole audit with explicit TenantId/GroupId SQL filtering and no-cache response. Separate read-only integrity counters flag legacy Owner/non-local/unknown-audit-provenance links without modifying any records.
