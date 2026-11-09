@@ -25,7 +25,7 @@ public static class TenantPendingMemberWriter
         string? UserName, string? Email, string? FirstName, string? LastName);
 
     public sealed record MemberView(
-        Guid Id, string UserName, string Email, string? FirstName,
+        Guid Id, string UserName, string? Email, string? FirstName,
         string? LastName, bool IsActive);
 
     private static readonly Regex SafeUserName = new(
@@ -72,23 +72,26 @@ public static class TenantPendingMemberWriter
     }
 
     private static (string UserName, string NormalizedUserName,
-        string Email, string NormalizedEmail, string FirstName, string LastName)
+        string? Email, string? NormalizedEmail, string FirstName, string LastName)
         Validate(CreateRequest? input)
     {
         if (input is null)
             throw new TenantMemberCreateValidationException("Member input is required.");
 
         var userName = input.UserName?.Trim() ?? "";
-        var email = input.Email?.Trim() ?? "";
+        // Missing/whitespace email is genuinely NULL (not a placeholder).
+        // The public Owner and System creation flows keep mandatory email.
+        var email = string.IsNullOrWhiteSpace(input.Email) ? null : input.Email.Trim();
         var firstName = input.FirstName?.Trim() ?? "";
         var lastName = input.LastName?.Trim() ?? "";
 
         if (!SafeUserName.IsMatch(userName))
             throw new TenantMemberCreateValidationException(
                 "Username must be 3-100 ASCII letters, digits, dot, underscore, plus or dash.");
-        if (email.Length is < 5 or > 256 || email.Any(char.IsControl) ||
-            !MailAddress.TryCreate(email, out var parsed) ||
-            !string.Equals(parsed.Address, email, StringComparison.OrdinalIgnoreCase))
+        if (email is not null &&
+            (email.Length is < 5 or > 256 || email.Any(char.IsControl) ||
+             !MailAddress.TryCreate(email, out var parsed) ||
+             !string.Equals(parsed.Address, email, StringComparison.OrdinalIgnoreCase)))
             throw new TenantMemberCreateValidationException("Invalid member email.");
         if (firstName.Length is < 1 or > 80 || lastName.Length is < 1 or > 80 ||
             firstName.Any(char.IsControl) || lastName.Any(char.IsControl))
@@ -96,7 +99,7 @@ public static class TenantPendingMemberWriter
                 "First and last name are required, each at most 80 characters.");
 
         return (userName, userName.ToUpperInvariant(),
-            email, email.ToUpperInvariant(), firstName, lastName);
+            email, email?.ToUpperInvariant(), firstName, lastName);
     }
 
     public sealed record CreateWithInitialPasswordResult(
@@ -130,7 +133,8 @@ public static class TenantPendingMemberWriter
             if (await db.Users.AsNoTracking().AnyAsync(u =>
                     u.TenantId == tenantId && u.UserType == UserType.Tenant &&
                     (u.NormalizedUserName == fields.NormalizedUserName ||
-                     u.NormalizedEmail == fields.NormalizedEmail), ct))
+                     (fields.NormalizedEmail != null &&
+                      u.NormalizedEmail == fields.NormalizedEmail)), ct))
                 throw new TenantMemberCreateConflictException(
                     "A member with this username or email already exists in this Tenant.");
             if (await db.Users.AsNoTracking().CountAsync(u =>
@@ -209,7 +213,8 @@ public static class TenantPendingMemberWriter
             if (await db.Users.AsNoTracking().AnyAsync(u =>
                     u.TenantId == tenantId && u.UserType == UserType.Tenant &&
                     (u.NormalizedUserName == fields.NormalizedUserName ||
-                     u.NormalizedEmail == fields.NormalizedEmail), ct))
+                     (fields.NormalizedEmail != null &&
+                      u.NormalizedEmail == fields.NormalizedEmail)), ct))
                 throw new TenantMemberCreateConflictException(
                     "A member with this username or email already exists in this Tenant.");
 

@@ -52,3 +52,5 @@
 - [FR-13B-3B — unified Tenant Login, first-password forced change](development/FR-13B3B-UNIFIED-TENANT-LOGIN.md)
 
 - [FR-13B-3C — BFF Identity-host first-password change](development/FR-13B3C-BFF-IDENTITY-FORCED-CHANGE.md)
+
+- [FR-13B-3A — Email-less local Tenant staff onboarding](development/FR-13B3A-EMAILLESS-TENANT-STAFF.md)

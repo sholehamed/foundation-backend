@@ -1,3 +1,9 @@
+## FR-13B-3A — email-less local Tenant staff creation (2026-11-09)
+
+- [Issue #78](https://github.com/sholehamed/foundation-backend/issues/78): New SQL migration makes `User.Email` and `NormalizedEmail` nullable, and rebuilds Tenant normalized email unique index with an explicit `NormalizedEmail IS NOT NULL` filter. Tenant Owner's pending and atomic initial-password creation accept `email:null`; UserType System, public Owner registration and other email-mandatory paths retain existing validators. A blank email is never replaced by a fake one.
+- Email invitation explicitly refuses staff without a real recipient before SQL token/audit; direct and BFF first-login initial password + forced reset remain viable. Real SQL tests cover multiple nulls, duplicate real emails, SQL filtered index, no-email activation, no-auto-role/EmailConfirmed, invitation refusal and invalid address. Down migration refuses rollback until email-less rows are resolved using genuine emails.
+- No Staging or Production DB migrated or default-OFF first-login/BFF feature flag enabled. Separate [runbook and acceptance gates](development/FR-13B3A-EMAILLESS-TENANT-STAFF.md). Cross-repo Angular companion required for UI use.
+
 ## FR-13B-3C — Identity-host BFF first-login (2026-11-09)
 
 - Continued FR-13B-3B into the separate Identity-host browser sign-in, [Issue #81](https://github.com/sholehamed/foundation-backend/issues/81). Same CAPTCHA+antiforgery interactive-login 204 for normal credentials; 200 only for proven temporary Tenant password, yielding restricted 10-minute change challenge, never an Identity or BFF login session. A new Identity-host XSRF-protected completion endpoint uses the existing SQL atomic single-use password activation and forces a fresh normal Identity login before OIDC code issuance.

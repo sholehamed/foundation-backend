@@ -9,12 +9,13 @@ namespace Modules.System.Identity.Infrastructure.Persistence.Configurations
         public override void Configure(EntityTypeBuilder<User> builder)
         {
             builder.HasIndex(x => new { x.TenantId, x.NormalizedUserName }).IsUnique();
-            builder.HasIndex(x => new { x.TenantId, x.NormalizedEmail }).IsUnique();
+            builder.HasIndex(x => new { x.TenantId, x.NormalizedEmail }).IsUnique()
+                .HasFilter("[TenantId] IS NOT NULL AND [NormalizedEmail] IS NOT NULL");
 
             builder.Property(x => x.UserName).HasMaxLength(100).IsRequired();
             builder.Property(x => x.NormalizedUserName).HasMaxLength(100).IsRequired();
-            builder.Property(x => x.Email).HasMaxLength(256).IsRequired();
-            builder.Property(x => x.NormalizedEmail).HasMaxLength(256).IsRequired();
+            builder.Property(x => x.Email).HasMaxLength(256).IsRequired(false);
+            builder.Property(x => x.NormalizedEmail).HasMaxLength(256).IsRequired(false);
             builder.Property(x => x.PasswordHash).IsRequired();
             base.Configure(builder);
         }

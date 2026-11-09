@@ -90,7 +90,11 @@ public static class TenantMemberInvitationWriter
                 x.Id == memberId && x.TenantId == tenantId &&
                 x.UserType == UserType.Tenant && !x.IsActive && !x.EmailConfirmed)
             .Select(x => new { x.Email }).SingleOrDefaultAsync(ct);
-        if (target is null ||
+        // Email-less employees may use a physical first-login secret but
+        // must never enter SMTP, token-issuance, or an email confirmation
+        // path until a genuine recipient is recorded. This check occurs
+        // both before and WITHIN the SQL issuance transaction.
+        if (target is null || string.IsNullOrWhiteSpace(target.Email) ||
             await db.UserRoles.AsNoTracking().AnyAsync(ur =>
                 ur.TenantId == tenantId && ur.UserId == memberId &&
                 ur.Role.TenantId == tenantId &&
@@ -103,7 +107,7 @@ public static class TenantMemberInvitationWriter
             .SingleOrDefaultAsync(ct);
         if (string.IsNullOrWhiteSpace(slug) || !Slug.IsMatch(slug))
             throw new TenantInvitationTargetException();
-        return (target.Email, slug);
+        return (target.Email!, slug);
     }
 
     /// <summary>
@@ -303,6 +307,11 @@ public static class TenantMemberInvitationWriter
 
             // A previously submitted invitation cannot activate a User if
             // the registered recipient email changed after issuance.
+            // Member email may have been removed after an invitation was
+            // submitted. Treat that identically to an expired/revoked token;
+            // never dereference null, echo token or activate this account.
+            if (string.IsNullOrWhiteSpace(user.Email))
+                throw new TenantInvitationValidationException();
             var liveEmailHash = SHA256.HashData(Encoding.UTF8.GetBytes(
                 user.Email.Trim().ToUpperInvariant()));
             if (invite.RecipientEmailHash.Length != 32 ||

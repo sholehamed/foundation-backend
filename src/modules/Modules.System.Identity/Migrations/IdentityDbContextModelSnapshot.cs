@@ -1245,7 +1245,6 @@ namespace Modules.Identity.Migrations
                         .HasColumnType("nvarchar(45)");
 
                     b.Property<string>("Email")
-                        .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
@@ -1281,7 +1280,6 @@ namespace Modules.Identity.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("NormalizedEmail")
-                        .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
@@ -1321,7 +1319,7 @@ namespace Modules.Identity.Migrations
 
                     b.HasIndex("TenantId", "NormalizedEmail")
                         .IsUnique()
-                        .HasFilter("[TenantId] IS NOT NULL");
+                        .HasFilter("[TenantId] IS NOT NULL AND [NormalizedEmail] IS NOT NULL");
 
                     b.HasIndex("TenantId", "NormalizedUserName")
                         .IsUnique()
