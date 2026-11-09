@@ -307,9 +307,18 @@ public static class FeatureEndpointMetadataExtensions
         string title)
         where TBuilder : IEndpointConventionBuilder
     {
+        var resource = resourceCode.ToLowerInvariant();
+        var permission = permissionCode.ToUpperInvariant();
         endpoint.WithMetadata(new FeatureEndpointMetadata(
-            key.ToUpperInvariant(), resourceCode.ToLowerInvariant(),
-            permissionCode.ToUpperInvariant(), title));
+            key.ToUpperInvariant(), resource, permission, title));
+        // Descriptive metadata alone is NOT API authorization. Register
+        // a live permission requirement on every mapped System feature:
+        // its handler is strict when the reviewed rollout flag is ON.
+        // The existing group-level SystemAdministrator policy remains.
+        endpoint.RequireAuthorization(new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .AddRequirements(new SystemFeatureEndpointPermissionRequirement(resource, permission))
+            .Build());
         return endpoint;
     }
 }
