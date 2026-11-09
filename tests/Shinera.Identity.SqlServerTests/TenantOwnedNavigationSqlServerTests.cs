@@ -58,13 +58,13 @@ public sealed class TenantOwnedNavigationSqlServerTests
                 """);
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO [dbo].[TenantNavigationItems]
-                    ([TenantId],[Id],[CategoryId],[Title],[Route])
-                VALUES ({alphaId},{ownHomeId},{alphaCat},{"Alpha home"},{"/dashboard"})
+                    ([TenantId],[Id],[CategoryId],[Title],[Route],[SortOrder])
+                VALUES ({alphaId},{ownHomeId},{alphaCat},{"Alpha home"},{"/dashboard"},{(short)1})
                 """);
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO [dbo].[TenantNavigationItems]
-                    ([TenantId],[Id],[CategoryId],[Title],[Route])
-                VALUES ({alphaId},{ownMemberId},{alphaCat},{"Alpha members"},{"/dashboard/members"})
+                    ([TenantId],[Id],[CategoryId],[Title],[Route],[SortOrder])
+                VALUES ({alphaId},{ownMemberId},{alphaCat},{"Alpha members"},{"/dashboard/members"},{(short)2})
                 """);
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO [dbo].[TenantNavigationItems]
