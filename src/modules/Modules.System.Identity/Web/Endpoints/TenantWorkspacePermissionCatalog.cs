@@ -9,6 +9,9 @@ public static class TenantWorkspacePermissionCatalog
     public const string MembersRead = "TENANT.MEMBERS.READ";
     public const string RolesRead = "TENANT.ROLES.READ";
     public const string GroupsRead = "TENANT.GROUPS.READ";
+    public const string GroupsCreate = "TENANT.GROUPS.CREATE";
+    public const string GroupsUpdate = "TENANT.GROUPS.UPDATE";
+    public const string GroupsChangeState = "TENANT.GROUPS.CHANGE-STATE";
     public const string BranchesManage = "TENANT.BRANCHES.MANAGE";
     public const string RolesAssignPermissions = "TENANT.ROLES.ASSIGN-PERMISSIONS";
     public const string RolesCreate = "TENANT.ROLES.CREATE";
@@ -25,6 +28,9 @@ public static class TenantWorkspacePermissionCatalog
         new(MembersRead, "PAGE", "/dashboard/members", "View tenant members", "tenant.workspace.members"),
         new(RolesRead, "PAGE", "/dashboard/roles", "View tenant roles", "tenant.workspace.roles"),
         new(GroupsRead, "PAGE", "/dashboard/groups", "View tenant groups", "tenant.workspace.groups"),
+        new(GroupsCreate, "ACTION", "/dashboard/groups", "Create Tenant groups", "tenant.workspace.groups.create"),
+        new(GroupsUpdate, "ACTION", "/dashboard/groups", "Update Tenant group metadata", "tenant.workspace.groups.update"),
+        new(GroupsChangeState, "ACTION", "/dashboard/groups", "Activate/deactivate Tenant groups", "tenant.workspace.groups.change-state"),
         new(BranchesManage, "ACTION", "/dashboard/branches", "Create/update tenant branches", "tenant.workspace.branches.manage"),
         new(RolesAssignPermissions, "ACTION", "/dashboard/roles", "Assign tenant role permissions", "tenant.workspace.roles.assign-permissions"),
         new(RolesCreate, "ACTION", "/dashboard/roles", "Create tenant roles", "tenant.workspace.roles.create"),
