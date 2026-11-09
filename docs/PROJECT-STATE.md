@@ -1,3 +1,10 @@
+## FR-14B-3 — guarded System account lifecycle (2026-11-09)
+
+- Added opt-in, HTTPS-only, SystemAdministrator-scoped GET /Admins/{id}/lifecycle and CAS-versioned PUT /Admins/{id}/profile, /state and /lock. Target must be non-self, System/TenantId-null and not a direct/inherited SuperAdmin. Older unsafe generic User/Admin mutation routes remain 403.
+- SQL SERIALIZABLE conditional updates and append-only ledger record immutable actor/target/action, changed field identifiers, before/after state and concurrency version, with SecurityStamp rotation and one-use proof revocation. Pending activation bypass prohibited; legacy unversioned/recovery accounts need separately approved remediation.
+- Migration 20261109070000 adds audit columns/actions but is NOT deployed. Feature Identity:PlatformAccounts:LifecycleEnabled is default OFF. SQL tests include stale CAS, actor revocation, protected targets and audit rollback. [Security contract](development/FR-14B3-SYSTEM-ACCOUNT-LIFECYCLE.md).
+- Remaining: reviewed Angular admin editors, deployed browser/BFF session tests, first-login/recovery operational plan, preflight migration/grant and Staging once approved.
+
 ## FR-14B-2B — System initial credential and forced change (2026-11-09)
 
 - Opt-in and HTTPS-restricted System initial secret issuance (60 minutes, five attempts), SQL hash-only one-use 10-minute challenge, activation with new hash, SecurityStamp/ConcurrencyStamp rotation and no OAuth/Identity/BFF session before fresh login. The code-owned Admins issuance action is separate from legacy unsafe mutations. Audit is append-only and transactional; the new migration is **not** applied outside disposable CI.
