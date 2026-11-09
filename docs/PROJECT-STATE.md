@@ -1,3 +1,9 @@
+## FR-13C — real disposable HTTPS/Chromium first-login E2E (2026-11-09)
+
+- Extended existing trusted-main-only FR-12G-C Action; real local HTTPS Identity + Tenant, SQL Server, Angular form, real OpenIddict Code+PKCE and BFF session. New browser scenario covers Owner atomic create of email-less inactive staff, one-time credential, forced password change inside ordinary Identity login, no pre-change session, CSRF rejection, consumed-secret replay denial, fresh login and real role grant/revoke effects (401 stale ticket, 403 fresh ticket, UI access decision).
+- First-login feature flags enabled ONLY for disposable Action runtime; normal Frontend/Backend Production and Staging flags unchanged. One-time secret is never printed and first-login Playwright tracing/screenshot/video disabled. Existing BFF E2E preserved.
+- **Acceptance not assumed:** requires a successful post-merge main-branch live workflow run. This is CI infrastructure, NOT a remotely deployed Staging server or Production rollout. [Implementation/runbook](development/FR-13C-DISPOSABLE-LIVE-FIRST-LOGIN-E2E.md).
+
 ## FR-13B-3A — email-less local Tenant staff creation (2026-11-09)
 
 - [Issue #78](https://github.com/sholehamed/foundation-backend/issues/78): New SQL migration makes `User.Email` and `NormalizedEmail` nullable, and rebuilds Tenant normalized email unique index with an explicit `NormalizedEmail IS NOT NULL` filter. Tenant Owner's pending and atomic initial-password creation accept `email:null`; UserType System, public Owner registration and other email-mandatory paths retain existing validators. A blank email is never replaced by a fake one.
