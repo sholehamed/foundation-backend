@@ -153,24 +153,33 @@ test.describe('FR-13B-3A/3C: email-less staff onboarding through BFF', () => {
       await owner.getByRole('button', { name: 'ثبت کارمند و صدور رمز اولیه' }).click();
       const response = await initialResponse;
       expect(response.status()).toBe(200);
-      const result = await response.json();
-      expect(result.member.userName).toBe(username);
-      expect(result.member.email).toBeNull();
-      expect(result.member.isActive).toBe(false);
-      const initialPassword: string = result.temporaryPassword;
-      expect(/^[A-Za-z0-9]{6}(?:-[A-Za-z0-9]{6}){3}$/.test(initialPassword)).toBe(true);
+      // The Angular UI can refresh after an atomic write: Playwright's
+      // response.json() may lose the body on navigation. The one-time password
+      // MUST be read from the real Owner dialog, never a network trace/log.
       const secretDialog = owner.getByRole('dialog', { name: 'رمز اولیه یک‌بارنمایش' });
       await expect(secretDialog).toBeVisible();
-      expect((await secretDialog.locator('code').innerText()) === initialPassword).toBe(true);
+      const initialPassword: string = await secretDialog.locator('code').innerText();
+      expect(/^[A-Za-z0-9]{6}(?:-[A-Za-z0-9]{6}){3}$/.test(initialPassword)).toBe(true);
       await secretDialog.getByRole('button', { name: /تحویل دادم/ }).click();
       await expect(secretDialog).toHaveCount(0);
+
+      // The persisted member is obtained using the ordinary authorised
+      // directory GET, not from a transient POST response body.
+      const createdDirectory = await api(owner, 'GET', tenantApi + '/members');
+      expect(createdDirectory.status).toBe(200);
+      const createdMember = createdDirectory.data.items.find(
+        (m: any) => m.userName === username,
+      );
+      expect(createdMember?.email).toBeNull();
+      expect(createdMember?.isActive).toBe(false);
+      const memberId: string = createdMember.id;
 
       // No staff login, BFF cookie or role exists before proof of the secret.
       expect((await staffContext.cookies(tenantHost))
         .some(cookie => cookie.name === '__Host-Foundation.Bff')).toBe(false);
       expect((await staffContext.request.get(tenantHost + '/bff/session')).status()).toBe(401);
       const rolesBefore = await api(owner, 'GET',
-        tenantApi + '/members/' + result.member.id + '/roles');
+        tenantApi + '/members/' + memberId + '/roles');
       expect(rolesBefore.status).toBe(200);
       expect(rolesBefore.data.roles.some((r: any) => r.assigned)).toBe(false);
 
@@ -253,7 +262,7 @@ test.describe('FR-13B-3A/3C: email-less staff onboarding through BFF', () => {
       expect((await api(staff, 'GET', tenantApi + '/members')).status).toBe(403);
       const activated = await api(owner, 'GET', tenantApi + '/members');
       expect(activated.status).toBe(200);
-      const newMember = activated.data.items.find((m: any) => m.id === result.member.id);
+      const newMember = activated.data.items.find((m: any) => m.id === memberId);
       expect(newMember?.email).toBeNull();
       expect(newMember?.isActive).toBe(true);
 
@@ -270,10 +279,10 @@ test.describe('FR-13B-3A/3C: email-less staff onboarding through BFF', () => {
         expectedVersion: matrix.data.version, codes: ['TENANT.MEMBERS.READ'],
       }, true)).status).toBe(200);
       const staffRoles = await api(owner, 'GET',
-        tenantApi + '/members/' + result.member.id + '/roles');
+        tenantApi + '/members/' + memberId + '/roles');
       expect(staffRoles.status).toBe(200);
       expect((await api(owner, 'PUT',
-        tenantApi + '/members/' + result.member.id + '/roles', {
+        tenantApi + '/members/' + memberId + '/roles', {
           expectedVersion: staffRoles.data.version, roleIds: [roleId],
         }, true)).status).toBe(200);
 
