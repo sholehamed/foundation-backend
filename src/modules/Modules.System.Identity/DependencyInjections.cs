@@ -80,6 +80,17 @@ namespace Modules.System.Identity
                             PermitLimit = 5, Window = TimeSpan.FromMinutes(1),
                             QueueLimit = 0, AutoReplenishment = true
                         }));
+                // New System identities are inert; bound creation still
+                // consumes a per-actor quota to constrain accidental floods.
+                options.AddPolicy("platform-account-create", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        context.User.FindFirst("sub")?.Value ??
+                        "anonymous:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 5, Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
                 options.AddPolicy("identity-login", context =>
                     RateLimitPartition.GetFixedWindowLimiter(
                         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",

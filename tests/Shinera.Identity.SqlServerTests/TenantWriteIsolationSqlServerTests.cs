@@ -1330,6 +1330,154 @@ public sealed class TenantWriteIsolationSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Pending_system_account_creation_is_inert_scoped_atomic_and_audited()
+    {
+        await WithTestDatabaseAsync(async (setup, tenant, guarded, trusted) =>
+        {
+            var masterId = DefaultSeedData.MasterTenant.Id;
+            var master = new Tenant(masterId, null, "Platform",
+                "pending-system-master", "localhost");
+            var foreign = new Tenant(null, "Other Tenant",
+                "pending-system-foreign", "localhost");
+            var actor = new User(null, "system-creator", "creator@example.test",
+                "Creator", "Admin", UserType.System)
+            {
+                NormalizedUserName = "SYSTEM-CREATOR",
+                NormalizedEmail = "CREATOR@EXAMPLE.TEST",
+                PasswordHash = "fixture-only", SecurityStamp = "fixture"
+            };
+            var foreignMember = new User(foreign.Id, "new.operator",
+                "new.op@example.test", "Tenant", "Member", UserType.Tenant)
+            {
+                NormalizedUserName = "NEW.OPERATOR",
+                NormalizedEmail = "NEW.OP@EXAMPLE.TEST",
+                PasswordHash = "fixture-only", SecurityStamp = "fixture"
+            };
+            var superAdmin = new Role(masterId, "superadmin", null);
+            var actorRole = new UserRole(masterId, actor.Id, superAdmin.Id);
+            setup.AddRange(master, foreign, actor, foreignMember, superAdmin, actorRole);
+            await setup.SaveChangesAsync();
+
+            tenant.InitializeSystem(actor.Id, isSuperAdmin: true);
+            var principal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim(OpenIddictConstants.Claims.Subject, actor.Id.ToString()),
+                new Claim("account_type", "system"),
+                new Claim(OpenIddictConstants.Claims.Role, "superadmin")
+            ], "test"));
+            var gateway = new AuthorizedPlatformMasterWrite(
+                guarded, tenant, trusted,
+                NullLogger<AuthorizedPlatformMasterWrite>.Instance);
+            var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
+            var request = new SystemPendingAccountWriter.CreateRequest(
+                "new.operator", "new.op@example.test", "New", "Operator");
+
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemPendingAccountWriter.CreateAsync(
+                    guarded, gateway, hasher, principal, request, false));
+            Assert.False(tenant.IsFilterDisabled);
+
+            var created = await SystemPendingAccountWriter.CreateAsync(
+                guarded, gateway, hasher, principal, request, true);
+            Assert.False(created.IsActive);
+            Assert.Equal("new.operator", created.UserName);
+            Assert.Equal("new.op@example.test", created.Email);
+            Assert.NotEqual(Guid.Empty, created.Id);
+
+            var stored = await guarded.Users.AsNoTracking()
+                .SingleAsync(u => u.Id == created.Id);
+            Assert.Equal(UserType.System, stored.UserType);
+            Assert.Null(stored.TenantId);
+            Assert.False(stored.IsActive);
+            Assert.False(stored.EmailConfirmed);
+            Assert.False(string.IsNullOrWhiteSpace(stored.SecurityStamp));
+            Assert.False(string.IsNullOrWhiteSpace(stored.ConcurrencyStamp));
+            Assert.False(string.IsNullOrWhiteSpace(stored.PasswordHash));
+            Assert.Equal(0, await guarded.UserRoles.IgnoreQueryFilters(["tenant"])
+                .CountAsync(u => u.UserId == created.Id));
+            Assert.Equal(0, await guarded.UserPermissions.IgnoreQueryFilters(["tenant"])
+                .CountAsync(u => u.UserId == created.Id));
+            Assert.Equal(1, await guarded.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS [Value] FROM [dbo].[SystemAccountLifecycleAuditEntries] " +
+                "WHERE [TargetUserId] = @target AND [ActorUserId] = @actor " +
+                "AND [Action] = 'create_inactive'",
+                new SqlParameter("@target", created.Id),
+                new SqlParameter("@actor", actor.Id)).SingleAsync());
+
+            // System duplicates are not allowed. Foreign Tenant identities may
+            // share visible usernames/emails without being promoted to System.
+            await Assert.ThrowsAsync<SystemAccountCreateConflictException>(() =>
+                SystemPendingAccountWriter.CreateAsync(
+                    guarded, gateway, hasher, principal, request, true));
+            await Assert.ThrowsAsync<SystemAccountCreateConflictException>(() =>
+                SystemPendingAccountWriter.CreateAsync(
+                    guarded, gateway, hasher, principal,
+                    new SystemPendingAccountWriter.CreateRequest(
+                        "second.operator", "NEW.OP@EXAMPLE.TEST", "Second", "User"), true));
+
+            await Assert.ThrowsAsync<SqlException>(() =>
+                guarded.Database.ExecuteSqlRawAsync(
+                    "UPDATE [dbo].[SystemAccountLifecycleAuditEntries] SET [Action]='changed'"));
+            await Assert.ThrowsAsync<SqlException>(() =>
+                guarded.Database.ExecuteSqlRawAsync(
+                    "DELETE FROM [dbo].[SystemAccountLifecycleAuditEntries]"));
+
+            // Audit insertion failure must roll back the System User creation.
+            await setup.Database.ExecuteSqlRawAsync("""
+                CREATE TRIGGER [dbo].[TR_SystemAccountLifecycleAuditEntries_TestFailure]
+                ON [dbo].[SystemAccountLifecycleAuditEntries]
+                AFTER INSERT
+                AS
+                BEGIN
+                    THROW 51083, 'Injected audit failure', 1;
+                END
+                """);
+            try
+            {
+                await Assert.ThrowsAsync<SqlException>(() =>
+                    SystemPendingAccountWriter.CreateAsync(
+                        guarded, gateway, hasher, principal,
+                        new SystemPendingAccountWriter.CreateRequest(
+                            "rollback.operator", "rollback@example.test",
+                            "Rollback", "Operator"), true));
+            }
+            finally
+            {
+                await setup.Database.ExecuteSqlRawAsync(
+                    "DROP TRIGGER IF EXISTS " +
+                    "[dbo].[TR_SystemAccountLifecycleAuditEntries_TestFailure]");
+                guarded.ChangeTracker.Clear();
+            }
+            Assert.False(await guarded.Users.AsNoTracking().AnyAsync(
+                u => u.NormalizedUserName == "ROLLBACK.OPERATOR"));
+
+            // Tenant subjects cannot borrow platform creation authority.
+            var tenantPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim(OpenIddictConstants.Claims.Subject, foreignMember.Id.ToString()),
+                new Claim("account_type", "tenant"),
+                new Claim("tenant_id", foreign.Id.ToString()),
+                new Claim(OpenIddictConstants.Claims.Role, "superadmin")
+            ], "test"));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemPendingAccountWriter.CreateAsync(
+                    guarded, gateway, hasher, tenantPrincipal,
+                    new SystemPendingAccountWriter.CreateRequest(
+                        "tenant.forbidden", "blocked@example.test", "Blocked", "User"), true));
+
+            // A stale actor token loses write rights immediately after live
+            // Master SuperAdmin grant removal.
+            setup.UserRoles.Remove(actorRole);
+            await setup.SaveChangesAsync();
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemPendingAccountWriter.CreateAsync(
+                    guarded, gateway, hasher, principal,
+                    new SystemPendingAccountWriter.CreateRequest(
+                        "revoked.operator", "revoked@example.test", "Revoked", "User"), true));
+            Assert.False(tenant.IsFilterDisabled);
+            Assert.False(trusted.AllowsPlatformTenant(masterId));
+        });
+    }
+
     private static Task<int> CountAuditEventsAsync(IdentityDbContext db, string kind) =>
         db.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*) AS [Value] FROM [dbo].[PlatformGrantAuditEntries] WHERE [Kind] = @kind",

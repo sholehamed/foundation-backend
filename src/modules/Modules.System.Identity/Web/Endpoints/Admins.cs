@@ -1,5 +1,11 @@
 ﻿using Modules.System.Identity.Application.Features.Users.Queries;
 using Modules.System.Identity.Web.Util;
+using Modules.System.Identity.Domain.Entities;
+using Modules.System.Identity.Infrastructure.Persistence.Contexts;
+using Modules.System.Identity.Infrastructure.Persistence.Interceptors;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Configuration;
 
 
 namespace Modules.System.Identity.Web.Endpoints;
@@ -13,7 +19,7 @@ public class Admins : EndpointGroupBase
             .MapPost(AdminPagedList, "pagedList", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.PAGED", "admins", "ADMINS.READ", "AdminPagedList"))
             .MapGet(UserGetById, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.DETAIL", "admins", "ADMINS.READ", "UserGetById"))
             .MapGet(IsUsernameTaken, "isUserNameTaken", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.USERNAME-CHECK", "admins", "ADMINS.READ", "IsUsernameTaken"))
-            .MapPost(UserCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.CREATE", "admins", "ADMINS.CREATE", "UserCreate"))
+            .MapPost(UserCreate, configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.CREATE", "admins", "ADMINS.CREATE", "UserCreate").RequireRateLimiting("platform-account-create"))
             .MapPut(UserUpdate, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.UPDATE", "admins", "ADMINS.UPDATE", "UserUpdate"))
             .MapDelete(UserDelete, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.DELETE", "admins", "ADMINS.DELETE", "UserDelete"))
             .MapPatch(UserChangeState, "{id}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.CHANGE-STATE", "admins", "ADMINS.CHANGE-STATE", "UserChangeState"))
@@ -121,7 +127,44 @@ public class Admins : EndpointGroupBase
     // password changes. Never dispatch it through a System endpoint.
     // Dedicated scoped, audited account lifecycle APIs are required before
     // ordinary create/edit/delete/state/lock operations can be re-enabled.
-    public ForbidHttpResult UserCreate() => TypedResults.Forbid();
+
+    // FR-14B-2A: the only allowed ordinary System account creation is an
+    // INACTIVE identity with no login password, role, group or permissions.
+    // Admin editor activation remains blocked until the reviewed first-login
+    // protocol and deployment migration are ready.
+    public async Task<IResult> UserCreate(
+        HttpContext http, IdentityDbContext db, AuthorizedPlatformMasterWrite gateway,
+        IPasswordHasher<User> hasher, IConfiguration configuration,
+        SystemPendingAccountWriter.CreateRequest input,
+        CancellationToken cancellationToken)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        // Never accept privileged account mutation on cleartext transport.
+        if (!http.Request.IsHttps)
+            return Results.Forbid();
+
+        try
+        {
+            var created = await SystemPendingAccountWriter.CreateAsync(
+                db, gateway, hasher, http.User, input,
+                configuration.GetValue<bool>(
+                    "Identity:PlatformAccounts:PendingCreationEnabled"),
+                cancellationToken);
+            return Results.Created($"/api/System/Admins/{created.Id}", created);
+        }
+        catch (SystemAccountCreateValidationException e)
+        {
+            return Results.BadRequest(new { error = e.Message });
+        }
+        catch (SystemAccountCreateConflictException e)
+        {
+            return Results.Conflict(new { error = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Results.Forbid();
+        }
+    }
     // FR-14B-1: the legacy CQRS command accepts arbitrary TenantId and/or
     // password changes. Never dispatch it through a System endpoint.
     // Dedicated scoped, audited account lifecycle APIs are required before

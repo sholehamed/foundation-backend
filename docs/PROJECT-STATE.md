@@ -1,3 +1,9 @@
+## FR-14B-2A — Inert System account creation (2026-11-09)
+
+- Opt-in HTTPS `POST /api/System/Admins` now uses a dedicated scoped writer, **not** legacy `UserCreateCommand`. New accounts are `System`, `TenantId=null`, `IsActive=false`, with random undisclosed password hash, no role/grant and no login capability. Reject unknown JSON fields, preserve live Master SuperAdmin check, serializable write, 5/min rate limit, 400/403/409 and no-store response.
+- New **operator-gated migration (not deployed)** adds filtered System-email unique index and append-only `SystemAccountLifecycleAuditEntries`. SQL tests verify transactional audit and rollback, namespace isolation, revocation and zero grants. Feature `Identity:PlatformAccounts:PendingCreationEnabled` defaults OFF. Legacy Users create and all other account lifecycle writes still return 403.
+- **Not finished:** FR-14B-2B System one-time initial credential + forced change before login, followed by FR-14B-3 audited update/state/lock and Angular UI. Staging/Production remain deferred. [Detailed design and test contract](development/FR-14B2A-PENDING-SYSTEM-ACCOUNTS.md).
+
 ## FR-14B-1 — legacy System account write containment (2026-11-09)
 
 - Both System `Users` and `Admins` lifecycle routes now fail closed with explicit 403 for five unsafe legacy operations each: create/update/delete/change-state/change-lock. The old shared User commands hard-code TenantId or overwrite PasswordHash and must not be dispatched by privileged HTTP APIs.
