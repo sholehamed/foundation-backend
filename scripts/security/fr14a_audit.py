@@ -33,6 +33,7 @@ SPECIAL_SYSTEM_HANDLERS = {
     "Menus": {"GetMyNavigation"},
 }
 PROTOCOL_ENDPOINT_GROUPS = {"Auth", "Connect", "PublicSignup"}
+TENANT_ENDPOINT_GROUPS = {"TenantWorkspace", "TenantNavigationManagement"}
 # TenantWorkspace is intentionally NOT ignored: it is a mandatory scanned
 # surface even though it is not part of the System Feature Registry.
 SYSTEM_IGNORED = {"TenantWorkspacePermissionCatalog",
@@ -154,13 +155,13 @@ def audit_sources(endpoint_sources: dict[str, str], feature_source: str,
 
         group_system = "MapGroup(this)" in source and (
             'RequireAuthorization("SystemAdministrator")' in source)
-        if name not in PROTOCOL_ENDPOINT_GROUPS and name != "TenantWorkspace" and not group_system:
+        if name not in PROTOCOL_ENDPOINT_GROUPS and name not in TENANT_ENDPOINT_GROUPS and not group_system:
             raise AuditError(name + ": System group lost SystemAdministrator policy")
 
         for method, handler, body, tail in registrations:
             meta = metadata_from(body, source)
-            if name == "TenantWorkspace":
-                if handler in PUBLIC_TENANT_HANDLERS:
+            if name in TENANT_ENDPOINT_GROUPS:
+                if name == "TenantWorkspace" and handler in PUBLIC_TENANT_HANDLERS:
                     if ".AllowAnonymous()" not in tail or ".RequireRateLimiting(" not in tail:
                         raise AuditError("Public Tenant first-login route missing rate-limit/anonymous declaration: " + handler)
                     boundary = "PUBLIC_THROTTLED"
