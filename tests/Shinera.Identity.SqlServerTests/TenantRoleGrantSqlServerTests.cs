@@ -237,8 +237,10 @@ public sealed class TenantRoleGrantSqlServerTests
                 await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
                     TenantGroupRoleAssignmentWriter.ChangeAsync(
                         owner, db, group.Id, roleId, new(true, revoked), trusted));
-                setup.UserGroups.Remove(await setup.UserGroups.SingleAsync(x =>
-                    x.GroupId == group.Id && x.UserId == owner.UserId));
+                setup.UserGroups.Remove(await setup.UserGroups
+                    .IgnoreQueryFilters(["tenant"]).SingleAsync(x =>
+                        x.TenantId == tenantId && x.GroupId == group.Id &&
+                        x.UserId == owner.UserId));
                 await setup.SaveChangesAsync();
 
                 // Disabling a Group or Role cannot be bypassed by a stale UI.
