@@ -1,3 +1,8 @@
+## FR-13C-2A — Tenant Group management without grant mutation (2026-11-09)
+
+- Implement Owner-only Group lifecycle (create, edit, active state) as independent 3-ACTION Tenant feature, transactionally audited with 8-byte RowVersion CAS. Full SQL/HTTP and Angular tests. No UserGroup/GroupRole shortcuts or automatic grants. [Acceptance contract](development/FR-13C2A-TENANT-GROUP-LIFECYCLE.md).
+- Next FR-13C-2B: separate target-bound, audited membership + GroupRole write APIs, explicit independent permissions and immediate inherited-access revocation checks, then UI. Staging remains deferred by user request.
+
 ## FR-13C-1 — Tenant member security history (2026-11-09)
 
 - With Staging intentionally deferred, implement a small Owner-only audit viewer for existing lifecycle and member-role ledgers, strict TenantId SQL isolation, bounded paging, and matching guarded Angular route. No catalog mutation or Production rollout. [Detailed contract](development/FR-13C1-TENANT-MEMBER-AUDIT.md).
