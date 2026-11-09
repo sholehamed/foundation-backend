@@ -1,3 +1,9 @@
+## FR-14B-2B — System initial credential and forced change (2026-11-09)
+
+- Opt-in and HTTPS-restricted System initial secret issuance (60 minutes, five attempts), SQL hash-only one-use 10-minute challenge, activation with new hash, SecurityStamp/ConcurrencyStamp rotation and no OAuth/Identity/BFF session before fresh login. The code-owned Admins issuance action is separate from legacy unsafe mutations. Audit is append-only and transactional; the new migration is **not** applied outside disposable CI.
+- Public System first-login resolve/complete are exact-root-host and independently rate-limited. The UI companion remains default OFF. Normal System and Tenant login behavior is unchanged when disabled; zero automatic grants, no superadmin bootstrap.
+- **Staging/Production deferred**; FR-14B-3 profile/state/lock, BFF identity-host System flow, operational grants/migration/certification and recovery remain. [Full contract](development/FR-14B2B-SYSTEM-FIRST-LOGIN.md).
+
 ## FR-14B-2A — Inert System account creation (2026-11-09)
 
 - Opt-in HTTPS `POST /api/System/Admins` now uses a dedicated scoped writer, **not** legacy `UserCreateCommand`. New accounts are `System`, `TenantId=null`, `IsActive=false`, with random undisclosed password hash, no role/grant and no login capability. Reject unknown JSON fields, preserve live Master SuperAdmin check, serializable write, 5/min rate limit, 400/403/409 and no-store response.
