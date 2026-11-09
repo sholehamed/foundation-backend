@@ -28,9 +28,6 @@ public static class TenantWorkspace
 
     public static void Map(WebApplication app, string backendPrefix)
     {
-        // FR-14C-2B authoring routes share the Tenant Session boundary, but
-        // have an independent default-OFF flag and live Owner permission.
-        TenantNavigationManagement.Map(app, backendPrefix);
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace", Get)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
@@ -289,13 +286,11 @@ public static class TenantWorkspace
     /// </summary>
     public static async Task<IResult> GetTenantNavigation(
         ITenantContext current, IdentityDbContext db, HttpContext http,
-        IConfiguration configuration, CancellationToken ct = default)
+        CancellationToken ct = default)
     {
         http.Response.Headers.CacheControl = "no-store";
         var navigation = await TenantWorkspaceNavigationService.GetAsync(
-            current, db, http.User, ct,
-            ownedCatalogEnabled: configuration.GetValue<bool>(
-                "Identity:TenantNavigation:OwnedCatalogEnabled"));
+            current, db, http.User, ct);
         return navigation is null ? DeniedAfterAuthentication() : Results.Ok(navigation);
     }
 
@@ -330,8 +325,7 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.MembersAssignRoles
                 or TenantWorkspacePermissionCatalog.MembersCreate
                 or TenantWorkspacePermissionCatalog.MembersInvite
-                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword
-                or TenantWorkspacePermissionCatalog.NavigationManage)
+                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword)
                 allowed = allowed && current.WritableTenantIds.Contains(tenantId);
             // IAM writes also require a live local Owner, independent of
             // delegated read/group permissions.
@@ -347,8 +341,7 @@ public static class TenantWorkspace
                 or TenantWorkspacePermissionCatalog.MembersAssignRoles
                 or TenantWorkspacePermissionCatalog.MembersCreate
                 or TenantWorkspacePermissionCatalog.MembersInvite
-                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword
-                or TenantWorkspacePermissionCatalog.NavigationManage)
+                or TenantWorkspacePermissionCatalog.MembersIssueTempPassword)
                 allowed = allowed && await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(
                     current, db, ct);
             entries.Add(new UiAccessItem(

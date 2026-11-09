@@ -1,3 +1,5 @@
+> **Clarification (2026-11-10).** FR-14C-1's read-only central Menu projection is retained. Only its former follow-up plan for Tenant-owned menu definitions is superseded: **System Admin alone defines menus and permissions**. See [the authoritative decision](FR-14C-CENTRAL-MENU-AUTHORITY.md).
+
 # FR-14C-1 — Live Tenant navigation and page ownership boundary
 
 2026-11-09. This slice aligns the existing global Menu catalog navigation with the **live, Tenant-scoped PAGE permission evaluator**. It does **not** implement branch membership, per-Tenant menu ownership rows, or new grants.
