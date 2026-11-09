@@ -124,6 +124,7 @@ namespace Modules.System.Identity
             services.AddScoped<PlatformAccessDenialAudit>();
             services.AddScoped<IAuthorizationHandler, TenantPermissionHandler>();
             services.AddScoped<IAuthorizationHandler, SystemPermissionHandler>();
+            services.AddScoped<IAuthorizationHandler, SystemFeatureEndpointPermissionHandler>();
             services.AddScoped<IIdentityDbContext>(provider =>
            provider.GetRequiredService<IdentityDbContext>());
             services.AddScoped<IPermissionResolver, RoutePermissionResolver>();
