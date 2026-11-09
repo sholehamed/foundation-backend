@@ -1,3 +1,5 @@
+> **SUPERSEDED — 2026-11-10.** The user confirmed that only **System Admin defines menus, routes and permission definitions**. This earlier Tenant-owned menu design is retired and **must not be deployed**. See [the authoritative decision](FR-14C-CENTRAL-MENU-AUTHORITY.md). Historical content below is retained solely to explain previous commits.
+
 # FR-14C-2A — Tenant-owned navigation catalog (read-only, default OFF)
 
 Date: 2026-11-09. Scope: additive **physical Tenant ownership** for a new Menu catalog and a safe read-only cutover path. This is not an editable Tenant Menu UI and does not imply Branch-based RBAC.
