@@ -142,10 +142,13 @@ public sealed class TenantRoleGrantSqlServerTests
                             owner, db, new DefaultHttpContext(), group.Id, 2)).Value);
                 Assert.Equal(5, second.Items.Count);
                 Assert.False(second.HasNext);
-                Assert.Contains(second.Items, x => x.Category == "group_member" &&
+                var history = first.Items.Concat(second.Items).ToArray();
+                Assert.Contains(history, x => x.Category == "group_member" &&
                     x.TargetUserId == staff.Id && x.TargetUserName == "group-audit-staff");
-                Assert.Contains(second.Items, x => x.Category == "group_role" &&
+                Assert.Contains(history, x => x.Category == "group_role" &&
                     x.RoleId == ordinaryRole && x.RoleName == "Reception");
+                Assert.Contains(history, x => x.Category == "group" &&
+                    x.Action == "create" && x.CurrentName == "Historical team");
                 Assert.All(first.Items.Concat(second.Items), x =>
                     Assert.NotEqual("FOREIGN ROLE LEAK", x.RoleName));
                 Assert.Equal(400, Assert.IsAssignableFrom<IStatusCodeHttpResult>(
