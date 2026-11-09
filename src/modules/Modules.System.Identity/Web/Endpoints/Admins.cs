@@ -29,8 +29,38 @@ public class Admins : EndpointGroupBase
             .MapPut(AllowPlatformUserPermission, "{id:guid}/permissions/{permissionId:guid}/allow", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.ALLOW-PERMISSION", "admins", "ADMINS.ASSIGN-PERMISSION", "AllowPlatformUserPermission"))
             .MapPut(DenyPlatformUserPermission, "{id:guid}/permissions/{permissionId:guid}/deny", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.DENY-PERMISSION", "admins", "ADMINS.ASSIGN-PERMISSION", "DenyPlatformUserPermission"))
             .MapDelete(RemovePlatformUserPermission, "{id:guid}/permissions/{permissionId:guid}", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.REMOVE-PERMISSION", "admins", "ADMINS.ASSIGN-PERMISSION", "RemovePlatformUserPermission"))
+            .MapPost(IssueSystemInitialPassword, "{id:guid}/temporary-password", configure: e => e.WithFeatureEndpoint("SYSTEM.ADMINS.ISSUE-TEMP-PASSWORD", "admins", "ADMINS.ISSUE-TEMP-PASSWORD", "Issue restricted System initial password").RequireRateLimiting("platform-account-create"))
 
         ;
+    }
+
+    /// <summary>
+    /// Admins may issue a one-time secret ONLY to an inactive, unprivileged
+    /// System account. The response is sensitive: one-time reveal, no-store.
+    /// No token is issued and no account is activated here.
+    /// </summary>
+    public async Task<IResult> IssueSystemInitialPassword(
+        HttpContext http, IdentityDbContext db, AuthorizedPlatformMasterWrite gateway,
+        IPasswordHasher<User> hasher, IConfiguration configuration,
+        Guid id, CancellationToken cancellationToken)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        http.Response.Headers.Pragma = "no-cache";
+        if (!http.Request.IsHttps || !configuration.GetValue<bool>(
+                "Identity:PlatformAccounts:FirstLoginEnabled"))
+            return Results.Forbid();
+        try
+        {
+            var issued = await SystemFirstLoginWriter.IssueAsync(
+                db, gateway, hasher, http.User, id, enabled: true, cancellationToken);
+            return Results.Ok(new
+            {
+                temporaryPassword = issued.TemporaryPassword,
+                expiresAtUtc = issued.ExpiresAtUtc
+            });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (SystemFirstLoginTargetException) { return Results.Forbid(); }
     }
 
     // Both routes inherit SystemAdministrator and the service independently

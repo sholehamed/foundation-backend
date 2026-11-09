@@ -1,3 +1,8 @@
+## FR-14B-2B — First System password, forced rotation, fresh login (2026-11-09)
+
+- System-only inactive target receives a short-lived, one-time initial secret with a separate SQL proof challenge. Completion atomically rotates credentials and activates the account, without issuing tokens/cookies. Default-OFF HTTP/Angular flow and additional audit/migration kept independent of Tenant first-login. [Design and acceptance](development/FR-14B2B-SYSTEM-FIRST-LOGIN.md).
+- Next after latest-head CI: FR-14B-3 bounded System profile, state and lock CAS plus browser acceptance, privileged bootstrap rotation and deployed proxy/Staging certification. No Staging or feature toggles now.
+
 ## FR-14B-2A — Safe pending System identity creation (2026-11-09)
 
 - Dedicated opt-in/HTTPS Master-scoped System pending-account creation with enforced inactive state, non-disclosed random password hash, zero auto-grants, strict 4-field request and atomic append-only audit; SQL filtered unique System email migration added but **not deployed**. Other unsafe lifecycle operations remain 403. [Contract and operations gate](development/FR-14B2A-PENDING-SYSTEM-ACCOUNTS.md).

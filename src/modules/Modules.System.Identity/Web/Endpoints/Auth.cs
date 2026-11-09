@@ -37,6 +37,12 @@ public class Auth : EndpointGroupBase
                 configure: x => x.AllowAnonymous().RequireRateLimiting("identity-login"))
             .MapPost(CompleteInteractiveFirstLogin, "interactive-first-login/complete",
                 configure: x => x.AllowAnonymous().RequireRateLimiting("tenant-first-login"))
+            // FR-14B-2B: separate System first-login protocol. Never maps
+            // to the privileged System Feature Registry or an OAuth grant.
+            .MapPost(ResolveSystemFirstLogin, "system-first-login/resolve",
+                configure: x => x.AllowAnonymous().RequireRateLimiting("system-first-login"))
+            .MapPost(CompleteSystemFirstLogin, "system-first-login/complete",
+                configure: x => x.AllowAnonymous().RequireRateLimiting("system-first-login"))
             .MapGet(GetUserInfo, "/userinfo", configure: x => x.RequireAuthorization())
             .MapMethods(Logout, ["GET", "POST"], "logout");
     }
@@ -216,6 +222,84 @@ public class Auth : EndpointGroupBase
 
         httpContext.Response.Headers.CacheControl = "no-store";
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// System's original Login form is hosted on the exact root domain,
+    /// never a Tenant slug or arbitrary Host header. This flow cannot
+    /// mint an Identity cookie or OAuth/BFF session.
+    /// </summary>
+    public static bool SystemFirstLoginHostAllowed(
+        HttpContext http, IConfiguration configuration)
+    {
+        if (!configuration.GetValue<bool>(
+                "Identity:PlatformAccounts:FirstLoginEnabled") ||
+            !http.Request.IsHttps)
+            return false;
+        var baseDomain = configuration["Tenant:WorkspaceBaseDomain"]?
+            .Trim().TrimEnd('.').ToLowerInvariant();
+        var host = http.Request.Host.Host.TrimEnd('.').ToLowerInvariant();
+        return !string.IsNullOrWhiteSpace(baseDomain) &&
+            host == baseDomain;
+    }
+
+    public async Task<IResult> ResolveSystemFirstLogin(
+        SystemFirstLoginWriter.StartRequest input, HttpContext http,
+        IConfiguration configuration,
+        global::Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext db,
+        IPasswordHasher<User> hasher, CancellationToken cancellationToken)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        http.Response.Headers.Pragma = "no-cache";
+        if (!SystemFirstLoginHostAllowed(http, configuration))
+            return Results.NotFound();
+
+        var result = await SystemFirstLoginWriter.ResolveForLoginAsync(
+            db, hasher, input, cancellationToken);
+        return Results.Ok(new
+        {
+            status = result.Status,
+            challenge = result.Challenge,
+            expiresAtUtc = result.ExpiresAtUtc
+        });
+    }
+
+    /// <summary>
+    /// The 256-bit one-use challenge authorizes only replacing a pending
+    /// System User's password and activating the same exact user. A successful
+    /// response explicitly requires a FRESH ordinary login afterwards.
+    /// </summary>
+    public async Task<IResult> CompleteSystemFirstLogin(
+        SystemFirstLoginWriter.CompleteRequest input, HttpContext http,
+        IConfiguration configuration,
+        global::Modules.System.Identity.Infrastructure.Persistence.Contexts.IdentityDbContext db,
+        IPasswordHasher<User> hasher, CancellationToken cancellationToken)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        http.Response.Headers.Pragma = "no-cache";
+        if (!SystemFirstLoginHostAllowed(http, configuration))
+            return Results.NotFound();
+        try
+        {
+            await SystemFirstLoginWriter.CompleteAsync(
+                db, hasher, input, cancellationToken);
+            await http.SignOutAsync(IdentityServerCookieDefaults.AuthenticationScheme);
+            return Results.Ok(new
+            {
+                passwordChanged = true,
+                requiresRelogin = true
+            });
+        }
+        catch (SystemFirstLoginValidationException)
+        {
+            return Results.Problem(statusCode: 400,
+                title: "Invalid or expired System first-login challenge");
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            return Results.Problem(statusCode: 400,
+                title: "Invalid or expired System first-login challenge");
+        }
     }
 
     /// <summary>
