@@ -1742,9 +1742,36 @@ public sealed class TenantWriteIsolationSqlServerTests
                 ConcurrencyStamp = "reserved-version"
             };
             var superRole = new Role(masterId, "superadmin", null);
+            var inheritedReserved = new User(null, "lifecycle-inherited",
+                "lc-inherited@example.test", "Inherited", "Reserved", UserType.System)
+            {
+                NormalizedUserName = "LIFECYCLE-INHERITED",
+                NormalizedEmail = "LC-INHERITED@EXAMPLE.TEST",
+                PasswordHash = "inherited-secret", SecurityStamp = "inherited-stamp",
+                ConcurrencyStamp = "inherited-version"
+            };
+            var privilegedGroup = new Group(Guid.NewGuid())
+            {
+                TenantId = masterId,
+                Name = "Reserved System Administration",
+                NormalizedName = "RESERVED SYSTEM ADMINISTRATION",
+                IsActive = true
+            };
+            var inheritedAssignment = new UserGroup(Guid.NewGuid())
+            {
+                TenantId = masterId, UserId = inheritedReserved.Id,
+                GroupId = privilegedGroup.Id
+            };
+            var inheritedRole = new GroupRole(Guid.NewGuid())
+            {
+                TenantId = masterId, GroupId = privilegedGroup.Id,
+                RoleId = superRole.Id
+            };
             setup.AddRange(master, foreign, actor, target, foreignUser, reservedUser,
-                superRole, new UserRole(masterId, actor.Id, superRole.Id),
-                new UserRole(masterId, reservedUser.Id, superRole.Id));
+                superRole, inheritedReserved, privilegedGroup,
+                new UserRole(masterId, actor.Id, superRole.Id),
+                new UserRole(masterId, reservedUser.Id, superRole.Id),
+                inheritedAssignment, inheritedRole);
             await setup.SaveChangesAsync();
 
             tenant.InitializeSystem(actor.Id, isSuperAdmin: true);
@@ -1765,6 +1792,9 @@ public sealed class TenantWriteIsolationSqlServerTests
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
                 SystemAccountLifecycleWriter.ReadAsync(guarded, gateway,
                     principal, reservedUser.Id, enabled: true));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                SystemAccountLifecycleWriter.ReadAsync(guarded, gateway,
+                    principal, inheritedReserved.Id, enabled: true));
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
                 SystemAccountLifecycleWriter.ReadAsync(guarded, gateway,
                     principal, actor.Id, enabled: true));
