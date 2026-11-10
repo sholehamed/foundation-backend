@@ -104,6 +104,10 @@ fi
 dotnet run --project backend/tests/Shinera.Identity.E2E.SqlMutator \
   --no-build -c Release -- seed-tenant-iam
 python3 backend/tests/http/tenant_iam_chain_e2e.py
+# Additional FIRST-LOGIN proof against this same real HTTPS/BFF app and
+# disposable SQL: all System Admin menus, actual public Tenant signup,
+# all new Owner menus and every Tenant PAGE/ACTION permission on login.
+python3 backend/tests/http/public_signup_e2e.py
 # SQL fixture is populated only after the real HTTP suite registered the
 # 17 reviewed Tenant permissions. Never silently edit any real catalog.
 dotnet run --project backend/tests/Shinera.Identity.E2E.SqlMutator \
