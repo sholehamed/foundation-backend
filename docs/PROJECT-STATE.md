@@ -1,3 +1,9 @@
+## FR-14C — Central Tenant navigation readiness audit (2026-11-10)
+
+- Implemented **read-only System SuperAdmin** `GET /System/FeatureRegistry/tenant-navigation/readiness` (under configured API prefix), comparing all six canonical Tenant dashboard Menu routes against the single System-owned Menu/Category/Page/Permission registry. Diagnoses missing, duplicate or hidden menus, malformed ancestors, unregistered routes, broken Tenant PAGE ownership/UI links and ungated external links; **no automatic Menu or grant creation**.
+- Added disposable SQL Server regression and route policy unit contract. Existing separate System Feature Registry and Tenant Permission Catalog Preview/Apply remain unchanged and explicit. [Operator guide](development/FR-14C-CENTRAL-TENANT-NAVIGATION-READINESS.md).
+- Next: System Admin reconciliation of reported missing Tenant menu rows, full resource/endpoint parity review, approval of cross-Tenant browser/BFF test before enabling the default-OFF Angular dynamic menu pilot. No Staging/Production/Apply operations.
+
 ## FR-14C — Tenant role grant integrity after central Registry correction (2026-11-10)
 
 - System Admin remains sole owner of definitions. A local Tenant Owner's role editor now **quarantines** an ordinary Tenant role containing any legacy/out-of-catalog/inactive/foreign-owned Permission link. The editor reports `canEdit:false`, and the CAS/audited PUT denies rather than silently preserving or deleting the unknown link.
