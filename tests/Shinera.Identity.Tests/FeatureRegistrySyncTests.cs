@@ -239,7 +239,7 @@ public sealed class FeatureRegistrySyncTests
 
         var preview = await service.PreviewAsync();
         Assert.True(preview.CanApply);
-        Assert.Equal(81, preview.Changes.Count(x =>
+        Assert.Equal(82, preview.Changes.Count(x =>
             x.Type == "UiResource" && x.State == "Create"));
         Assert.Equal(14, preview.Changes.Count(x =>
             x.Type == "Menu" && x.State == "Create"));
@@ -247,7 +247,7 @@ public sealed class FeatureRegistrySyncTests
         var applied = await service.ApplyAsync();
         Assert.True(applied.CanApply);
         Assert.Equal(14, await db.Menus.CountAsync());
-        Assert.Equal(81, await db.UiResources.CountAsync());
+        Assert.Equal(82, await db.UiResources.CountAsync());
 
         foreach (var feature in FeatureRegistryDefinitions.Features)
         {
@@ -326,7 +326,7 @@ public sealed class FeatureRegistrySyncTests
         var after = await db.UiResources.SingleAsync(x => x.Id == originalId);
         Assert.False(after.IsActive);
         Assert.Equal("Manually customized title", after.Title);
-        Assert.Equal(81, await db.UiResources.CountAsync());
+        Assert.Equal(82, await db.UiResources.CountAsync());
     }
 
     [Fact]
@@ -350,7 +350,7 @@ public sealed class FeatureRegistrySyncTests
             x.Type == "PermissionUiResource" && x.State == "Conflict" &&
             x.Key.Contains("system.roles.create"));
         Assert.False((await service.ApplyAsync()).CanApply);
-        Assert.Equal(81, await db.UiResources.CountAsync());
+        Assert.Equal(82, await db.UiResources.CountAsync());
     }
 
     [Fact]
