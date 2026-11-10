@@ -71,16 +71,26 @@ public sealed class SystemFeatureEndpointPermissionHandler(
             f.PermissionCodes.Contains(requirement.PermissionCode, StringComparer.Ordinal));
         if (feature is null)
             return;
-        var registered = await db.Permissions.AsNoTracking().CountAsync(p =>
-            p.Code == requirement.PermissionCode && p.IsActive &&
-            p.ResourceId != null && p.Resource != null &&
-            p.Resource.IsActive && p.Resource.Code == feature.ResourceCode &&
-            p.Resource.Module != null && p.Resource.Module.IsActive &&
-            p.Resource.Module.Code == feature.ModuleCode, cancellationToken);
-        // Count only matching owners isn't enough when an additional
-        // duplicate/misowned row has the same key.
-        if (registered != 1 || await db.Permissions.AsNoTracking().CountAsync(
-                p => p.Code == requirement.PermissionCode, cancellationToken) != 1)
+        var owners = await db.Permissions.AsNoTracking()
+            .Where(p => p.Code == requirement.PermissionCode)
+            .Select(p => new
+            {
+                p.IsActive,
+                p.ResourceId,
+                ResourceActive = p.Resource != null && p.Resource.IsActive,
+                ResourceCode = p.Resource == null ? null : p.Resource.Code,
+                ModuleActive = p.Resource != null && p.Resource.Module != null &&
+                    p.Resource.Module.IsActive,
+                ModuleCode = p.Resource == null || p.Resource.Module == null ?
+                    null : p.Resource.Module.Code
+            }).ToListAsync(cancellationToken);
+        // Exactly one row, owned by exactly the reviewed System feature.
+        // No null/foreign owner fallback and no arbitrary duplicate winner.
+        if (owners.Count != 1 || !owners[0].IsActive ||
+            owners[0].ResourceId is null || !owners[0].ResourceActive ||
+            !owners[0].ModuleActive ||
+            owners[0].ResourceCode != feature.ResourceCode ||
+            owners[0].ModuleCode != feature.ModuleCode)
             return;
 
         if (await new EffectivePermissionEvaluator(db).HasPermissionAsync(
