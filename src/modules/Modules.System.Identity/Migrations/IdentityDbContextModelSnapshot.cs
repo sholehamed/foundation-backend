@@ -188,6 +188,530 @@ namespace Modules.Identity.Migrations
                     b.ToTable("Branches", (string)null);
                 });
 
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogCapabilityDefinition", b =>
+                {
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("MergePolicy")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("ModuleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ResourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ValueKind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("ModuleId");
+
+                    b.HasIndex("ResourceId");
+
+                    b.ToTable("CatalogCapabilityDefinitions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CatalogCapabilityDefinitions_Kind", "[Kind] IN ('Feature','CountLimit','PeriodQuota','AllowedModes')");
+                            t.HasCheckConstraint("CK_CatalogCapabilityDefinitions_ValueKind", "[ValueKind] IN ('Boolean','Integer','ModeSet')");
+                            t.HasCheckConstraint("CK_CatalogCapabilityDefinitions_Merge", "[MergePolicy] IN ('Override','Additive','Maximum','SetUnion','DenyWins')");
+                        });
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlan", b =>
+                {
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("ParentPlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("ParentPlanId");
+
+                    b.ToTable("CatalogPlans", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CatalogPlans_Code", "LEN([Code]) > 0");
+                            t.HasCheckConstraint("CK_CatalogPlans_Parent", "[ParentPlanId] IS NULL OR [ParentPlanId] <> [Id]");
+                        });
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanDisplayItem", b =>
+                {
+                    b.Property<Guid?>("CapabilityDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsHighlighted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid?>("ModuleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PlanVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("PlanVersionId", "SortOrder");
+
+                    b.HasIndex("ModuleId");
+
+                    b.HasIndex("CapabilityDefinitionId");
+
+                    b.ToTable("CatalogPlanDisplayItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CatalogPlanDisplayItems_Kind", "[Kind] IN ('Module','Capability','Benefit')");
+                            t.HasCheckConstraint("CK_CatalogPlanDisplayItems_Owner", "([Kind] = 'Module' AND [ModuleId] IS NOT NULL AND [CapabilityDefinitionId] IS NULL) OR ([Kind] = 'Capability' AND [CapabilityDefinitionId] IS NOT NULL AND [ModuleId] IS NULL) OR ([Kind] = 'Benefit' AND [ModuleId] IS NULL AND [CapabilityDefinitionId] IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanPriceOffer", b =>
+                {
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(19,2)");
+
+                    b.Property<string>("BillingCycle")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid>("PlanVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime?>("SaleEndsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("SaleStartsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("PlanVersionId", "BillingCycle", "Currency")
+                        .IsUnique();
+
+                    b.ToTable("CatalogPlanPriceOffers", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CatalogPlanPriceOffers_Amount", "[Amount] >= 0");
+                            t.HasCheckConstraint("CK_CatalogPlanPriceOffers_Dates", "[SaleEndsAtUtc] IS NULL OR [SaleStartsAtUtc] IS NULL OR [SaleEndsAtUtc] > [SaleStartsAtUtc]");
+                        });
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", b =>
+                {
+                    b.Property<string>("BadgeText")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ContentFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DisplaySubtitle")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("DisplayTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsRecommended")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid?>("ParentPlanVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PublishedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("PlanId", "VersionNumber")
+                        .IsUnique();
+
+                    b.HasIndex("ParentPlanVersionId");
+
+                    b.HasIndex("Status", "DisplayOrder");
+
+                    b.ToTable("CatalogPlanVersions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CatalogPlanVersions_Version", "[VersionNumber] > 0");
+                            t.HasCheckConstraint("CK_CatalogPlanVersions_Status", "[Status] IN ('Draft','Published','Retired')");
+                            t.HasCheckConstraint("CK_CatalogPlanVersions_PublishedAt", "[Status] <> 'Published' OR [PublishedAtUtc] IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanVersionCapabilityValue", b =>
+                {
+                    b.Property<bool?>("BooleanValue")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("CapabilityDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("IntegerValue")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsUnlimited")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("ModeSetJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("PlanVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("PlanVersionId", "CapabilityDefinitionId")
+                        .IsUnique();
+
+                    b.HasIndex("CapabilityDefinitionId");
+
+                    b.ToTable("CatalogPlanVersionCapabilityValues", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CatalogPlanVersionCapabilityValues_ExactlyOne", "(CASE WHEN [BooleanValue] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [IntegerValue] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [ModeSetJson] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [IsUnlimited] = 1 THEN 1 ELSE 0 END) = 1");
+                            t.HasCheckConstraint("CK_CatalogPlanVersionCapabilityValues_NonNegative", "[IntegerValue] IS NULL OR [IntegerValue] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanVersionModule", b =>
+                {
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid>("ModuleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PlanVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("PlanVersionId", "ModuleId")
+                        .IsUnique();
+
+                    b.HasIndex("ModuleId");
+
+                    b.ToTable("CatalogPlanVersionModules");
+                });
+
             modelBuilder.Entity("Modules.System.Identity.Domain.Entities.BusinessProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1804,6 +2328,107 @@ namespace Modules.Identity.Migrations
                         .IsRequired();
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogCapabilityDefinition", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.Module", null)
+                        .WithMany()
+                        .HasForeignKey("ModuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.Resource", null)
+                        .WithMany()
+                        .HasForeignKey("ResourceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlan", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlan", null)
+                        .WithMany()
+                        .HasForeignKey("ParentPlanId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanDisplayItem", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PlanVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.Module", null)
+                        .WithMany()
+                        .HasForeignKey("ModuleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogCapabilityDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("CapabilityDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanPriceOffer", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PlanVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", null)
+                        .WithMany()
+                        .HasForeignKey("ParentPlanVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanVersionCapabilityValue", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PlanVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogCapabilityDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("CapabilityDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanVersionModule", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PlanVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.Module", null)
+                        .WithMany()
+                        .HasForeignKey("ModuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                 });
 
             modelBuilder.Entity("Modules.System.Identity.Domain.Entities.BusinessProfile", b =>
