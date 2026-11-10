@@ -292,8 +292,8 @@ public sealed class FeatureRegistrySqlServerTests
             var rogue = new Modules.System.Identity.Domain.Entities.Menu(Guid.NewGuid())
             {
                 CategoryId = category.Id, Route = "/dashboard/unreviewed",
-                Title = "Unreviewed", IsActive = true, IsHidden = false,
-                RowVersion = [1]
+                Title = "Unreviewed", Icon = "warning",
+                IsActive = true, IsHidden = false, RowVersion = [1]
             };
             db.Menus.Add(rogue);
             await db.SaveChangesAsync();
