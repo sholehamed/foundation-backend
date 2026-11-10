@@ -1,3 +1,8 @@
+## FR-15C — GitHub Actions launches ephemeral full-stack Staging (2026-11-10)
+
+- Introduced a **manual main-only** `FR-15C Launch Ephemeral Staging` workflow, also triggered once by its initial merge, which invokes existing trusted `FR-12G-C live HTTPS BFF browser E2E` through a scoped Actions token. The actual browser run already provisions disposable SQL Server, Kestrel/Identity, Angular, local HTTPS, two Tenant contexts and Playwright; launcher summary links to its uniquely matched run. **A successful dispatch is not a successful acceptance test.**
+- This is an ephemeral CI environment only. **No persistent/public Staging**, no cloud/VPS deploy, no DB on a remote host, no Auto-Apply or grants, and **dynamic Tenant menu pilot remains OFF**. Manual FR-15A external Staging gate is still separate. [Operation and safety](development/FR-15C-ACTIONS-EPHEMERAL-STAGING.md).
+
 ## FR-14C — four-way live SQL acceptance before dynamic menu activation (2026-11-10)
 
 - Added **positive and adversarial** real disposable SQL Server acceptance of the consolidated System/Tenant/Menu/Endpoint registry: clean catalog but missing six Tenant Menus stays red, explicitly registered six System-owned Menus becomes green, unknown route/foreign PAGE Permission link/disabled System API each independently returns red, and fixture-only cleanup restores green. No role/user grants or real environment modifications. [Detailed evidence and Staging hold](development/FR-14C-FOUR-WAY-SQL-ACCEPTANCE.md).
