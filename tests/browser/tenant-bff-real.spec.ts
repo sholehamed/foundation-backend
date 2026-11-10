@@ -155,6 +155,24 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
     expect((await ownerContext.cookies(secondTenantHost)).some(
       c => c.name === '__Host-Foundation.Bff')).toBe(false);
 
+    // An authenticated Tenant Owner's BFF cookie MUST NOT grant access to
+    // System Admin's central registry, even when the browser uses the
+    // same-origin BFF bridge instead of a directly supplied Bearer JWT.
+    for (const route of [
+      '/api/system/FeatureRegistry/tenant-permissions/preview',
+      '/api/system/FeatureRegistry/tenant-navigation/readiness',
+      '/api/system/FeatureRegistry/system-endpoints/integrity',
+    ]) {
+      const forbiddenSystemCatalog = await api(owner, 'GET', route);
+      expect(forbiddenSystemCatalog.status, route + ' must remain System-only').toBe(403);
+    }
+
+    // The other Tenant hostname must reject this Owner's BFF cookie for
+    // protected resource reads; no cross-host session fallback is allowed.
+    const wrongTenantMembers = await ownerContext.request.get(
+      secondTenantHost + '/api/tenant/workspace/members');
+    expect([401, 403]).toContain(wrongTenantMembers.status());
+
     console.log('FR12G-C stage: reading Tenant Members via BFF Cookie');
     const members = await api(owner, 'GET', '/api/tenant/workspace/members');
     expect(members.status).toBe(200);
