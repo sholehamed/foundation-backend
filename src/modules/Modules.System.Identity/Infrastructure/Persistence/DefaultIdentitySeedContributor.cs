@@ -44,7 +44,16 @@ public sealed class DefaultIdentitySeedContributor : ISeedContributor
         await PlatformPermissionCatalogSeeder.SeedDefinitionsAsync(db);
 
         if (!environment.IsDevelopment())
+        {
+            // On a brand-new Production/Staging installation, an operator may
+            // supply a one-time strong bootstrap secret via deployment secrets.
+            // Granting System privileges requires the full FIRST-INSTALL role
+            // and menu catalog. Never manufacture a default password; never
+            // recreate or re-grant an existing administrator on restart.
+            await InitialSystemAdministratorBootstrap.CreateOnceAsync(
+                db, hasher, configuration);
             return;
+        }
 
         // Preserve the current local Development experience. The fallback is
         // NEVER used outside Development; set the environment variable on any
