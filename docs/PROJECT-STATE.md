@@ -1,3 +1,9 @@
+## FR-15B — live GitHub Actions HTTPS/SQL/Chromium two-Tenant acceptance (2026-11-10)
+
+- Added live Chromium negative checks: a real Tenant Owner BFF cookie cannot access three System-only central Registry diagnostics (403), and must be denied on the second Tenant host's protected Members API (401/403). Existing Code+PKCE, CSRF, cookies and live grants/revoke tests remain intact.
+- `FR-12G-C live HTTPS BFF browser E2E` runs on trusted Backend main after a `tests/browser/**` change; this verifies a **disposable, real integration environment**, not a deployed Staging server. `FR-15A` separately accepts a manual read-only probe of an approved actual Staging installation. [Scope and evidence](development/FR-15B-LIVE-ACTIONS-ACCEPTANCE.md).
+- Next gates: actual hosted Staging prerequisites, manual read-only probe, operator-led Catalog/Menu reconciliation and authenticated two-Tenant browser UAT on deployed Staging. No Production release.
+
 ## FR-15A — Staging two-Tenant read-only gate (2026-11-10)
 
 - Prepared a manual main-only GitHub Actions workflow for an operator-supplied non-secret real Staging manifest. Requires explicit probe consent, exact dedicated HTTPS System/Identity/Tenant A/Tenant B hosts, six anonymous OIDC/BFF/Workspace probes and a sanitized non-secret evidence artifact. Offline schema and negative security tests run in regular CI. No automatic fallback to example hosts.
