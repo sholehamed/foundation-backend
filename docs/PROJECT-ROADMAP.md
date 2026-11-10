@@ -1,3 +1,8 @@
+## FR-15D — dynamic Tenant menu ON only inside trusted Actions disposable Chromium E2E (2026-11-10)
+
+- Existing FR-15C ephemeral full-stack acceptance now turns `tenantDynamicNavigationPilotEnabled` **ON only in the temporary Angular checkout**, seeds the six reviewed global System-owned Tenant Menu rows **only in isolated SQL Server fixture** after HTTP Tenant Permission Catalog setup, and exercises actual Angular/Backend BFF navigation. Browser verifies staff Members link appears on real Role grant, disappears on revocation + fresh login, no unauthorized Roles/Groups links and System central gate isolation. Signed HTTP and live browser tests remain authoritative.
+- All checked-in Frontend/deployed flags stay OFF; the SqlMutator fixture is hard-restricted to trusted-main GitHub Actions and the exact disposable SQL DB, never a production API. No global grants or remotely hosted Staging are touched. [Runbook](development/FR-15D-ACTIONS-DYNAMIC-MENU-REAL-BROWSER.md). **Next:** green main live-browser run, independent real Staging central catalog review before any deployment pilot.
+
 ## FR-15C — GitHub Actions launches ephemeral full-stack Staging (2026-11-10)
 
 - Introduced a **manual main-only** `FR-15C Launch Ephemeral Staging` workflow, also triggered once by its initial merge, which invokes existing trusted `FR-12G-C live HTTPS BFF browser E2E` through a scoped Actions token. The actual browser run already provisions disposable SQL Server, Kestrel/Identity, Angular, local HTTPS, two Tenant contexts and Playwright; launcher summary links to its uniquely matched run. **A successful dispatch is not a successful acceptance test.**
