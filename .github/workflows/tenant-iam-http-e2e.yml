@@ -7,6 +7,7 @@ on:
       - '.github/workflows/tenant-iam-http-e2e.yml'
       - 'src/**'
       - 'tests/http/tenant_iam_chain_e2e.py'
+      - 'tests/http/public_signup_e2e.py'
       - 'tests/Shinera.Identity.E2E.SqlMutator/**'
   pull_request:
     paths:
@@ -93,5 +94,8 @@ jobs:
           dotnet run --project tests/Shinera.Identity.E2E.SqlMutator \
             --no-build -c Release -- seed-tenant-iam
           python3 tests/http/tenant_iam_chain_e2e.py
+          # Real first-run acceptance: System SuperAdmin sees all 13 menus
+          # and a BRAND-NEW signup Owner sees all six + 17 permissions.
+          python3 tests/http/public_signup_e2e.py
           dotnet run --project tests/Shinera.Identity.E2E.SqlMutator \
             --no-build -c Release -- assert-tenant-iam-audit
