@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Modules.System.Identity.Infrastructure.Persistence;
+using Modules.System.Identity.Domain.Entities;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Data.SqlClient;
@@ -18,6 +21,108 @@ namespace Shinera.Identity.SqlServerTests;
 /// </summary>
 public sealed class FeatureRegistrySqlServerTests
 {
+    [Fact]
+    public async Task First_system_login_bootstrap_creates_complete_admin_once_but_never_restores_revoked_grants()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            var master = DefaultSeedData.MasterTenantId;
+            db.Tenants.Add(DefaultSeedData.CreateMasterTenant());
+            await db.SaveChangesAsync();
+            Assert.True(await InitialAccessBootstrap.SeedFreshInstallAsync(db));
+
+            var password = "StrongFirstLogin-Admin2026!";
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Identity:Bootstrap:InitialSystemAdmin:Enabled"] = "true",
+                    ["Identity:Bootstrap:InitialSystemAdmin:UserName"] = "first-admin",
+                    ["Identity:Bootstrap:InitialSystemAdmin:Email"] = "first-admin@example.test",
+                    ["Identity:Bootstrap:InitialSystemAdmin:Password"] = password
+                }).Build();
+            var hasher = new PasswordHasher<User>();
+            Assert.True(await InitialSystemAdministratorBootstrap.CreateOnceAsync(
+                db, hasher, config));
+
+            var admin = await db.Users.SingleAsync(x =>
+                x.UserType == UserType.System && x.TenantId == null);
+            Assert.True(admin.IsActive);
+            Assert.Equal("FIRST-ADMIN", admin.NormalizedUserName);
+            Assert.NotEqual(password, admin.PasswordHash);
+            Assert.NotEqual(PasswordVerificationResult.Failed,
+                hasher.VerifyHashedPassword(admin, admin.PasswordHash, password));
+            var role = await db.Roles.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.NormalizedName == "SUPERADMIN");
+            Assert.Equal(master, role.TenantId);
+            Assert.Equal(RoleScope.System, role.Scope);
+            Assert.Single(await db.UserRoles.IgnoreQueryFilters(["tenant"])
+                .Where(x => x.TenantId == master && x.UserId == admin.Id &&
+                    x.RoleId == role.Id).ToListAsync());
+            Assert.Equal(13, await db.Menus.CountAsync(x =>
+                x.IsActive && x.Route != null &&
+                x.Route.StartsWith("/system/")));
+
+            var systemCodes = FeatureRegistryDefinitions.Features
+                .SelectMany(x => x.PermissionCodes).Distinct().Count();
+            Assert.Equal(systemCodes, await db.RolePermissions
+                .IgnoreQueryFilters(["tenant"])
+                .CountAsync(x => x.TenantId == master && x.RoleId == role.Id));
+            Assert.False(await InitialSystemAdministratorBootstrap.CreateOnceAsync(
+                db, hasher, config));
+
+            // Deactivating/revoking the only administrator must NEVER cause
+            // another account to appear or a revoked UserRole to return.
+            admin.IsActive = false;
+            var userRole = await db.UserRoles.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.UserId == admin.Id && x.RoleId == role.Id);
+            db.UserRoles.Remove(userRole);
+            await db.SaveChangesAsync();
+            Assert.False(await InitialSystemAdministratorBootstrap.CreateOnceAsync(
+                db, hasher, config));
+            Assert.Single(await db.Users.Where(x =>
+                x.UserType == UserType.System).ToListAsync());
+            Assert.Empty(await db.UserRoles.IgnoreQueryFilters(["tenant"])
+                .Where(x => x.UserId == admin.Id).ToListAsync());
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                .Where(x => x.TenantId != master).ToListAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Initial_system_account_rejects_weak_password_and_incomplete_role_catalog()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            db.Tenants.Add(DefaultSeedData.CreateMasterTenant());
+            await db.SaveChangesAsync();
+            Assert.True(await InitialAccessBootstrap.SeedFreshInstallAsync(db));
+            var hasher = new PasswordHasher<User>();
+            var weak = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Identity:Bootstrap:InitialSystemAdmin:Enabled"] = "true",
+                    ["Identity:Bootstrap:InitialSystemAdmin:UserName"] = "new-admin",
+                    ["Identity:Bootstrap:InitialSystemAdmin:Email"] = "new-admin@example.test",
+                    ["Identity:Bootstrap:InitialSystemAdmin:Password"] = "123456"
+                }).Build();
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                InitialSystemAdministratorBootstrap.CreateOnceAsync(db, hasher, weak));
+            Assert.Empty(await db.Users.ToListAsync());
+
+            weak["Identity:Bootstrap:InitialSystemAdmin:Password"] =
+                "ValidStrongInitial+Pass2026";
+            var role = await db.Roles.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.NormalizedName == "SUPERADMIN");
+            var privilege = await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                .FirstAsync(x => x.RoleId == role.Id);
+            db.RolePermissions.Remove(privilege);
+            await db.SaveChangesAsync();
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                InitialSystemAdministratorBootstrap.CreateOnceAsync(db, hasher, weak));
+            Assert.Empty(await db.Users.ToListAsync());
+        });
+    }
+
     [Fact]
     public async Task Reviewed_System_apply_requires_fresh_fingerprint_and_atomic_real_SQL()
     {
