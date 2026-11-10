@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using IdentityHttpMethod = Modules.System.Identity.Domain.Entities.HttpMethod;
+using Modules.System.Identity.Web.Endpoints;
 using Modules.System.Identity.Web.Util;
 using Xunit;
 
