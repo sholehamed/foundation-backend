@@ -345,7 +345,6 @@ namespace Modules.Identity.Migrations
 
                     b.ToTable("CatalogPlans", null, t =>
                         {
-                            t.HasCheckConstraint("CK_CatalogPlans_Code", "LEN([Code]) > 0");
                             t.HasCheckConstraint("CK_CatalogPlans_Parent", "[ParentPlanId] IS NULL OR [ParentPlanId] <> [Id]");
                         });
                 });
@@ -432,6 +431,7 @@ namespace Modules.Identity.Migrations
             modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlanPriceOffer", b =>
                 {
                     b.Property<decimal>("Amount")
+                        .HasPrecision(19, 2)
                         .HasColumnType("decimal(19,2)");
 
                     b.Property<string>("BillingCycle")
