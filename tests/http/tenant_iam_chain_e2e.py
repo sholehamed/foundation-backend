@@ -101,6 +101,69 @@ def ui_allowed(token: str, code: str) -> bool:
     return rows[0]["allowed"]
 
 
+def verify_central_registry_reads(admin: str, owner: str, staff: str):
+    """Real Kestrel + signed JWT + SQL operator diagnostics. No writes.
+
+    Checks three independent central invariants. These deliberately do not
+    assert Staging/Production readiness, grant an entitlement or enable flags.
+    """
+    base = "/api/system/FeatureRegistry"
+    diagnostic_paths = [
+        base + "/tenant-permissions/preview",
+        base + "/tenant-navigation/readiness",
+        base + "/system-endpoints/integrity",
+    ]
+    for path in diagnostic_paths:
+        check("GET", path, 401)
+        check("GET", path, 403, token=owner)
+        check("GET", path, 403, token=staff)
+
+    tenant = check("GET", diagnostic_paths[0], 200, token=admin)
+    assert tenant["canApply"] and not tenant["hasPending"], (
+        "Reviewed disposable Tenant permission catalog must match the code")
+    assert len(tenant["fingerprint"]) == 64
+    assert all(change["state"] == "Present" for change in tenant["changes"])
+
+    nav = check("GET", diagnostic_paths[1], 200, token=admin)
+    expected = {
+        "/dashboard", "/dashboard/business", "/dashboard/branches",
+        "/dashboard/members", "/dashboard/roles", "/dashboard/groups",
+    }
+    assert nav["requiredRoutes"] == 6 and len(nav["routes"]) == 6
+    assert {route["route"] for route in nav["routes"]} == expected
+    assert 0 <= nav["readyRoutes"] <= 6
+    assert all(route["status"] in {"ready", "missing", "conflict"}
+               and isinstance(route["issues"], list)
+               for route in nav["routes"])
+    if nav["readyForDynamicPilot"]:
+        assert nav["readyRoutes"] == 6
+        assert not nav["unregisteredTenantRoutes"]
+        assert nav["ungatedExternalMenuCount"] == 0
+        assert all(not route["issues"] for route in nav["routes"])
+
+    system = check("GET", diagnostic_paths[2], 200, token=admin)
+    assert system["discoveredFeatureEndpoints"] > 0, (
+        "Actual live Kestrel routes must be inspected")
+    assert len(system["endpoints"]) == system["discoveredFeatureEndpoints"]
+    assert 0 <= system["readyFeatureEndpoints"] <= system["discoveredFeatureEndpoints"]
+    assert all(entry["status"] in {"ready", "conflict"}
+               and isinstance(entry["issues"], list)
+               for entry in system["endpoints"])
+    if system["readyForGranularEnforcement"]:
+        assert system["readyFeatureEndpoints"] == system["discoveredFeatureEndpoints"]
+        assert not system["uncatalogedSystemAdminRoutes"]
+        assert not system["unreviewedActiveSystemApiKeys"]
+
+    # The ordinary System registry Preview remains a separate operator gate.
+    registry = check("GET", base + "/preview", 200, token=admin)
+    assert isinstance(registry["changes"], list)
+    assert isinstance(registry["canApply"], bool)
+    assert isinstance(registry["hasPending"], bool)
+    check("GET", base + "/preview", 403, token=owner)
+    print("PASS: live System-owned central diagnostics and Tenant deny checks; "
+          "no registry auto-Apply or feature flags changed.", flush=True)
+
+
 def run():
     print("Starting real HTTP Tenant role -> permission -> member -> revocation E2E", flush=True)
     admin = login("admin", "system")
@@ -141,6 +204,7 @@ def run():
     assert applied["canApply"]
     done = check("GET", REGISTRY_PATH + "/preview", 200, token=admin)
     assert not done["hasPending"], "Catalog Apply must be idempotent"
+    verify_central_registry_reads(admin, owner, staff)
     assert not ui_allowed(staff, MEMBERS_READ)
 
     capabilities = check("GET", TENANT_PATH + "/admin-capabilities", 200, token=owner)
