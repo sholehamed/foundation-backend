@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -207,6 +209,148 @@ public sealed class FeatureRegistrySqlServerTests
                 again.SystemRegistry.Fingerprint);
             Assert.Equal(assessed.TenantPermissionCatalog.Fingerprint,
                 again.TenantPermissionCatalog.Fingerprint);
+        });
+    }
+
+    [Fact]
+    public async Task Central_access_four_way_gate_goes_green_only_for_complete_disposable_SQL_catalog()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            // Build one code-owned runtime System endpoint with the actual
+            // policies and metadata required by the runtime integrity reader.
+            // This is a test EndpointDataSource, not a claimed Staging host.
+            var builder = new RouteEndpointBuilder(_ => Task.CompletedTask,
+                RoutePatternFactory.Parse("/api/System/Roles"), 0);
+            builder.Metadata.Add(new HttpMethodMetadata(["POST"]));
+            builder.Metadata.Add(new FeatureEndpointMetadata(
+                "SYSTEM.ROLES.CREATE", "roles", "ROLES.CREATE", "Create role"));
+            builder.Metadata.Add(new AuthorizeAttribute("SystemAdministrator"));
+            builder.Metadata.Add(new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .AddRequirements(new SystemFeatureEndpointPermissionRequirement(
+                    "roles", "ROLES.CREATE")).Build());
+            var endpoints = new DefaultEndpointDataSource([builder.Build()]);
+
+            // Only disposable SQL fixture setup explicitly registers
+            // definitions. The checked diagnostic never invokes Apply.
+            var systemRegistry = new FeatureRegistrySyncService(db, endpoints);
+            var systemPending = await systemRegistry.PreviewAsync();
+            Assert.True(systemPending.CanApply);
+            Assert.True(systemPending.HasPending);
+            await systemRegistry.ApplyReviewedAsync(systemPending.Fingerprint);
+            var tenantRegistry = new TenantPermissionCatalogSync(db);
+            var tenantPending = await tenantRegistry.PreviewAsync();
+            Assert.True(tenantPending.CanApply);
+            await tenantRegistry.ApplyAsync(tenantPending.Fingerprint);
+
+            // Without System Admin-authored Tenant menus, an otherwise
+            // healthy registry cannot certify the navigation pilot.
+            var beforeMenus = await CentralAccessReadiness.ReadAsync(db, endpoints);
+            Assert.True(beforeMenus.SystemRegistry.Ready);
+            Assert.True(beforeMenus.TenantPermissionCatalog.Ready);
+            Assert.True(beforeMenus.SystemEndpoints.Ready);
+            Assert.False(beforeMenus.TenantNavigation.Ready);
+            Assert.False(beforeMenus.CentralCatalogConsistent);
+            Assert.Equal(new[] { "tenant_navigation_not_ready" }, beforeMenus.BlockingChecks);
+
+            var category = new Modules.System.Identity.Domain.Entities.MenuCategory(
+                Guid.NewGuid())
+            { Title = "Tenant CI navigation", Order = 0, IsActive = true };
+            db.MenuCategories.Add(category);
+            foreach (var route in TenantWorkspaceNavigationService.RoutePermissions)
+            {
+                var permissionId = route.Value is null ? (Guid?)null :
+                    await db.Permissions.Where(x => x.Code == route.Value)
+                        .Select(x => (Guid?)x.Id).SingleAsync();
+                db.Menus.Add(new Modules.System.Identity.Domain.Entities.Menu(
+                    Guid.NewGuid())
+                {
+                    CategoryId = category.Id, Title = route.Key,
+                    Route = route.Key, Icon = "dashboard",
+                    IsActive = true, IsHidden = false,
+                    PermissionId = permissionId, RowVersion = [1]
+                });
+            }
+            await db.SaveChangesAsync();
+
+            var green = await CentralAccessReadiness.ReadAsync(db, endpoints);
+            Assert.True(green.CentralCatalogConsistent);
+            Assert.Empty(green.BlockingChecks);
+            Assert.True(green.SystemRegistry.Ready);
+            Assert.True(green.TenantPermissionCatalog.Ready);
+            Assert.True(green.TenantNavigation.Ready);
+            Assert.True(green.SystemEndpoints.Ready);
+            Assert.Equal(6, green.TenantNavigation.Observed);
+            Assert.Equal(1, green.SystemEndpoints.Observed);
+            Assert.Equal(19, await db.Menus.CountAsync()); // 13 System + 6 Tenant
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+
+            // An unregistered active Tenant route must fail the navigation
+            // portion; no implicit Menu repair or changes to user grants.
+            var rogue = new Modules.System.Identity.Domain.Entities.Menu(Guid.NewGuid())
+            {
+                CategoryId = category.Id, Route = "/dashboard/unreviewed",
+                Title = "Unreviewed", Icon = "warning",
+                IsActive = true, IsHidden = false, RowVersion = [1]
+            };
+            db.Menus.Add(rogue);
+            await db.SaveChangesAsync();
+            var routeDrift = await CentralAccessReadiness.ReadAsync(db, endpoints);
+            Assert.False(routeDrift.CentralCatalogConsistent);
+            Assert.Contains("tenant_navigation_not_ready", routeDrift.BlockingChecks);
+            db.Menus.Remove(rogue);
+            await db.SaveChangesAsync();
+            Assert.True((await CentralAccessReadiness.ReadAsync(db, endpoints))
+                .CentralCatalogConsistent);
+
+            // An extra PAGE permission edge broadens a navigation surface.
+            // The Tenant catalog AND navigation checks must fail closed.
+            var foreignPermission = await db.Permissions.SingleAsync(x =>
+                x.Code == TenantWorkspacePermissionCatalog.RolesRead);
+            var membersUi = await db.UiResources.SingleAsync(x =>
+                x.Key == "tenant.workspace.members");
+            var illegalLink = new Modules.System.Identity.Domain.Entities.PermissionUiResource(
+                foreignPermission.Id, membersUi.Id) { RowVersion = [1] };
+            db.PermissionUiResources.Add(illegalLink);
+            await db.SaveChangesAsync();
+            var linkDrift = await CentralAccessReadiness.ReadAsync(db, endpoints);
+            Assert.False(linkDrift.CentralCatalogConsistent);
+            Assert.Contains("tenant_permission_catalog_not_consistent", linkDrift.BlockingChecks);
+            Assert.Contains("tenant_navigation_not_ready", linkDrift.BlockingChecks);
+            db.PermissionUiResources.Remove(illegalLink);
+            await db.SaveChangesAsync();
+
+            // Drift in a persisted System API row must block strict endpoint
+            // consistency even with healthy System and Tenant menus.
+            var api = await db.ApiResources.SingleAsync(x =>
+                x.Key == "SYSTEM.ROLES.CREATE");
+            api.IsActive = false;
+            await db.SaveChangesAsync();
+            var apiDrift = await CentralAccessReadiness.ReadAsync(db, endpoints);
+            Assert.False(apiDrift.CentralCatalogConsistent);
+            Assert.Contains("system_endpoints_not_ready", apiDrift.BlockingChecks);
+            api.IsActive = true;
+            await db.SaveChangesAsync();
+
+            var restored = await CentralAccessReadiness.ReadAsync(db, endpoints);
+            Assert.True(restored.CentralCatalogConsistent);
+            Assert.Empty(restored.BlockingChecks);
+            // Catalog history/row versions can change even when an
+            // operator reverts a field to its previous value. A PRE-DRIFT
+            // fingerprint must not be assumed reusable. Only an unchanged
+            // freshly reviewed read-only snapshot may be stable.
+            var reread = await CentralAccessReadiness.ReadAsync(db, endpoints);
+            Assert.True(reread.CentralCatalogConsistent);
+            Assert.Equal(64, restored.SystemRegistry.Fingerprint!.Length);
+            Assert.Equal(64, restored.TenantPermissionCatalog.Fingerprint!.Length);
+            Assert.Equal(restored.SystemRegistry.Fingerprint,
+                reread.SystemRegistry.Fingerprint);
+            Assert.Equal(restored.TenantPermissionCatalog.Fingerprint,
+                reread.TenantPermissionCatalog.Fingerprint);
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
         });
     }
 
