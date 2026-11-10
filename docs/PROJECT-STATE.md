@@ -1,3 +1,9 @@
+## FR-14C — System endpoint/Permission/Resource runtime integrity (2026-11-10)
+
+- New read-only System SuperAdmin endpoint **/System/FeatureRegistry/system-endpoints/integrity** inspects live ASP.NET Core FeatureEndpointMetadata, executable granular policy + SystemAdministrator policy, and corresponding global Module/Resource/Permission/ApiResource/PermissionApiResource SQL records. Detects wrong/stale/inactive API keys, HTTP verb/route drift, extra grant links, unannotated System Administrator endpoints and orphaned active System APIs. Explicitly separates three reviewed internal System routes and out-of-scope auth/BFF/Tenant/media protocols.
+- Real SQL Server and unit adversarial tests; existing required SQL registry test filter covers new case. No Apply, grants, migrations, flag activation or deployment. [Implementation and operator gates](development/FR-14C-SYSTEM-ENDPOINT-REGISTRY-INTEGRITY.md).
+- Next: run audits on an approved deployed host, reconcile System registry operator-controlled records, inspect subscriptions/grants, certify Tenant/BFF browser access, then FR-14C-3 Branch RBAC. Staging/Production deferred.
+
 ## FR-14C — Central Tenant navigation readiness audit (2026-11-10)
 
 - Implemented **read-only System SuperAdmin** `GET /System/FeatureRegistry/tenant-navigation/readiness` (under configured API prefix), comparing all six canonical Tenant dashboard Menu routes against the single System-owned Menu/Category/Page/Permission registry. Diagnoses missing, duplicate or hidden menus, malformed ancestors, unregistered routes, broken Tenant PAGE ownership/UI links and ungated external links; **no automatic Menu or grant creation**.
