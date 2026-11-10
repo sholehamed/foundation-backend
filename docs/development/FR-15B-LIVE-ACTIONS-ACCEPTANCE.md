@@ -7,13 +7,13 @@ Checkpoint: 2026-11-10. There are **two distinct kinds of Staging testing**.
 
 ## Added acceptance to disposable CI
 
-The real Chromium test now enforces that an authenticated Tenant Owner, despite holding a real host-only BFF cookie, receives HTTP 403 from all three centrally defined System Admin Registry diagnostics:
+The real Chromium test now enforces that an authenticated Tenant Owner, despite holding a real host-only BFF cookie, receives HTTP **401 (BFF context rejected) or 403 (SystemAdministrator denied)** from all three centrally defined System Admin Registry diagnostics:
 
 - `GET /api/system/FeatureRegistry/tenant-permissions/preview`
 - `GET /api/system/FeatureRegistry/tenant-navigation/readiness`
 - `GET /api/system/FeatureRegistry/system-endpoints/integrity`
 
-It also asserts 401/403 for a protected Tenant Members read through the **second** Tenant hostname, in addition to existing cookie-domain isolation. The same suite already verifies TLS OIDC redirects, PKCE, secure HTTP-only host-only cookies, no JavaScript bearer token, CSRF rejection, role grant/revocation, stale-cookie invalidation and fresh-session 403. The independent real HTTP+SQL suite verifies System SuperAdmin's signed JWT can read central diagnostics while anonymous/Tenant actors cannot.
+It also asserts 401/403 for a protected Tenant Members read through the **second** Tenant hostname, in addition to existing cookie-domain isolation. The first complete live run (Actions #42780940636) proved an actual **401** from Tenant-context BFF to a System-only endpoint; the first Playwright assertion had incorrectly required 403 only. This is a test expectation correction, **not** a server authorization change. Both responses deny access; 200 remains a test failure. The same suite already verifies TLS OIDC redirects, PKCE, secure HTTP-only host-only cookies, no JavaScript bearer token, CSRF rejection, role grant/revocation, stale-cookie invalidation and fresh-session 403. The independent real HTTP+SQL suite verifies System SuperAdmin's signed JWT can read central diagnostics while anonymous/Tenant actors cannot.
 
 ## How to run and interpret results
 

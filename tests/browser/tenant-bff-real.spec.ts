@@ -164,7 +164,11 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
       '/api/system/FeatureRegistry/system-endpoints/integrity',
     ]) {
       const forbiddenSystemCatalog = await api(owner, 'GET', route);
-      expect(forbiddenSystemCatalog.status, route + ' must remain System-only').toBe(403);
+      // BFF may reject a Tenant-context cookie with 401 before reaching
+      // SystemAdministrator, or the policy may return 403 for a valid
+      // principal. Both MUST deny; a 200 would be a security regression.
+      expect([401, 403], route + ' must remain System-only').toContain(
+        forbiddenSystemCatalog.status);
     }
 
     // The other Tenant hostname must reject this Owner's BFF cookie for
