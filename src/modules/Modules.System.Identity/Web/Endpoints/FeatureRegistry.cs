@@ -31,7 +31,12 @@ public sealed class FeatureRegistry : EndpointGroupBase
                 configure: e => e.WithFeatureEndpoint(
                     "SYSTEM.FEATURE-REGISTRY.TENANT-NAVIGATION-READINESS",
                     "feature-registry", "FEATURE-REGISTRY.READ",
-                    "Read-only central Tenant navigation readiness"));
+                    "Read-only central Tenant navigation readiness"))
+            .MapGet(SystemEndpointIntegrity, "system-endpoints/integrity",
+                configure: e => e.WithFeatureEndpoint(
+                    "SYSTEM.FEATURE-REGISTRY.SYSTEM-ENDPOINT-INTEGRITY",
+                    "feature-registry", "FEATURE-REGISTRY.READ",
+                    "Read-only runtime System endpoint Registry integrity"));
     }
 
     public static IResult Manifest(HttpContext http)
@@ -120,6 +125,20 @@ public sealed class FeatureRegistry : EndpointGroupBase
         if (!await IsLiveSystemAdministratorAsync(current, db, ct))
             return TypedResults.Forbid();
         return TypedResults.Ok(await CentralTenantNavigationReadiness.ReadAsync(db, ct));
+    }
+
+    // Reviewed runtime descriptors vs persisted System API/Resource/Permission
+    // links. No Apply handler; this cannot mutate global definitions or grants.
+    public static async Task<IResult> SystemEndpointIntegrity(
+        ITenantContext current, IdentityDbContext db,
+        Microsoft.AspNetCore.Routing.EndpointDataSource endpoints,
+        HttpContext http, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await IsLiveSystemAdministratorAsync(current, db, ct))
+            return TypedResults.Forbid();
+        return TypedResults.Ok(await
+            SystemEndpointRegistryIntegrity.ReadAsync(db, endpoints, ct));
     }
 
     public static async Task<IResult> TenantPermissionApply(
