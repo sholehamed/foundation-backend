@@ -70,7 +70,8 @@ public static class PublicPlans
                     version.Id, resourceContracts, capabilityContracts, nowUtc, ct);
                 // No empty, non-saleable or unregistered products. An active
                 // display page is not proof of a purchasable entitlement.
-                if (plan.ModuleCodes.Count == 0 || plan.Prices.Count == 0)
+                if (plan.ModuleCodes.Count == 0 || plan.Prices.Count == 0 ||
+                    plan.PlanCode.Length > 20)
                     continue;
 
                 cards.Add(new PublicPlanCard(
