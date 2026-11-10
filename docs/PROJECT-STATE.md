@@ -1,3 +1,8 @@
+## FR-15A — Staging two-Tenant read-only gate (2026-11-10)
+
+- Prepared a manual main-only GitHub Actions workflow for an operator-supplied non-secret real Staging manifest. Requires explicit probe consent, exact dedicated HTTPS System/Identity/Tenant A/Tenant B hosts, six anonymous OIDC/BFF/Workspace probes and a sanitized non-secret evidence artifact. Offline schema and negative security tests run in regular CI. No automatic fallback to example hosts.
+- **No real Staging environment provisioned or checked, no Migration/Registry Apply/grants/flag changes, no Production.** Next: operator DNS/TLS, isolated SQL/backup+restore, keyring/session store and signed deployment approval; then run the manual read-only workflow before authenticated two-Tenant Chromium and data integrity certification. [Runbook](development/FR-15A-TWO-TENANT-STAGING-READONLY-GATE.md).
+
 ## FR-14C — real disposable central registry HTTP/SQL acceptance (2026-11-10)
 
 - Extended signed System Admin / Tenant Owner / staff HTTP E2E with three read-only central System registry checks and explicit anonymous/Tenant 401/403 denials; validates all six Tenant menu routes and the runtime System endpoint integrity result against real Kestrel/SQL Server. Does **not** auto-Apply System Registry, create central menus, grant users, activate pilot flags or deploy Staging.
