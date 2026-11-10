@@ -31,6 +31,7 @@ public sealed class SystemEndpointRegistryIntegrityTests
 
         var clean = await SystemEndpointRegistryIntegrity.ReadAsync(db, endpoints);
         Assert.True(clean.ReadyForGranularEnforcement);
+        Assert.Empty(clean.ResourceContractIssues);
         Assert.Equal(1, clean.DiscoveredFeatureEndpoints);
         Assert.Equal(1, clean.ReadyFeatureEndpoints);
         Assert.Equal(0, clean.OutOfScopeRouteCount);
