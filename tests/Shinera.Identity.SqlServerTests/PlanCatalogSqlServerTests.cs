@@ -361,6 +361,128 @@ public sealed class PlanCatalogSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Admin_draft_publish_requires_vetted_module_review_fingerprint_and_is_immutable_via_api()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var module = new Module("appointments", "Appointments", null, 0);
+            db.Modules.Add(module);
+            await db.SaveChangesAsync();
+
+            var approved = new[]
+            {
+                new ResourceContract("appointments", "bookings",
+                    ModuleProductClass.Commercial, ["APPOINTMENTS.READ"])
+            };
+            var admin = new SystemPlanCatalogAdminService(db, approved);
+            var created = await admin.CreateAsync(new(
+                "starter", "Starter", null, null, "شروع", "پلن پایه"),
+                CancellationToken.None);
+            Assert.True(created.Ok);
+            var draftId = created.Id!.Value;
+            var empty = await admin.PreviewAsync(draftId, CancellationToken.None);
+            Assert.False(empty.CanPublish);
+            Assert.Contains("no_commercial_module", empty.Issues);
+            Assert.Contains("no_current_valid_price", empty.Issues);
+            Assert.False((await admin.PublishAsync(
+                draftId, empty.Fingerprint, CancellationToken.None)).Ok);
+
+            var saved = await admin.ReplaceDraftAsync(draftId, new(
+                "انفرادی", "مناسب شروع", "جدید", true, 1,
+                ["appointments"],
+                [new("monthly", "IRR", 300000m)],
+                [],
+                [new("Module", "appointments", "نوبت‌دهی", null, true, 0),
+                 new("Benefit", null, "پشتیبانی", null, false, 1)]),
+                CancellationToken.None);
+            Assert.True(saved.Ok);
+            var persisted = await admin.ReadDraftAsync(draftId, CancellationToken.None);
+            Assert.NotNull(persisted);
+            Assert.Equal("appointments", Assert.Single(persisted.Content.ModuleCodes!));
+            Assert.Equal(300000m, Assert.Single(persisted.Content.Prices!).Amount);
+
+            var preview = await admin.PreviewAsync(draftId, CancellationToken.None);
+            Assert.True(preview.CanPublish, string.Join(",", preview.Issues));
+            Assert.Equal(["appointments"], preview.EffectiveModuleCodes);
+            Assert.Equal(64, preview.Fingerprint.Length);
+
+            var change = await admin.ReplaceDraftAsync(draftId, new(
+                "انفرادی", "مناسب شروع", "جدید", true, 1,
+                ["appointments"],
+                [new("monthly", "IRR", 400000m)],
+                [],
+                [new("Module", "appointments", "نوبت‌دهی", null, true, 0)]),
+                CancellationToken.None);
+            Assert.True(change.Ok);
+            var stale = await admin.PublishAsync(draftId, preview.Fingerprint, CancellationToken.None);
+            Assert.False(stale.Ok);
+            Assert.Equal("stale_preview", stale.Code);
+
+            var fresh = await admin.PreviewAsync(draftId, CancellationToken.None);
+            var publish = await admin.PublishAsync(draftId, fresh.Fingerprint, CancellationToken.None);
+            Assert.True(publish.Ok);
+            var version = await db.CatalogPlanVersions.AsNoTracking()
+                .SingleAsync(x => x.Id == draftId);
+            Assert.Equal("Published", version.Status);
+            Assert.Equal(fresh.Fingerprint, version.ContentFingerprint);
+            Assert.Null(await admin.ReadDraftAsync(draftId, CancellationToken.None));
+            Assert.Equal("published_immutable", (await admin.ReplaceDraftAsync(
+                draftId, new("another", null, null, false, 0, [], [], [], []),
+                CancellationToken.None)).Code);
+            Assert.False((await admin.PublishAsync(draftId, fresh.Fingerprint, CancellationToken.None)).Ok);
+
+            var cards = await PublicPlans.ReadCardsAsync(db, approved, [],
+                DateTime.UtcNow,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+            Assert.Equal("starter", Assert.Single(cards).Code);
+            Assert.Equal(400000m, Assert.Single(cards[0].Prices).Amount);
+
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+            Assert.Empty(await db.TenantModules.ToArrayAsync());
+            var newDraft = await admin.CreateRevisionAsync(
+                (await db.CatalogPlans.SingleAsync()).Id, CancellationToken.None);
+            Assert.True(newDraft.Ok);
+            var edited = await admin.ReadDraftAsync(newDraft.Id!.Value, CancellationToken.None);
+            Assert.Equal(400000m, Assert.Single(edited!.Content.Prices!).Amount);
+            Assert.Equal("Draft", (await db.CatalogPlanVersions.AsNoTracking()
+                .SingleAsync(x => x.Id == newDraft.Id)).Status);
+        });
+    }
+
+    [Fact]
+    public async Task Admin_catalog_never_publishes_core_module_or_invalid_price()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var sys = new Module("system", "System", null, 0);
+            db.Modules.Add(sys);
+            await db.SaveChangesAsync();
+            var admin = new SystemPlanCatalogAdminService(db);
+            var created = await admin.CreateAsync(
+                new("test", "Test", null, null, "Test", null), CancellationToken.None);
+            Assert.True(created.Ok);
+            var id = created.Id!.Value;
+            var proposed = await admin.ReplaceDraftAsync(id,
+                new("Test", null, null, false, 0,
+                    ["system"], [new("monthly", "IRR", 2000m)], [], []),
+                CancellationToken.None);
+            Assert.False(proposed.Ok);
+            Assert.Equal("module_not_code_owned_commercial", proposed.Code);
+            Assert.False((await admin.PublishAsync(id,
+                new string('a', 64), CancellationToken.None)).Ok);
+            Assert.False((await admin.ReplaceDraftAsync(id,
+                new("Test", null, null, false, 0,
+                    [], [new("monthly", "IRR", -1m)], [], []),
+                CancellationToken.None)).Ok);
+            var plans = await admin.ListAsync(CancellationToken.None);
+            Assert.Single(plans);
+            Assert.Equal("test", plans[0].Code);
+            Assert.NotNull(plans[0].DraftVersionId);
+        });
+    }
+
     private static async Task WithDisposableDatabaseAsync(Func<IdentityDbContext, Task> action)
     {
         var raw = Environment.GetEnvironmentVariable("SHINERA_SQLSERVER_TEST_CONNECTION");
