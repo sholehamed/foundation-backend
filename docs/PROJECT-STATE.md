@@ -1,3 +1,7 @@
+## FR-16B follow-up — real E2E fixture Owner grants match new Tenant signup (2026-11-10)
+
+- The initial main FR-16B full-stack browser run exposed that test-only `seed-tenant-iam` still built a legacy Owner without explicit Tenant RolePermissions, so the permission-filtered sidebar exposed only three ungated links. Corrected test-only SQL fixture to grant exactly the 17 reviewed globally owned Tenant permissions to its disposable Owner, no System permissions/staff grants; added real signed HTTP assertions for exact six Owner and three staff menu roots. See [FR-16B follow-up](development/FR-16B-AUTHORITATIVE-SEED-REFACTOR.md). No production Seed or real Tenant grants are modified by this fixture fix.
+
 ## FR-16B — remove unusable sample SeedData and consolidate executable first-install seed (2026-11-10)
 
 - Replaced historical 16 KB `DefaultSeedData` demo lists and obsolete `/system/admin/...` routes with a minimal stable Master Tenant ID factory and Development System admin blueprint. Startup now has **one authoritative, executable** System/Tenant bootstrap path and no commented-out placeholder CRUD seed calls. System definitions live in `FeatureRegistryDefinitions`; Tenant permissions/navigation remain centrally authored. Master Tenant ID and E2E fixture IDs are preserved.
