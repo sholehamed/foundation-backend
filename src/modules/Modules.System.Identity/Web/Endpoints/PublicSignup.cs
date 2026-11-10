@@ -118,6 +118,33 @@ public static partial class PublicSignup
         var ownerRole = new Role(tenant.Id, "Owner", "مالک فضای کاری") { Scope = RoleScope.Tenant };
         var assignment = new UserRole(tenant.Id, user.Id, ownerRole.Id);
 
+        // A new Tenant Owner must not depend forever on legacy Owner fallback
+        // or on a page to self-grant access. Use the exact centrally owned
+        // Tenant PAGE/ACTION definitions, and assign only to this NEW local
+        // Owner role in the SAME signup transaction. Never grant System keys.
+        var catalog = await new TenantPermissionCatalogSync(db).PreviewAsync(ct);
+        if (!catalog.CanApply || catalog.HasPending)
+            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Tenant permission catalog is not bootstrapped");
+        var codes = TenantWorkspacePermissionCatalog.Definitions
+            .Select(x => x.Key).ToArray();
+        var ownerPermissions = await db.Permissions
+            .Include(x => x.Resource).ThenInclude(x => x!.Module)
+            .Where(x => codes.Contains(x.Code) && x.IsActive &&
+                x.Resource != null &&
+                x.Resource.Code == TenantPermissionCatalogSync.ResourceCode &&
+                x.Resource.IsActive && x.Resource.Module != null &&
+                x.Resource.Module.Code == TenantPermissionCatalogSync.ModuleCode &&
+                x.Resource.Module.IsActive)
+            .ToListAsync(ct);
+        if (ownerPermissions.Count != codes.Length ||
+            ownerPermissions.Select(x => x.Code).Distinct().Count() != codes.Length)
+            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Tenant Owner bootstrap permissions are incomplete");
+        var ownerGrants = ownerPermissions.Select(permission =>
+            new RolePermission(tenant.Id, ownerRole.Id, permission.Id)
+            { Permission = permission }).ToArray();
+
         // Only server-generated IDs enter this provisional scope. The scoped EF
         // write interceptor stays enabled, including for Role/UserRole/Branch/Profile.
         tenantContext.InitializeTenant(user.Id, tenant.Id, [tenant.Id], [tenant.Id], tenant.Id);
@@ -131,6 +158,9 @@ public static partial class PublicSignup
             db.Branches.Add(mainBranch);
             db.Roles.Add(ownerRole);
             db.UserRoles.Add(assignment);
+            // Interceptor permits ONLY reviewed, server-created first-signup
+            // Owner grants, never later arbitrary un-audited Tenant grants.
+            db.RolePermissions.AddRange(ownerGrants);
             // The owner User.TenantId and UserRole establish membership.
             // TenantAccessResolver grants home-tenant read/write automatically;
             // UserTenantAccess is reserved for *additional* cross-tenant grants.
