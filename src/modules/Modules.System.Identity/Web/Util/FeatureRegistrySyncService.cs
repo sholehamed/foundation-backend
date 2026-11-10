@@ -343,12 +343,18 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
             foreach (var code in feature.PermissionCodes)
             {
                 var perms = db.Permissions.Where(x => Same(x.Code, code)).ToList();
+                // A historical global/unowned permission may carry a live
+                // Master grant. Treating ResourceId=NULL as Present would
+                // falsely declare the central feature ready while the live
+                // System UI and granular endpoint guard correctly reject it.
+                // Never silently reparent/reactivate such a record.
                 var conflict = perms.Count > 1 ||
-                    (perms.Count == 1 && perms[0].ResourceId is Guid owner &&
-                     (resource is null || owner != resource.Id));
+                    (perms.Count == 1 &&
+                     (resource is null || perms[0].ResourceId != resource.Id ||
+                      !perms[0].IsActive));
                 Add("Permission", code, conflict ? "Conflict" :
                     perms.Count == 0 ? "Create" : "Present",
-                    conflict ? "Permission code already belongs to another resource" : null);
+                    conflict ? "Permission is duplicate, inactive or not owned by the expected System resource; manual review required" : null);
             }
 
             var pages = db.Ui.Where(x => Same(x.Key, feature.PageKey)).ToList();
@@ -360,10 +366,16 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
 
             var read = db.Permissions.FirstOrDefault(x => Same(x.Code, feature.ReadPermission));
             var page = pages.Count == 1 ? pages[0] : null;
+            var rootLinks = page is null ? [] :
+                db.UiLinks.Where(x => x.UiResourceId == page.Id).ToList();
+            var unexpectedRootLinks = rootLinks.Any(x =>
+                read is null || x.PermissionId != read.Id);
+            var duplicateRootLinks = rootLinks.Count > 1;
             Add("PermissionUiResource", feature.ReadPermission + " -> " + feature.PageKey,
-                read is not null && page is not null &&
-                db.UiLinks.Any(x => x.PermissionId == read.Id && x.UiResourceId == page.Id)
-                    ? "Present" : "Create");
+                unexpectedRootLinks || duplicateRootLinks ? "Conflict" :
+                rootLinks.Count == 1 ? "Present" : "Create",
+                unexpectedRootLinks || duplicateRootLinks ?
+                    "Root UI has foreign or duplicate Permission links" : null);
 
             foreach (var element in FeatureRegistryDefinitions.UiElements
                 .Where(x => Same(x.FeatureKey, feature.PageKey)))
@@ -392,9 +404,12 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
                     linkedPermission is null || x.PermissionId != linkedPermission.Id);
                 var linked = linkedPermission is not null && links.Any(x =>
                     x.PermissionId == linkedPermission.Id);
+                var duplicateLinks = links.Count > 1;
                 Add("PermissionUiResource", element.PermissionCode + " -> " + element.Key,
-                    unexpectedLinks ? "Conflict" : linked ? "Present" : "Create",
-                    unexpectedLinks ? "Existing UI key has unrelated permission links" : null);
+                    unexpectedLinks || duplicateLinks ? "Conflict" :
+                    linked ? "Present" : "Create",
+                    unexpectedLinks || duplicateLinks ?
+                        "Existing UI key has foreign or duplicate permission links" : null);
             }
 
             var menuMatches = db.Menus.Where(x => Same(x.Route, feature.Route)).ToList();
@@ -436,10 +451,14 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
                     : "Existing key owned by another resource/verb or manual definition");
 
             var permission = db.Permissions.FirstOrDefault(x => Same(x.Code, endpoint.PermissionCode));
+            var apiLinks = api is null ? [] :
+                db.ApiLinks.Where(x => x.ApiResourceId == api.Id).ToList();
+            var badApiLinks = apiLinks.Count > 1 ||
+                apiLinks.Any(x => permission is null || x.PermissionId != permission.Id);
             Add("PermissionApiResource", endpoint.PermissionCode + " -> " + endpoint.Key,
-                permission is not null && api is not null &&
-                    db.ApiLinks.Any(x => x.PermissionId == permission.Id && x.ApiResourceId == api.Id)
-                        ? "Present" : "Create");
+                badApiLinks ? "Conflict" :
+                apiLinks.Count == 1 ? "Present" : "Create",
+                badApiLinks ? "Existing API key has foreign or duplicate Permission links" : null);
         }
 
         var canApply = !changes.Any(x => x.State == "Conflict");

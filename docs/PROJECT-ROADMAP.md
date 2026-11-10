@@ -1,3 +1,8 @@
+## FR-14C — central System Registry Preview rejects legacy unowned permissions (2026-11-10)
+
+- System Registry Preview now flags null/foreign/inactive/duplicate Permission.Code ownership and foreign/multiple root PAGE, nested PAGE/ACTION or API permission links as **Conflict**. Neither an operator Apply nor a feature flag may silently adopt these records; tests cover failure and explicit fixture repair.
+- No SQL migration, live Apply, grants or menu flag. [Operator conflict/repair contract](development/FR-14C-CENTRAL-REGISTRY-PREVIEW-DRIFT.md). Next: fingerprint-locked System Apply with SQL transaction, then central readiness review before the disabled dynamic menu pilot.
+
 ## FR-14C — strict System feature Permission/Resource ownership (2026-11-10)
 
 - Fixed a central authorization drift gap: neither System UI nor the default-OFF granular System endpoint guard may treat a bare/foreign/duplicate Permission.Code as centrally owned. Both now require an active code-owned Resource+Module and exact Permission.ResourceId, with duplicate codes denied. No flag activation, grants, DB migration, Staging or Production changes.

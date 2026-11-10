@@ -89,12 +89,21 @@ public sealed class FeatureRegistrySyncTests
                 "POST", "/api/System/Permissions")));
 
         var before = await registry.PreviewAsync();
-        Assert.True(before.CanApply);
-        Assert.True(before.HasPending);
+        Assert.False(before.CanApply);
+        Assert.Contains(before.Changes, x => x.Type == "Permission" &&
+            x.Key == "ROLES.CREATE" && x.State == "Conflict");
         Assert.Empty(db.Modules);
         Assert.Empty(db.UiResources);
         Assert.Empty(db.Menus);
+        Assert.False((await registry.ApplyAsync()).CanApply);
+        Assert.Empty(db.Modules); // No writes for legacy orphan grant definitions
 
+        // This is an explicit operator fixture repair, not an automatic Apply.
+        db.Permissions.Remove(manual);
+        await db.SaveChangesAsync();
+        var approved = await registry.PreviewAsync();
+        Assert.True(approved.CanApply);
+        Assert.True(approved.HasPending);
         var applied = await registry.ApplyAsync();
         Assert.True(applied.CanApply);
         Assert.Single(db.Modules);
@@ -105,10 +114,13 @@ public sealed class FeatureRegistrySyncTests
         Assert.Equal(2, db.PermissionApiResources.Count());
         Assert.Equal(81, db.PermissionUiResources.Count());
 
-        var persisted = await db.Permissions.SingleAsync(x => x.Id == manual.Id);
-        Assert.Equal("Custom label", persisted.Name);
-        Assert.False(persisted.IsActive);
-        Assert.Null(persisted.ResourceId);
+        var persisted = await db.Permissions.SingleAsync(x => x.Code == "ROLES.CREATE");
+        Assert.NotEqual(manual.Id, persisted.Id);
+        Assert.True(persisted.IsActive);
+        Assert.Equal((await db.Resources.SingleAsync(x => x.Code == "roles")).Id,
+            persisted.ResourceId);
+        persisted.Name = "Reviewed operator label";
+        await db.SaveChangesAsync();
         Assert.All(db.Menus, x => Assert.NotNull(x.PermissionId));
         Assert.Empty(db.RolePermissions.IgnoreQueryFilters(["tenant"]));
         Assert.Empty(db.UserPermissions.IgnoreQueryFilters(["tenant"]));
@@ -169,6 +181,54 @@ public sealed class FeatureRegistrySyncTests
         Assert.False((await registry.ApplyAsync()).CanApply);
         Assert.Empty(db.Modules);
         Assert.Empty(db.Menus);
+    }
+
+    [Fact]
+    public async Task Existing_unowned_permission_code_blocks_System_catalog_and_never_gets_adopted()
+    {
+        await using var db = await CreateDbAsync();
+        db.Permissions.Add(new Permission(Guid.NewGuid(), "ROLES.READ", null,
+            "Legacy orphan", null) { RowVersion = [1], IsActive = true });
+        await db.SaveChangesAsync();
+        var registry = new FeatureRegistrySyncService(db, Endpoints());
+        var preview = await registry.PreviewAsync();
+        Assert.False(preview.CanApply);
+        Assert.Contains(preview.Changes, x => x.Type == "Permission" &&
+            x.Key == "ROLES.READ" && x.State == "Conflict");
+        Assert.False((await registry.ApplyAsync()).CanApply);
+        Assert.Empty(db.Modules);
+        Assert.Single(db.Permissions);
+        Assert.Null((await db.Permissions.SingleAsync()).ResourceId);
+    }
+
+    [Fact]
+    public async Task Root_and_nested_UI_or_API_with_multiple_links_block_central_Apply()
+    {
+        await using var db = await CreateDbAsync();
+        var endpoint = Route("SYSTEM.ROLES.READ", "roles", "ROLES.READ",
+            "GET", "/api/System/Roles");
+        var registry = new FeatureRegistrySyncService(db, Endpoints(endpoint));
+        await registry.ApplyAsync();
+        var root = await db.UiResources.SingleAsync(x => x.Key == "system.roles");
+        var nested = await db.UiResources.SingleAsync(x => x.Key == "system.roles.create");
+        var api = await db.ApiResources.SingleAsync(x => x.Key == "SYSTEM.ROLES.READ");
+        var other = await db.Permissions.SingleAsync(x => x.Code == "USERS.READ");
+        db.PermissionUiResources.Add(new PermissionUiResource(other.Id, root.Id) { RowVersion = [1] });
+        db.PermissionUiResources.Add(new PermissionUiResource(other.Id, nested.Id) { RowVersion = [1] });
+        db.PermissionApiResources.Add(new PermissionApiResource(other.Id, api.Id) { RowVersion = [1] });
+        await db.SaveChangesAsync();
+        var conflict = await registry.PreviewAsync();
+        Assert.False(conflict.CanApply);
+        Assert.Contains(conflict.Changes, x =>
+            x.Type == "PermissionUiResource" && x.State == "Conflict" &&
+            x.Key == "ROLES.READ -> system.roles");
+        Assert.Contains(conflict.Changes, x =>
+            x.Type == "PermissionUiResource" && x.State == "Conflict" &&
+            x.Key == "ROLES.CREATE -> system.roles.create");
+        Assert.Contains(conflict.Changes, x =>
+            x.Type == "PermissionApiResource" && x.State == "Conflict" &&
+            x.Key == "ROLES.READ -> SYSTEM.ROLES.READ");
+        Assert.False((await registry.ApplyAsync()).CanApply);
     }
 
     [Fact]
