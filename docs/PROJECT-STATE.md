@@ -1,3 +1,9 @@
+## FR-17A-1 — Executable, no-write Module/Resource/EndpointGroup inventory (2026-11-10)
+
+- [PR #126](https://github.com/sholehamed/foundation-backend/pull/126) adds `scripts/security/fr17a_resource_inventory.py`: reuse strict FR-14A endpoint security audit; deterministic JSON ties 13 System Resources to endpoint groups, API endpoint keys and PermissionCodes, explicitly records shared `menu-management`, 17 Tenant admin definitions, and separate Auth/Connect/PublicSignup/BFF/media/dev surfaces. Mutation tests reject new unreviewed Resource sharing, mismatched metadata and changed central Tenant catalog.
+- Read-only [SQL target inventory](sql/fr-17a-module-resource-entitlement-inventory.sql) detects nonempty/legacy catalog, broken Resource/Permission ownership, API/UI link drift, menu mappings and legacy TenantModules vs signup Plan intent. CI archives source inventory artifact, no direct SQL target access. [Runbook and remaining gaps](development/FR-17A-RESOURCE-INVENTORY.md).
+- **No runtime Authorization, Seed, grants, migrations, subscription, plan activation, billing or feature flags changed.** Target SQL/EndpointDataSource deployment parity not verified. Await PR CI and human-approved existing-DB inventory before any migration or resource regrouping.
+
 ## FR-17A — Modular entitlements, plans, limits and workflow extensibility: design baseline (2026-11-10)
 
 - **Documentation-only, proposal, not deployed.** Owner clarified: Resource is approximately a Controller/Minimal API EndpointGroup; Permissions/APIs/UI roll up through Resources into centrally System-owned Modules; a purchased/versioned Plan makes eligible commercial modules/capabilities available to a Tenant, and Tenant Owner separately delegates eligible Permission grants. Module purchase never grants all users access. Core System management and Tenant account/billing recovery stay accessible without a paid plan.
