@@ -29,7 +29,11 @@ public sealed class SystemPlanCatalogAdminService(
     public sealed record PlanRow(
         Guid Id, string Code, string Name, bool IsActive,
         Guid? ParentPlanId, Guid? DraftVersionId, int? LatestVersionNumber,
-        string? LatestVersionStatus, int PublishedVersions);
+        string? LatestVersionStatus, int PublishedVersions, Guid? LatestPublishedVersionId);
+
+    public sealed record DraftDetails(
+        Guid Id, Guid PlanId, int VersionNumber, string PlanCode,
+        Guid? ParentPlanVersionId, DraftInput Content);
 
     public sealed record CommercialModule(string Code, string Title);
     public sealed record NewPlan(string Code, string Name, string? Description,
@@ -68,8 +72,61 @@ public sealed class SystemPlanCatalogAdminService(
                 related.FirstOrDefault(v => v.Status == "Draft")?.Id,
                 related.FirstOrDefault()?.VersionNumber,
                 related.FirstOrDefault()?.Status,
-                related.Count(v => v.Status == "Published"));
+                related.Count(v => v.Status == "Published"),
+                related.FirstOrDefault(v => v.Status == "Published")?.Id);
         }).ToArray();
+    }
+
+    public async Task<DraftDetails?> ReadDraftAsync(Guid versionId, CancellationToken ct)
+    {
+        var version = await db.CatalogPlanVersions.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == versionId && x.Status == "Draft", ct);
+        if (version is null) return null;
+        var plan = await db.CatalogPlans.AsNoTracking()
+            .SingleAsync(x => x.Id == version.PlanId, ct);
+        var attached = await db.CatalogPlanVersionModules.AsNoTracking()
+            .Where(x => x.PlanVersionId == versionId).ToArrayAsync(ct);
+        var modules = await db.Modules.AsNoTracking()
+            .Where(x => attached.Select(m => m.ModuleId).Contains(x.Id)).ToArrayAsync(ct);
+        var offers = await db.CatalogPlanPriceOffers.AsNoTracking()
+            .Where(x => x.PlanVersionId == versionId)
+            .OrderBy(x => x.BillingCycle).ToArrayAsync(ct);
+        var rows = await db.CatalogPlanDisplayItems.AsNoTracking()
+            .Where(x => x.PlanVersionId == versionId)
+            .OrderBy(x => x.SortOrder).ToArrayAsync(ct);
+        var caps = await db.CatalogPlanVersionCapabilityValues.AsNoTracking()
+            .Where(x => x.PlanVersionId == versionId).ToArrayAsync(ct);
+        var allCapIds = caps.Select(x => x.CapabilityDefinitionId)
+            .Concat(rows.Where(x => x.CapabilityDefinitionId.HasValue)
+                .Select(x => x.CapabilityDefinitionId!.Value)).Distinct().ToArray();
+        var defs = await db.CatalogCapabilityDefinitions.AsNoTracking()
+            .Where(x => allCapIds.Contains(x.Id)).ToArrayAsync(ct);
+        var allModuleIds = rows.Where(x => x.ModuleId.HasValue)
+            .Select(x => x.ModuleId!.Value).Distinct().ToArray();
+        var displayModules = await db.Modules.AsNoTracking()
+            .Where(x => allModuleIds.Contains(x.Id)).ToArrayAsync(ct);
+        return new(version.Id, plan.Id, version.VersionNumber,
+            plan.Code, version.ParentPlanVersionId,
+            new DraftInput(version.DisplayTitle, version.DisplaySubtitle,
+                version.BadgeText, version.IsRecommended, version.DisplayOrder,
+                modules.Select(x => x.Code).Order(StringComparer.Ordinal).ToArray(),
+                offers.Select(x => new PriceInput(
+                    x.BillingCycle, x.Currency, x.Amount)).ToArray(),
+                caps.Select(x =>
+                {
+                    var def = defs.Single(d => d.Id == x.CapabilityDefinitionId);
+                    return new CapabilityInput(def.Code, x.BooleanValue,
+                        x.IntegerValue, x.IsUnlimited,
+                        x.ModeSetJson is null ? null :
+                            JsonSerializer.Deserialize<string[]>(x.ModeSetJson));
+                }).ToArray(),
+                rows.Select(x => new DisplayInput(x.Kind,
+                    x.Kind == "Module"
+                        ? displayModules.Single(m => m.Id == x.ModuleId).Code
+                        : x.Kind == "Capability"
+                            ? defs.Single(d => d.Id == x.CapabilityDefinitionId).Code
+                            : null,
+                    x.Title, x.Description, x.IsHighlighted, x.SortOrder)).ToArray()));
     }
 
     /// <summary>Only deployed, active, code-owned commercial modules are eligible.</summary>
