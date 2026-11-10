@@ -5,6 +5,7 @@
   "system_origin": "https://system.staging.shinera.ir",
   "identity_origin": "https://identity.staging.shinera.ir",
   "tenant_origin": "https://demo.staging.shinera.ir",
+  "second_tenant_origin": "https://other.staging.shinera.ir",
   "backend": {
     "bff_enabled": false,
     "tenant_cookie_bridge_enabled": false,

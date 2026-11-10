@@ -2,6 +2,7 @@
 """Read-only Foundation FR-13 staging preflight (stdlib; no credentials or writes)."""
 
 import argparse
+import hashlib
 import json
 import re
 import ssl
@@ -55,26 +56,44 @@ def validate(config):
     stage = config.get("stage")
     if stage not in ("baseline", "tenant-bff-pilot"):
         raise PreflightError("stage must be baseline or tenant-bff-pilot")
+    # Never accept accidental tokens, passwords, connection strings or unknown
+    # feature flags in this NON-SECRET manifest or the approved Actions variable.
+    allowed = {
+        "environment", "stage", "tenant_base_domain", "system_origin",
+        "identity_origin", "tenant_origin", "second_tenant_origin",
+        "backend", "frontend",
+    }
+    if set(config) - allowed:
+        raise PreflightError("unknown top-level field in non-secret staging manifest")
     zone = config.get("tenant_base_domain")
     if not isinstance(zone, str) or zone != zone.lower() or not _valid_dns_name(zone):
         raise PreflightError("tenant_base_domain must be a valid lowercase DNS suffix")
     if not (zone.startswith("staging.") or zone.endswith(".test") or zone.endswith(".localhost")):
         raise PreflightError("tenant_base_domain needs a dedicated staging.* or .test/.localhost zone")
     hosts = {}
-    for key in ("system_origin", "identity_origin", "tenant_origin"):
+    # A two-Tenant pilot must be able to prove both distinct BFF boundaries.
+    # An older single-Tenant manifest remains usable for offline baseline only.
+    origins = ("system_origin", "identity_origin", "tenant_origin")
+    if stage == "tenant-bff-pilot" or "second_tenant_origin" in config:
+        origins += ("second_tenant_origin",)
+    for key in origins:
         hosts[key] = _hostname(key, config.get(key))
         if not hosts[key].endswith("." + zone):
             raise PreflightError(f"{key} must be a subdomain of tenant_base_domain")
         slug = hosts[key][:-(len(zone) + 1)]
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", slug):
             raise PreflightError(f"{key} must use exactly one valid subdomain label")
-    if len(set(hosts.values())) != 3:
-        raise PreflightError("system, identity, and tenant origins require distinct hosts")
+    if len(set(hosts.values())) != len(hosts):
+        raise PreflightError("System, Identity and both Tenant origins require distinct hosts")
 
     backend = config.get("backend")
     frontend = config.get("frontend")
     if not isinstance(backend, dict) or not isinstance(frontend, dict):
         raise PreflightError("backend and frontend flag sets are required")
+    if set(backend) != {"bff_enabled", "tenant_cookie_bridge_enabled", "registry_apply_enabled"}:
+        raise PreflightError("backend manifest flags must exactly match reviewed non-secret schema")
+    if set(frontend) != {"tenant_bff_pilot_enabled", "system_ui_access_pilot_enabled"}:
+        raise PreflightError("frontend manifest flags must exactly match reviewed non-secret schema")
     for section, keys in (
         (backend, ("bff_enabled", "tenant_cookie_bridge_enabled", "registry_apply_enabled")),
         (frontend, ("tenant_bff_pilot_enabled", "system_ui_access_pilot_enabled")),
@@ -124,16 +143,18 @@ def probe(config, opener=None):
         raise PreflightError("Identity discovery is missing a valid issuer") from exc
     if not isinstance(issuer, str) or issuer.rstrip("/") != config["identity_origin"]:
         raise PreflightError("Identity discovery issuer does not match the configured identity origin")
-    for origin_name in ("tenant_origin", "system_origin"):
+    for origin_name in ("tenant_origin", "second_tenant_origin", "system_origin"):
         url = config[origin_name] + "/bff/session"
         status, headers, _ = _anonymous_get(opener, url)
         if status != 401:
             raise PreflightError(f"{origin_name} anonymous /bff/session must be HTTP 401 (got {status})")
         if "no-store" not in headers.get("Cache-Control", "").lower():
             raise PreflightError(f"{origin_name} /bff/session must set Cache-Control: no-store")
-    status, _, _ = _anonymous_get(opener, config["tenant_origin"] + "/api/tenant/workspace")
-    if status != 401:
-        raise PreflightError(f"anonymous Tenant Workspace must be HTTP 401 (got {status})")
+    for origin_name in ("tenant_origin", "second_tenant_origin"):
+        status, _, _ = _anonymous_get(opener, config[origin_name] + "/api/tenant/workspace")
+        if status != 401:
+            raise PreflightError(
+                f"{origin_name} anonymous Tenant Workspace must be HTTP 401 (got {status})")
     return True
 
 
@@ -141,6 +162,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, help="operator-reviewed, NON-SECRET staging manifest JSON")
     parser.add_argument("--probe", action="store_true", help="optional anonymous HTTPS read-only checks")
+    parser.add_argument("--evidence", help="write non-secret JSON gate evidence after success")
     args = parser.parse_args(argv)
     try:
         with open(args.config, encoding="utf-8") as file:
@@ -148,10 +170,29 @@ def main(argv=None):
         validate(config)
         if args.probe:
             probe(config)
+        if args.evidence:
+            # Store a fingerprint and narrow outcomes, never origins or credentials.
+            # Caller must keep the actual manifest privately for operator review.
+            canonical = json.dumps(config, sort_keys=True, separators=(",", ":"))
+            report = {
+                "schemaVersion": 1,
+                "stage": config["stage"],
+                "manifestSha256": hashlib.sha256(canonical.encode()).hexdigest(),
+                "manifestValidated": True,
+                "anonymousHttpsProbePassed": bool(args.probe),
+                "anonymousHttpsGetCount": 6 if args.probe else 0,
+                "stagingDeploymentCertified": False,
+                "authenticatedAccessCertified": False,
+            }
+            with open(args.evidence, "w", encoding="utf-8") as output:
+                json.dump(report, output, indent=2, sort_keys=True)
+                output.write("\n")
     except (PreflightError, OSError, json.JSONDecodeError) as exc:
         print(f"FR-13 staging gate: FAIL: {exc}", file=sys.stderr)
         return 2
-    print("FR-13 staging gate: PASS (manifest validation" + (" + anonymous HTTPS probes)" if args.probe else " only; deployment unverified)"))
+    print("FR-15A staging gate: PASS (manifest validation" + (
+        " + two-Tenant anonymous HTTPS probes" if args.probe else " only"
+    ) + "; authenticated deployment unverified)")
     return 0
 
 
