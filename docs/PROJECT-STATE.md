@@ -1,3 +1,9 @@
+## FR-17A-2 — Typed Resource/Permission and future capability contracts (2026-11-10)
+
+- [PR #127](https://github.com/sholehamed/foundation-backend/pull/127) adds `ModuleResourceContracts` with four Module classifications, source-derived 13 System Resources plus 17 Tenant-core Permission definitions, strict Resource/Permission owner validation and typed Capability/Limit/Quota/AllowedMode + per-operation binding descriptors. Existing `SystemEndpointRegistryIntegrity` now reports `ResourceContractIssues` and will refuse readiness for invalid source contract, without changing existing System grant/protocol policy.
+- [Specification and test matrix](development/FR-17A2-TYPED-RESOURCE-CONTRACTS.md), unit tests for invalid cross-resource/permission/capability/type/merge/binding ownership. No SQL migration, seed/grants, paid entitlement gate, limits consumption, checkout, billing activation or deployed flags. Await verified PR CI before merge; System first-login and Tenant Owner bootstrap remain as before.
+- Next FR-17B: validated typed persistence/plan versions and read-only/shadow entitlement evaluation; separate later quota and paid authorization enforcement. User indicated development data does not need special preservation, but no destructive SQL operation is introduced in FR-17A-2.
+
 ## FR-17A-1 — Executable, no-write Module/Resource/EndpointGroup inventory (2026-11-10)
 
 - [PR #126](https://github.com/sholehamed/foundation-backend/pull/126) adds `scripts/security/fr17a_resource_inventory.py`: reuse strict FR-14A endpoint security audit; deterministic JSON ties 13 System Resources to endpoint groups, API endpoint keys and PermissionCodes, explicitly records shared `menu-management`, 17 Tenant admin definitions, and separate Auth/Connect/PublicSignup/BFF/media/dev surfaces. Mutation tests reject new unreviewed Resource sharing, mismatched metadata and changed central Tenant catalog.
