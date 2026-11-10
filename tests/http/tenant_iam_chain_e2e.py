@@ -162,6 +162,12 @@ def verify_central_registry_reads(admin: str, owner: str, staff: str):
     assert len(registry["fingerprint"]) == 64
     # The System Apply deployment flag stays OFF in this isolated fixture.
     # An approved preview token alone does not authorize a catalog mutation.
+    check("POST", base + "/apply", 401,
+          data={"fingerprint": registry["fingerprint"]})
+    check("POST", base + "/apply", 403, token=owner,
+          data={"fingerprint": registry["fingerprint"]})
+    check("POST", base + "/apply", 403, token=staff,
+          data={"fingerprint": registry["fingerprint"]})
     check("POST", base + "/apply", 409, token=admin,
           data={"fingerprint": registry["fingerprint"]})
     assert check("GET", base + "/preview", 200, token=admin)[
