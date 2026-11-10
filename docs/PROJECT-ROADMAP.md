@@ -1,3 +1,9 @@
+## FR-17A-1 — Audited source Resource inventory and read-only SQL preflight (2026-11-10)
+
+- [PR #126](https://github.com/sholehamed/foundation-backend/pull/126) implements reproducible read-only inventory built on existing FR-14A route/security parser: maps System EndpointGroups to centrally owned Resources/Permissions; records Tenant administration and identity/BFF/media/dev exceptions; fails on unreviewed cross-group Resource ownership. Includes security mutation tests and CI JSON artifact.
+- [Target SQL read-only script](sql/fr-17a-module-resource-entitlement-inventory.sql) inventories Module/Resource/Permission/ApiResource/UiResource relationships and legacy TenantModules/RequestedPlanKey without claiming Subscription exists. No live target DB accessed, no migrations, rights, flags or commercial runtime added. [Detailed inventory and next gate](development/FR-17A-RESOURCE-INVENTORY.md).
+- **Next:** approved target SQL inventory + code/runtime EndpointDataSource parity + Resource grouping decision before FR-17A-2 typed metadata validator and later Entitlement/Plan migrations.
+
 ## FR-17A — Proposed modular product architecture and gated implementation sequence (2026-11-10)
 
 - **Design-only PR, not runtime shipped.** [Canonical architecture](architecture/modular-entitlements-plans-limits.md), [execution checklist](development/FR-17A-MODULAR-ENTITLEMENTS-HANDOFF.md) and [proposed ADR-0002](decisions/ADR-0002-commercial-entitlement-vs-authorization.md) formalize the owner's Resource=Controller/EndpointGroup semantics, centrally owned Module/Resource/Permission/UI/API catalogs, and PlanVersion-based Tenant Entitlement independent of Tenant Owner RBAC grants.

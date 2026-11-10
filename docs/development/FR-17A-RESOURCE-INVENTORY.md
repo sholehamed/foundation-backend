@@ -65,3 +65,23 @@ This is a **source-only initial mapping**, not full release readiness. No access
 - [ ] User/business owner acceptance of ADR-0002 and D-01..D-10.
 
 **No SQL records, API permissions, runtime gates or code definitions were changed by this inventory.**
+
+
+## 6. FR-17A-1 executable read-only inventory (PR #126)
+
+The code inventory is now executable and uses the existing strict FR-14A authorization-route scanner. It is **not** a subscription engine and does not connect to SQL or assign grants.
+
+Run from the repository root:
+
+```bash
+python3 -m unittest discover -s scripts/security -p 'test_*.py' -v
+python3 scripts/security/fr17a_resource_inventory.py --out /tmp/fr17a-module-resource-inventory.json
+```
+
+The generated JSON contains code-owned System Module/Resource → EndpointGroup/operation keys and permission codes, a separate 17-permission Tenant-admin catalog, explicitly classified protocol/BFF/media/dev routes and explicit unknowns. Its required attributes include `schemaVersion`, `evidence`, `commercialEntitlementEnforced=false`, `systemResources`, `tenantAdminCatalog`, `otherEndpoints` and `counts`. Every System registration must reconcile with FR-14A; a newly shared Resource across unrelated EndpointGroup files fails closed unless reviewed and allowlisted. Shared `menu-management` across `Menus.cs` and `MenuCategories.cs` is the current explicit exception.
+
+For persisted target SQL Server inspection, run **read-only** [FR-17A SQL preflight](../sql/fr-17a-module-resource-entitlement-inventory.sql) on the approved Identity database using a read-only user, not an application write account. It reports Module/Resource/Permission ownership counts, legacy null-owned PermissionCodes, duplicate keys, cross-Resource UI/API links, System/Tenant menu bindings, `TenantModules` flags and requested plan intent. It cannot prove commercial subscription because there is no such store. **Never export raw tenant/customer data; sanitize results**. Compare SQL codes/ownership against CI JSON and record mismatches as a migration proposal; do not execute a repair, grant backfill, or migration based on a failed report.
+
+CI executes this script and the Python mutation tests in `.github/workflows/bff-ci.yml` and attaches `fr17a-module-resource-source-inventory` as an artifact when available. A successful source CI run is **not** proof of a target SQL Server catalog, user entitlement, or live deployment.
+
+**Still outstanding:** approved live SQL results, full runtime EndpointDataSource parity, classification of cross-cutting platform/tenant-core contracts and module-saleability, any reviewed split of the existing Tenant resource, code metadata enforcement for future commercial modules, acceptance of the open product decisions D-01..D-10.
