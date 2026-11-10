@@ -1,3 +1,9 @@
+## FR-14C — reviewed System Registry Apply transaction (2026-11-10)
+
+- System Feature Registry Preview now carries a SHA-256 fingerprint of live endpoint and database catalog state. The HTTP Apply requires explicit 64-hex fingerprint, persisted System SuperAdmin, independently default-OFF write gate and a SERIALIZABLE SQL recheck before committing additive definitions. Stale/foreign/invalid approval fails closed; no role grants or automatic flag changes.
+- Real SQL acceptance covers stale and changed-Present fingerprints, success/idempotence and actor denial. The Angular System Admin Apply UI must be updated in the matching frontend PR before any operator roll-out. [Full contract](development/FR-14C-REVIEWED-SYSTEM-REGISTRY-APPLY.md).
+- Next: green Backend+Frontend CI, target environment System Menu/Permission/API reconciliation, two-Tenant browser verification. Do **not** turn on Tenant dynamic sidebar yet.
+
 ## FR-14C — central System Registry Preview rejects legacy unowned permissions (2026-11-10)
 
 - System Registry Preview now flags null/foreign/inactive/duplicate Permission.Code ownership and foreign/multiple root PAGE, nested PAGE/ACTION or API permission links as **Conflict**. Neither an operator Apply nor a feature flag may silently adopt these records; tests cover failure and explicit fixture repair.
