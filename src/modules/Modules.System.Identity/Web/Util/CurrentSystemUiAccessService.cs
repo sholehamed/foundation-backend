@@ -170,6 +170,8 @@ public sealed class CurrentSystemUiAccessService(IIdentityDbContext db)
                 string.Equals(item.Description, d.Route, StringComparison.Ordinal) &&
                 owners.Length == 1 &&
                 matchedPermission.Length == 1 &&
+                permissions.Count(x => string.Equals(x.Code, d.PermissionCode,
+                    StringComparison.Ordinal)) == 1 &&
                 itemLinks.Length == 1 &&
                 itemLinks[0].PermissionId == matchedPermission[0].Id &&
                 allowed.Contains(matchedPermission[0].Id);
