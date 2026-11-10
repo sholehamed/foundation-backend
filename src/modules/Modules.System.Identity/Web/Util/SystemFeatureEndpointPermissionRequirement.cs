@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Domain.Entities;
@@ -59,6 +60,28 @@ public sealed class SystemFeatureEndpointPermissionHandler(
 
         var cancellationToken = context.Resource is HttpContext http
             ? http.RequestAborted : CancellationToken.None;
+
+        // FR-14C: a code match alone is NOT sufficient. A historical/global
+        // Permission with ResourceId=NULL, or one moved to a foreign Resource,
+        // would otherwise pass a role grant despite not being owned by the
+        // registered System feature. Verify the live Module/Resource/Permission
+        // graph before evaluating any user grant. Duplicate codes fail closed.
+        var feature = FeatureRegistryDefinitions.Features.SingleOrDefault(f =>
+            f.ResourceCode == requirement.ResourceCode &&
+            f.PermissionCodes.Contains(requirement.PermissionCode, StringComparer.Ordinal));
+        if (feature is null)
+            return;
+        var registered = await db.Permissions.AsNoTracking().CountAsync(p =>
+            p.Code == requirement.PermissionCode && p.IsActive &&
+            p.ResourceId != null && p.Resource != null &&
+            p.Resource.IsActive && p.Resource.Code == feature.ResourceCode &&
+            p.Resource.Module != null && p.Resource.Module.IsActive &&
+            p.Resource.Module.Code == feature.ModuleCode, cancellationToken);
+        // Count only matching owners isn't enough when an additional
+        // duplicate/misowned row has the same key.
+        if (registered != 1 || await db.Permissions.AsNoTracking().CountAsync(
+                p => p.Code == requirement.PermissionCode, cancellationToken) != 1)
+            return;
 
         if (await new EffectivePermissionEvaluator(db).HasPermissionAsync(
                 userId, DefaultSeedData.MasterTenant.Id, UserType.System,
