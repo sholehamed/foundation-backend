@@ -1,3 +1,8 @@
+## FR-16 — initial System/Tenant administrator menu and permission seed (2026-11-10)
+
+- New **clean-DB-only** bootstrap creates 13 central System roots, 17 Tenant PAGE/ACTION definitions, six System-owned Tenant menus and Master-scoped System SuperAdmin role/permissions before legacy unowned platform catalog seeding. Requires Permission.Code migration; no System privileges ever assigned to Tenant role. New Tenant signup atomically grants 17 centrally reviewed Tenant privileges to its brand-new Owner role under narrow first-signup interceptor exception; subsequent Tenant grant writes remain audited/CAS-protected.
+- Restart/legacy DB no-op: no repair, reactivation or regrant of permissions; missing/inconsistent existing catalogs require operator approval. No remote deployment or feature toggle, no insecure Production password creation. [Detailed scope](development/FR-16-FIRST-INSTALL-ADMIN-ACCESS-BOOTSTRAP.md). **Remaining:** green real SQL/HTTP/browser CI, separate secure Production initial System user provision, no dynamic sidebar pilot toggle until environment approval.
+
 ## FR-15D — dynamic Tenant menu ON only inside trusted Actions disposable Chromium E2E (2026-11-10)
 
 - Existing FR-15C ephemeral full-stack acceptance now turns `tenantDynamicNavigationPilotEnabled` **ON only in the temporary Angular checkout**, seeds the six reviewed global System-owned Tenant Menu rows **only in isolated SQL Server fixture** after HTTP Tenant Permission Catalog setup, and exercises actual Angular/Backend BFF navigation. Browser verifies staff Members link appears on real Role grant, disappears on revocation + fresh login, no unauthorized Roles/Groups links and System central gate isolation. Signed HTTP and live browser tests remain authoritative.
