@@ -487,13 +487,13 @@ public sealed class VersionedPlanCatalogMigration : Migration
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlans_Code",
             table: "CatalogPlans",
-            columns: "Code",
+            column: "Code",
             unique: true);
 
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlans_ParentPlanId",
             table: "CatalogPlans",
-            columns: "ParentPlanId");
+            column: "ParentPlanId");
 
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlanVersions_CreatedAt",
@@ -507,7 +507,7 @@ public sealed class VersionedPlanCatalogMigration : Migration
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlanVersions_ParentPlanVersionId",
             table: "CatalogPlanVersions",
-            columns: "ParentPlanVersionId");
+            column: "ParentPlanVersionId");
 
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlanVersions_Status_DisplayOrder",
@@ -526,7 +526,7 @@ public sealed class VersionedPlanCatalogMigration : Migration
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlanVersionModules_ModuleId",
             table: "CatalogPlanVersionModules",
-            columns: "ModuleId");
+            column: "ModuleId");
 
         migrationBuilder.CreateIndex(
             name: "IX_CatalogCapabilityDefinitions_CreatedAt",
@@ -534,18 +534,18 @@ public sealed class VersionedPlanCatalogMigration : Migration
         migrationBuilder.CreateIndex(
             name: "IX_CatalogCapabilityDefinitions_Code",
             table: "CatalogCapabilityDefinitions",
-            columns: "Code",
+            column: "Code",
             unique: true);
 
         migrationBuilder.CreateIndex(
             name: "IX_CatalogCapabilityDefinitions_ModuleId",
             table: "CatalogCapabilityDefinitions",
-            columns: "ModuleId");
+            column: "ModuleId");
 
         migrationBuilder.CreateIndex(
             name: "IX_CatalogCapabilityDefinitions_ResourceId",
             table: "CatalogCapabilityDefinitions",
-            columns: "ResourceId");
+            column: "ResourceId");
 
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlanVersionCapabilityValues_CreatedAt",
@@ -559,7 +559,7 @@ public sealed class VersionedPlanCatalogMigration : Migration
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlanVersionCapabilityValues_CapabilityDefinitionId",
             table: "CatalogPlanVersionCapabilityValues",
-            columns: "CapabilityDefinitionId");
+            column: "CapabilityDefinitionId");
 
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlanPriceOffers_CreatedAt",
@@ -581,12 +581,12 @@ public sealed class VersionedPlanCatalogMigration : Migration
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlanDisplayItems_ModuleId",
             table: "CatalogPlanDisplayItems",
-            columns: "ModuleId");
+            column: "ModuleId");
 
         migrationBuilder.CreateIndex(
             name: "IX_CatalogPlanDisplayItems_CapabilityDefinitionId",
             table: "CatalogPlanDisplayItems",
-            columns: "CapabilityDefinitionId");
+            column: "CapabilityDefinitionId");
 
         migrationBuilder.AddCheckConstraint(
             name: "CK_CatalogPlans_Code", table: "CatalogPlans",
