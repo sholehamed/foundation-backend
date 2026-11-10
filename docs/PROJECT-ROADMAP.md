@@ -1,3 +1,8 @@
+## FR-14C — System endpoint graph integrity diagnostic (2026-11-10)
+
+- Added live, **read-only** System endpoint metadata vs global SQL API/Resource/Permission/link reconciliation with explicit issue codes, without Tenant-owned menus or any automatic Apply. Unregistered admin endpoints and extra PermissionApiResource links fail closed. [System endpoint integrity contract](development/FR-14C-SYSTEM-ENDPOINT-REGISTRY-INTEGRITY.md).
+- Still pending: per-environment inspection and reconciliation, Tenant authorization/entitlement and BFF/browser verification, System feature grant rollout and FR-14C-3 Branch scopes. Staging remains deferred.
+
 ## FR-14C — System-owned Tenant menu readiness gate (2026-11-10)
 
 - Read-only, privileged audit for exactly six canonical Tenant routes checks global Menu, Category, live PAGE Permission, UI link, unregistered Tenant routes and unguarded external links. This fills the gap between System Feature Registry and Tenant Permission Catalog Preview/Apply **without granting Tenant any definition capability**. [FR-14C readiness contract](development/FR-14C-CENTRAL-TENANT-NAVIGATION-READINESS.md).

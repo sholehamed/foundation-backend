@@ -310,6 +310,71 @@ public sealed class FeatureRegistrySqlServerTests
         });
     }
 
+    [Fact]
+    public async Task System_endpoint_integrity_is_live_SQL_read_only_and_denies_extra_api_grants()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            var builder = new Microsoft.AspNetCore.Routing.RouteEndpointBuilder(
+                _ => Task.CompletedTask,
+                Microsoft.AspNetCore.Routing.Patterns.RoutePatternFactory.Parse(
+                    "/api/System/Roles"), 0);
+            builder.Metadata.Add(new Microsoft.AspNetCore.Routing.HttpMethodMetadata(["POST"]));
+            builder.Metadata.Add(new FeatureEndpointMetadata(
+                "SYSTEM.ROLES.CREATE", "roles", "ROLES.CREATE", "Create role"));
+            builder.Metadata.Add(
+                new Microsoft.AspNetCore.Authorization.AuthorizeAttribute("SystemAdministrator"));
+            builder.Metadata.Add(
+                new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .AddRequirements(
+                    new SystemFeatureEndpointPermissionRequirement("roles", "ROLES.CREATE"))
+                .Build());
+            var source = new DefaultEndpointDataSource([builder.Build()]);
+            var empty = await SystemEndpointRegistryIntegrity.ReadAsync(db, source);
+            Assert.False(empty.ReadyForGranularEnforcement);
+            Assert.Empty(await db.ApiResources.ToListAsync());
+
+            var sync = new FeatureRegistrySyncService(db, source);
+            await sync.ApplyAsync();
+            var clean = await SystemEndpointRegistryIntegrity.ReadAsync(db, source);
+            Assert.True(clean.ReadyForGranularEnforcement);
+            Assert.Single(clean.Endpoints);
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+
+            var api = await db.ApiResources.SingleAsync();
+            var unrelated = await db.Permissions.SingleAsync(p => p.Code == "USERS.READ");
+            var link = new Modules.System.Identity.Domain.Entities.PermissionApiResource(
+                unrelated.Id, api.Id) { RowVersion = [1] };
+            db.PermissionApiResources.Add(link);
+            await db.SaveChangesAsync();
+            var expanded = await SystemEndpointRegistryIntegrity.ReadAsync(db, source);
+            Assert.False(expanded.ReadyForGranularEnforcement);
+            Assert.Contains("api_permission_link_missing_or_extra",
+                Assert.Single(expanded.Endpoints).Issues);
+            Assert.Equal(2, await db.PermissionApiResources.CountAsync());
+            db.PermissionApiResources.Remove(link);
+            await db.SaveChangesAsync();
+
+            // A wrong persisted endpoint HTTP method is also a conflict even
+            // when the code-owned key and permission link both exist.
+            api.HttpMethod = Modules.System.Identity.Domain.Entities.HttpMethod.PUT;
+            await db.SaveChangesAsync();
+            var wrongVerb = await SystemEndpointRegistryIntegrity.ReadAsync(db, source);
+            Assert.Contains("api_route_or_verb_mismatch",
+                Assert.Single(wrongVerb.Endpoints).Issues);
+            Assert.Equal(13, await db.Menus.CountAsync());
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+
+            var http = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+            Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>(
+                await FeatureRegistry.SystemEndpointIntegrity(
+                    new TenantContext(), db, source, http, CancellationToken.None));
+            Assert.Equal("no-store", http.Response.Headers.CacheControl.ToString());
+        });
+    }
+
     private static async Task WithIsolatedDatabaseAsync(Func<IdentityDbContext, Task> test)
     {
         var raw = Environment.GetEnvironmentVariable("SHINERA_SQLSERVER_TEST_CONNECTION");
