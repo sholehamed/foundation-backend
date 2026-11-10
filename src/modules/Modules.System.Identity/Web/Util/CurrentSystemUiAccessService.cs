@@ -161,7 +161,7 @@ public sealed class CurrentSystemUiAccessService(IIdentityDbContext db)
             var matchedPermission = permissions.Where(x =>
                 string.Equals(x.Code, d.PermissionCode, StringComparison.Ordinal) &&
                 x.IsActive &&
-                (x.ResourceId == null || x.ResourceId == item.ResourceId)).ToArray();
+                x.ResourceId == item.ResourceId).ToArray();
             var itemLinks = links.Where(x => x.UiResourceId == item.Id).ToArray();
 
             structurallyValid[d.Key] =
