@@ -134,6 +134,34 @@ class PreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(PreflightError, "UI access pilot"):
             validate(config)
 
+    def test_manifest_does_not_accept_secrets_or_unknown_flags(self):
+        config = sample()
+        config["client_secret"] = "accidental-disclosure"
+        with self.assertRaisesRegex(PreflightError, "unknown top-level"):
+            validate(config)
+        config = sample()
+        config["backend"]["data_base_password"] = "must-never-be-in-manifest"
+        with self.assertRaisesRegex(PreflightError, "non-secret schema"):
+            validate(config)
+        config = sample()
+        config["frontend"]["tenant_dynamic_navigation_pilot_enabled"] = True
+        with self.assertRaisesRegex(PreflightError, "non-secret schema"):
+            validate(config)
+
+    def test_workflow_requires_manual_main_only_read_only_probe(self):
+        # Workflow is workflow_dispatch only; no push/PR event can touch an
+        # externally deployed Staging URL. No credentials or SQL writes.
+        workflow = (Path(__file__).resolve().parents[2] /
+                    ".github/workflows/staging-readonly-gate.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertNotIn("\n  push:", workflow)
+        self.assertNotIn("\n  pull_request:", workflow)
+        self.assertIn("github.ref == 'refs/heads/main'", workflow)
+        self.assertIn("PROBE_ISOLATED_STAGING", workflow)
+        self.assertIn("vars.FOUNDATION_STAGING_MANIFEST_JSON", workflow)
+        self.assertIn("--probe", workflow)
+        self.assertIn("contents: read", workflow)
+
     def test_boolean_not_string(self):
         config = sample()
         config["backend"]["bff_enabled"] = "false"
