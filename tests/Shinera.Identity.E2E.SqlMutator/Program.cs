@@ -6,6 +6,7 @@ using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using Microsoft.Data.SqlClient;
 using Modules.System.Identity.Infrastructure.Persistence;
+using Modules.System.Identity.Web.Util;
 
 // Deliberately separate from the Web API: no development mutation endpoint,
 // authentication bypass, or production-registered service is introduced.
@@ -16,13 +17,14 @@ var server = Environment.GetEnvironmentVariable("DataBaseServer") ?? "";
 var isEnsureDatabase = args.Length == 1 && args[0] == "ensure-e2e-database";
 var isTenantFixture = args.Length == 1 && args[0] == "seed-tenant-iam";
 var isTenantAudit = args.Length == 1 && args[0] == "assert-tenant-iam-audit";
+var isNavigationFixture = args.Length == 1 && args[0] == "seed-central-tenant-navigation";
 var isRevoke = args.Length == 2 && args[0] == "revoke-seeded-superadmin";
 var isAuditCheck = args.Length == 3 && args[0] == "assert-denied-audit";
 Guid subject = Guid.Empty;
-var subjectValid = (isEnsureDatabase || isTenantFixture || isTenantAudit) ||
+var subjectValid = (isEnsureDatabase || isTenantFixture || isTenantAudit || isNavigationFixture) ||
     (args.Length >= 2 && Guid.TryParse(args[1], out subject) &&
      subject != Guid.Empty);
-if (!(isRevoke || isAuditCheck || isEnsureDatabase || isTenantFixture || isTenantAudit) ||
+if (!(isRevoke || isAuditCheck || isEnsureDatabase || isTenantFixture || isTenantAudit || isNavigationFixture) ||
     !subjectValid ||
     Environment.GetEnvironmentVariable("SHINERA_E2E_DB_MUTATION") != optIn ||
     Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") != "Development" ||
@@ -33,6 +35,18 @@ if (!(isRevoke || isAuditCheck || isEnsureDatabase || isTenantFixture || isTenan
     throw new InvalidOperationException(
         "The CI-only database mutator requires an explicit disposable Development database and valid subject.");
 }
+
+// The central Menu writer is test-only and has an additional hard gate:
+// official trusted-main browser runner plus exact disposable SQL catalog.
+// Never permit this helper on a remote database or an arbitrary Development DB.
+if (isNavigationFixture &&
+    (Environment.GetEnvironmentVariable("FR15D_E2E_DYNAMIC_NAVIGATION") != "true" ||
+     Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true" ||
+     Environment.GetEnvironmentVariable("GITHUB_REPOSITORY") != "sholehamed/foundation-backend" ||
+     Environment.GetEnvironmentVariable("GITHUB_REF") != "refs/heads/main" ||
+     databaseName != "Shinera_E2E_RealBffBrowser"))
+    throw new InvalidOperationException(
+        "Dynamic Menu fixture only allowed in trusted main disposable browser E2E.");
 
 // All commands are gated to this disposable local prefix. The Tenant fixture
 // commands are intentionally test-only: no new Web API or production seed.
@@ -77,6 +91,85 @@ if (isEnsureDatabase)
     return;
 }
 
+
+if (isNavigationFixture)
+{
+    var options = new DbContextOptionsBuilder<IdentityDbContext>()
+        .UseSqlServer(connectionString).Options;
+    await using var db = new IdentityDbContext(options, new TenantContext());
+    await using var transaction = await db.Database.BeginTransactionAsync(
+        IsolationLevel.Serializable);
+
+    var reviewed = TenantWorkspaceNavigationService.RoutePermissions;
+    if (reviewed.Count != 6)
+        throw new InvalidOperationException("The reviewed six-route contract changed.");
+
+    if (await db.Menus.AnyAsync(x =>
+        x.Route != null && reviewed.Keys.Contains(x.Route)))
+        throw new InvalidOperationException(
+            "Disposable browser SQL already contains Tenant menu roots.");
+
+    var roleGrantsBefore = await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+        .CountAsync();
+    var directGrantsBefore = await db.UserPermissions.IgnoreQueryFilters(["tenant"])
+        .CountAsync();
+
+    var category = new MenuCategory(Guid.NewGuid())
+    {
+        Title = "CI-only central Tenant navigation",
+        Order = 40,
+        IsActive = true,
+        RowVersion = [1]
+    };
+    db.MenuCategories.Add(category);
+    var ordinal = 0;
+    foreach (var (route, permissionCode) in reviewed)
+    {
+        Guid? permissionId = null;
+        if (permissionCode is not null)
+        {
+            var definitions = await db.Permissions.Where(p =>
+                p.Code == permissionCode && p.IsActive)
+                .Select(p => p.Id).ToListAsync();
+            if (definitions.Count != 1)
+                throw new InvalidOperationException(
+                    "Reviewed Tenant Permission missing or ambiguous.");
+            permissionId = definitions[0];
+        }
+        db.Menus.Add(new Menu(Guid.NewGuid())
+        {
+            CategoryId = category.Id,
+            Title = route switch
+            {
+                "/dashboard" => "داشبورد",
+                "/dashboard/business" => "کسب‌وکار",
+                "/dashboard/branches" => "شعبه‌ها",
+                "/dashboard/members" => "اعضا",
+                "/dashboard/roles" => "نقش‌ها",
+                "/dashboard/groups" => "گروه‌ها",
+                _ => throw new InvalidOperationException("Unregistered Tenant route.")
+            },
+            Route = route,
+            Icon = "dashboard",
+            PermissionId = permissionId,
+            IsActive = true,
+            IsHidden = false,
+            Order = (short)(ordinal++ * 10),
+            RowVersion = [1]
+        });
+    }
+    await db.SaveChangesAsync();
+    var readiness = await CentralTenantNavigationReadiness.ReadAsync(db);
+    if (!readiness.ReadyForDynamicPilot ||
+        readiness.ReadyRoutes != 6 || readiness.RequiredRoutes != 6 ||
+        await db.RolePermissions.IgnoreQueryFilters(["tenant"]).CountAsync() != roleGrantsBefore ||
+        await db.UserPermissions.IgnoreQueryFilters(["tenant"]).CountAsync() != directGrantsBefore)
+        throw new InvalidOperationException(
+            "Central Tenant menu fixture did not meet six-route readiness or changed grants.");
+    await transaction.CommitAsync();
+    Console.WriteLine("PASS: exactly six System-owned Tenant Menu roots seeded in isolated browser SQL; no grants.");
+    return;
+}
 
 if (isTenantFixture)
 {
