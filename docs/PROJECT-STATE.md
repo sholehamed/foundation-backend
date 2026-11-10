@@ -1,3 +1,8 @@
+## FR-14C — four-way live SQL acceptance before dynamic menu activation (2026-11-10)
+
+- Added **positive and adversarial** real disposable SQL Server acceptance of the consolidated System/Tenant/Menu/Endpoint registry: clean catalog but missing six Tenant Menus stays red, explicitly registered six System-owned Menus becomes green, unknown route/foreign PAGE Permission link/disabled System API each independently returns red, and fixture-only cleanup restores green. No role/user grants or real environment modifications. [Detailed evidence and Staging hold](development/FR-14C-FOUR-WAY-SQL-ACCEPTANCE.md).
+- **Next gate remains real deployed Staging**: provide approved DNS/TLS/isolated SQL/keyring/session store, run FR-15A real-host anonymous probes and live SuperAdmin read-only consolidated audit, approve any required central remediation and two-Tenant BFF/browser acceptance. Do not turn on dynamic sidebar automatically.
+
 ## FR-14C — consolidated central access operator gate (2026-11-10)
 
 - Added **read-only**, live System SuperAdmin-only `GET /System/FeatureRegistry/central-access/readiness`, combining System Registry Preview, 17-definition Tenant Permission Catalog Preview, exactly six central Tenant Menu route checks and runtime System Endpoint Integrity. The gate is green only if **all four** are fully registered, nonempty, consistent and without pending drift; returns blocking check IDs and both SHA-256 preview fingerprints.
