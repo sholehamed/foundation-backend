@@ -119,6 +119,28 @@ def verify_central_registry_reads(admin: str, owner: str, staff: str):
         check("GET", path, 403, token=owner)
         check("GET", path, 403, token=staff)
 
+    # FR-16: the FIRST administrator can see registered System pages
+    # without needing to navigate to a page to grant it to itself.
+    own_menu = check("GET", "/api/System/Menus/me", 200, token=admin)
+    def menu_paths(categories):
+        result = []
+        def visit(items):
+            for item in items:
+                if item.get("route"):
+                    result.append(item["route"])
+                visit(item.get("childs") or [])
+        for category in categories:
+            visit(category.get("items") or [])
+        return result
+    system_routes = set(menu_paths(own_menu))
+    assert {
+        "/system/dashboard", "/system/roles", "/system/permissions",
+        "/system/users", "/system/feature-registry",
+        "/system/menu-management",
+    } <= system_routes, "Seeded SuperAdmin must see System administration roots"
+    assert not any(route.startswith("/dashboard")
+                   for route in system_routes), "System role must not see Tenant nav"
+
     tenant = check("GET", diagnostic_paths[0], 200, token=admin)
     assert tenant["canApply"] and not tenant["hasPending"], (
         "Reviewed disposable Tenant permission catalog must match the code")
@@ -161,14 +183,17 @@ def verify_central_registry_reads(admin: str, owner: str, staff: str):
     assert isinstance(registry["canApply"], bool)
     assert isinstance(registry["hasPending"], bool)
     assert len(registry["fingerprint"]) == 64
-    # Aggregate all four System-owned read-only diagnostics. A disposable
-    # fixture intentionally has no centrally authored Tenant Menu rows;
-    # therefore it must NOT claim that the dynamic pilot is ready.
+    # Fresh-install bootstrap now owns all six Tenant Menu roots. The
+    # runtime System API registry is still a separate reviewed post-mapping
+    # operator step; the aggregate must remain red for THAT reason, not
+    # for absent Tenant navigation.
     consolidated = check("GET", base + "/central-access/readiness", 200,
                          token=admin)
     assert consolidated["centralCatalogConsistent"] is False
     assert len(consolidated["blockingChecks"]) >= 1
-    assert "tenant_navigation_not_ready" in consolidated["blockingChecks"]
+    assert nav["readyForDynamicPilot"] is True
+    assert "tenant_navigation_not_ready" not in consolidated["blockingChecks"]
+    assert "system_registry_not_consistent" in consolidated["blockingChecks"]
     assert consolidated["systemRegistry"]["ready"] == (
         registry["canApply"] and not registry["hasPending"] and
         bool(registry["changes"]))
@@ -224,11 +249,13 @@ def run():
     check("GET", TENANT_PATH + "/members", 403, token=owner,
           headers={"X-Tenant-Id": FOREIGN_ID})
 
-    # Operator-reviewed explicit catalog registration. No grants are issued
-    # by Apply, and this opt-in remains OFF in normal environments.
+    # Fresh-install registered the 17 centrally reviewed Tenant keys
+    # before any first login. The guarded Apply remains an explicit
+    # Development/CI-only idempotency check, never a bootstrapping shortcut.
     preview = check("GET", REGISTRY_PATH + "/preview", 200, token=admin)
     assert preview["canApply"], "The disposable catalog unexpectedly conflicts"
-    assert preview["hasPending"], "The fixture must exercise real SQL registration"
+    assert not preview["hasPending"], (
+        "Fresh-install seed must register the 17 Tenant permissions before login")
     assert len([x for x in preview["changes"] if x["entity"] == "Permission"]) == 17
     check("POST", REGISTRY_PATH + "/apply", 403, token=owner,
           data={"fingerprint": preview["fingerprint"]})

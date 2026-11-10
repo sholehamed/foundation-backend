@@ -104,10 +104,25 @@ if (isNavigationFixture)
     if (reviewed.Count != 6)
         throw new InvalidOperationException("The reviewed six-route contract changed.");
 
-    if (await db.Menus.AnyAsync(x =>
-        x.Route != null && reviewed.Keys.Contains(x.Route)))
-        throw new InvalidOperationException(
-            "Disposable browser SQL already contains Tenant menu roots.");
+    // On a genuinely fresh install FR-16 has already seeded the central
+    // catalog. Reuse and verify it; do NOT try to create duplicate rows.
+    // The older CI-only fixture path remains only for legacy disposable SQL.
+    var presentRoutes = await db.Menus.AsNoTracking()
+        .Where(x => x.Route != null && reviewed.Keys.Contains(x.Route))
+        .Select(x => x.Route!).ToListAsync();
+    if (presentRoutes.Count != 0)
+    {
+        var existing = await CentralTenantNavigationReadiness.ReadAsync(db);
+        if (presentRoutes.Count != 6 ||
+            presentRoutes.Distinct(StringComparer.Ordinal).Count() != 6 ||
+            !existing.ReadyForDynamicPilot || existing.ReadyRoutes != 6)
+            throw new InvalidOperationException(
+                "Existing central Tenant menu bootstrap is partial or inconsistent.");
+        Console.WriteLine(
+            "PASS: six System-owned Tenant Menu roots already present from initial seed; no additional writes.");
+        await menuTransaction.CommitAsync();
+        return;
+    }
 
     var roleGrantsBefore = await db.RolePermissions.IgnoreQueryFilters(["tenant"])
         .CountAsync();

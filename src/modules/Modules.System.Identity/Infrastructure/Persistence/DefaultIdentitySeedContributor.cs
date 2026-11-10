@@ -22,7 +22,13 @@ public sealed class DefaultIdentitySeedContributor : ISeedContributor
         await SeedOpenIddictAsync(applicationManager);
         await OpenIddictBffClientSeeder.SeedAsync(applicationManager, configuration, environment);
         var masterTenant = await EnsureTenantAsync(db, DefaultSeedData.MasterTenant);
-        // Additive, idempotent definitions. No privileges are granted in Production.
+        // The freshly-created, otherwise empty database gets the complete
+        // System/Tenant PAGE and Menu registry BEFORE the legacy nine-key
+        // platform definition helper. Otherwise its unowned role permission
+        // codes would conflict with the reviewed System Feature Registry.
+        // Existing/partial installations are never silently re-granted.
+        await InitialAccessBootstrap.SeedFreshInstallAsync(db);
+        // Backward-compatible additive platform keys on existing databases.
         await PlatformPermissionCatalogSeeder.SeedDefinitionsAsync(db);
 
         // Never create an account with a known development password in production.

@@ -162,6 +162,10 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
       const result = await api(owner, 'GET', '/api/tenant/workspace/navigation/me');
       expect(result.status).toBe(200);
       const routes = flattenMenuRoutes(result.data);
+      // After FR-16 first-install seed there must be exactly one System-
+      // owned canonical menu item per route, not a duplicate CI fixture.
+      expect(new Set(routes).size, 'First-install menu roots are unique').toBe(routes.length);
+      expect(routes.filter(route => route === '/dashboard')).toHaveLength(1);
       for (const route of ['/dashboard', '/dashboard/business', '/dashboard/branches'])
         expect(routes, 'System-owned canonical Tenant root').toContain(route);
       expect(routes.every(route => route.startsWith('/dashboard'))).toBe(true);

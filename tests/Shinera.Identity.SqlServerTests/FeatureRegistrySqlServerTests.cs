@@ -165,6 +165,76 @@ public sealed class FeatureRegistrySqlServerTests
 
 
     [Fact]
+    public async Task Clean_install_seeds_all_System_and_Tenant_pages_and_role_grants_only_once()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            var masterId = Modules.System.Identity.Infrastructure.Persistence
+                .DefaultSeedData.MasterTenant.Id;
+            db.Tenants.Add(new Modules.System.Identity.Domain.Entities.Tenant(
+                masterId, null, "Master Tenant", "shinera", "shinera.ir", true));
+            await db.SaveChangesAsync();
+
+            Assert.True(await Modules.System.Identity.Infrastructure.Persistence
+                .InitialAccessBootstrap.SeedFreshInstallAsync(db));
+
+            var systemCodes = FeatureRegistryDefinitions.Features
+                .SelectMany(f => f.PermissionCodes)
+                .Distinct(StringComparer.Ordinal).ToHashSet(StringComparer.Ordinal);
+            var systemRole = await db.Roles.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.TenantId == masterId &&
+                    x.NormalizedName == "SUPERADMIN");
+            Assert.Equal(Modules.System.Identity.Domain.Entities.RoleScope.System,
+                systemRole.Scope);
+            var assigned = await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                .Where(x => x.TenantId == masterId && x.RoleId == systemRole.Id)
+                .Select(x => x.Permission!.Code)
+                .ToListAsync();
+            Assert.Equal(systemCodes.Count, assigned.Count);
+            Assert.True(assigned.ToHashSet(StringComparer.Ordinal).SetEquals(systemCodes));
+            Assert.DoesNotContain(assigned, x => x.StartsWith("TENANT."));
+            Assert.Equal(13, await db.Menus.CountAsync(x =>
+                x.Route != null && x.Route.StartsWith("/system/")));
+            Assert.Equal(6, await db.Menus.CountAsync(x =>
+                x.Route != null && x.Route.StartsWith("/dashboard")));
+            Assert.True((await CentralTenantNavigationReadiness.ReadAsync(db))
+                .ReadyForDynamicPilot);
+
+            var tenantCodes = Modules.System.Identity.Web.Endpoints
+                .TenantWorkspacePermissionCatalog.Definitions
+                .Select(x => x.Key).ToArray();
+            Assert.Equal(17, await db.Permissions.CountAsync(x =>
+                tenantCodes.Contains(x.Code)));
+            Assert.False(await Modules.System.Identity.Infrastructure.Persistence
+                .InitialAccessBootstrap.SeedFreshInstallAsync(db));
+            Assert.Equal(systemCodes.Count, await db.RolePermissions
+                .IgnoreQueryFilters(["tenant"])
+                .CountAsync(x => x.TenantId == masterId && x.RoleId == systemRole.Id));
+
+            // An intentionally removed System grant must NEVER reappear on
+            // another startup or "seed definitions" invocation.
+            var revokeCode = "MENU-MANAGEMENT.READ";
+            var removal = await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.RoleId == systemRole.Id &&
+                    x.Permission!.Code == revokeCode);
+            db.RolePermissions.Remove(removal);
+            await db.SaveChangesAsync();
+            Assert.False(await Modules.System.Identity.Infrastructure.Persistence
+                .InitialAccessBootstrap.SeedFreshInstallAsync(db));
+            Assert.False(await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                .AnyAsync(x => x.RoleId == systemRole.Id &&
+                    x.Permission!.Code == revokeCode));
+
+            // Legacy/partially populated databases are not an invitation to
+            // create privileged users, import orphan permissions or re-grant.
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"])
+                .ToListAsync());
+            Assert.Empty(await db.UserRoles.IgnoreQueryFilters(["tenant"])
+                .ToListAsync());
+        });
+    }
+
+    [Fact]
     public async Task Consolidated_central_access_readiness_is_SQL_read_only_and_never_approves_missing_menus()
     {
         await WithIsolatedDatabaseAsync(async db =>
