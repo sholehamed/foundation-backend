@@ -1,3 +1,8 @@
+## FR-14C — real disposable central registry HTTP/SQL acceptance (2026-11-10)
+
+- Extended signed System Admin / Tenant Owner / staff HTTP E2E with three read-only central System registry checks and explicit anonymous/Tenant 401/403 denials; validates all six Tenant menu routes and the runtime System endpoint integrity result against real Kestrel/SQL Server. Does **not** auto-Apply System Registry, create central menus, grant users, activate pilot flags or deploy Staging.
+- [Disposable acceptance contract](development/FR-14C-DISPOSABLE-CENTRAL-READINESS-E2E.md). Next: green PR-head/main CI, Chromium regression, approved Staging provision and human-controlled central reconciliation. Staging/Production unchanged.
+
 ## FR-14C — System endpoint/Permission/Resource runtime integrity (2026-11-10)
 
 - New read-only System SuperAdmin endpoint **/System/FeatureRegistry/system-endpoints/integrity** inspects live ASP.NET Core FeatureEndpointMetadata, executable granular policy + SystemAdministrator policy, and corresponding global Module/Resource/Permission/ApiResource/PermissionApiResource SQL records. Detects wrong/stale/inactive API keys, HTTP verb/route drift, extra grant links, unannotated System Administrator endpoints and orphaned active System APIs. Explicitly separates three reviewed internal System routes and out-of-scope auth/BFF/Tenant/media protocols.
