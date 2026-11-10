@@ -1,3 +1,4 @@
+- [FR-17B-2A — Published Plan Cards public read API, signup intent compatibility and Angular contract](development/FR-17B2A-PUBLIC-PLAN-CARDS.md)
 # Foundation Backend Documentation
 
 ## Project continuity
