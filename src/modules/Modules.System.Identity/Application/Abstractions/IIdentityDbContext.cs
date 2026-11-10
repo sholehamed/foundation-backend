@@ -25,6 +25,14 @@ namespace Modules.System.Identity.Application.Abstractions
         DbSet<ApiResource> ApiResources { get; }
         DbSet<UiResource> UiResources { get; }
         DbSet<TenantModule> TenantModules { get; }
+        DbSet<CatalogPlan> CatalogPlans { get; }
+        DbSet<CatalogPlanVersion> CatalogPlanVersions { get; }
+        DbSet<CatalogPlanVersionModule> CatalogPlanVersionModules { get; }
+        DbSet<CatalogCapabilityDefinition> CatalogCapabilityDefinitions { get; }
+        DbSet<CatalogPlanVersionCapabilityValue> CatalogPlanVersionCapabilityValues { get; }
+        DbSet<CatalogPlanPriceOffer> CatalogPlanPriceOffers { get; }
+        DbSet<CatalogPlanDisplayItem> CatalogPlanDisplayItems { get; }
+
         DbSet<UserTenantAccess> UserTenantAccess { get; }
         DbSet<TenantClosure> TenantClosure { get; }
     }
