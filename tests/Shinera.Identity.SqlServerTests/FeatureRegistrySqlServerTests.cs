@@ -252,7 +252,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.True(beforeMenus.SystemEndpoints.Ready);
             Assert.False(beforeMenus.TenantNavigation.Ready);
             Assert.False(beforeMenus.CentralCatalogConsistent);
-            Assert.Equal(["tenant_navigation_not_ready"], beforeMenus.BlockingChecks);
+            Assert.Equal(new[] { "tenant_navigation_not_ready" }, beforeMenus.BlockingChecks);
 
             var category = new Modules.System.Identity.Domain.Entities.MenuCategory(
                 Guid.NewGuid())
