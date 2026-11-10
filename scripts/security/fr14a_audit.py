@@ -32,7 +32,7 @@ SPECIAL_SYSTEM_HANDLERS = {
     # its own live grant query; NOT a SystemAdministrator-only admin route.
     "Menus": {"GetMyNavigation"},
 }
-PROTOCOL_ENDPOINT_GROUPS = {"Auth", "Connect", "PublicSignup"}
+PROTOCOL_ENDPOINT_GROUPS = {"Auth", "Connect", "PublicSignup", "PublicPlans"}
 TENANT_ENDPOINT_GROUPS = {"TenantWorkspace"}
 # TenantWorkspace is intentionally NOT ignored: it is a mandatory scanned
 # surface even though it is not part of the System Feature Registry.
@@ -172,6 +172,13 @@ def audit_sources(endpoint_sources: dict[str, str], feature_source: str,
                 if meta:
                     raise AuditError("Tenant workspace misclassified as System feature: " + handler)
                 rows.append(Row("tenant", name + ".cs", method, handler, None, None, boundary))
+                continue
+
+            if name == "PublicPlans":
+                if ".AllowAnonymous()" not in tail or '.RequireRateLimiting("public-plans")' not in tail:
+                    raise AuditError("PublicPlans must be anonymous + throttled: " + handler)
+                rows.append(Row("public", name + ".cs", method, handler, None, None,
+                                "PUBLIC_PLANS_READONLY_THROTTLED"))
                 continue
 
             if name == "PublicSignup":

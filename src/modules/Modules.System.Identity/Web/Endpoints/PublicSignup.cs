@@ -56,6 +56,23 @@ public static partial class PublicSignup
         var errors = Validate(input);
         if (errors.Count != 0) return Results.ValidationProblem(errors);
 
+        // Legacy registrations still record *intent only* (no subscription).
+        // New plan codes must represent a currently advertised published offer;
+        // never silently remap an unknown card to one of the legacy four.
+        if (!IsLegacyPlan(input.PlanKey))
+        {
+            var cards = await PublicPlans.ReadCardsAsync(
+                db, ModuleResourceContracts.Current(), [],
+                DateTime.UtcNow,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, ct);
+            if (!cards.Any(x => x.Code == input.PlanKey &&
+                    x.Prices.Any(p => p.BillingCycle == input.BillingCycle)))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["planKey"] = ["پلن یا دوره پرداخت انتخابی در کاتالوگ منتشرشده موجود نیست."]
+                });
+        }
+
         if (!captcha.Validate(input.CaptchaToken!, input.CaptchaCode))
             return Results.ValidationProblem(new Dictionary<string, string[]> {
                 ["captchaCode"] = ["کد امنیتی نامعتبر یا منقضی شده است."]
@@ -193,6 +210,9 @@ public static partial class PublicSignup
     private static string? NullIfBlank(string? input) =>
         string.IsNullOrWhiteSpace(input) ? null : input.Trim();
 
+    private static bool IsLegacyPlan(string? code) =>
+        code is "solo" or "solo-pro" or "salon" or "salon-pro" or "unselected";
+
     private static Dictionary<string, string[]> Validate(SignupRequest r)
     {
         var errors = new Dictionary<string, string[]>();
@@ -205,8 +225,10 @@ public static partial class PublicSignup
         }
 
         Require("planKey", r.PlanKey, 20);
-        if (r.PlanKey is not ("solo" or "solo-pro" or "salon" or "salon-pro"))
-            errors["planKey"] = ["پلن انتخابی معتبر نیست."];
+        if (r.PlanKey is not null &&
+            !Regex.IsMatch(r.PlanKey, "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                RegexOptions.CultureInvariant))
+            errors["planKey"] = ["کد پلن معتبر نیست."];
         if (r.BillingCycle is not ("monthly" or "yearly"))
             errors["billingCycle"] = ["دوره اشتراک نامعتبر است."];
         Optional("promoCode", r.PromoCode, 40);

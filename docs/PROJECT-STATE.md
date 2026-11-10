@@ -1,3 +1,9 @@
+## FR-17B-2A — Published Plan Cards public read and signup compatibility (2026-11-10)
+
+- Implemented PR pending CI: anonymous rate-limited `GET /api/public/plans` from database published PlanVersions, latest valid revision per plan, filtered live offers, validated code-owned Commercial modules, exact IRR prices and dynamic display rows. Non-code-owned modules are not shown. `PublicSignup` accepts `unselected` core-only onboarding and validates new plan codes against currently published offers, with all existing legacy keys still valid; no paid subscription or user grant is created.
+- Source security analyzer explicitly audits PublicPlans anonymous+rate-limit; added real disposable SQL tests for latest/public/empty/noncommercial cases. Angular companion in foundation-frontend replaces fixed landing and signup plan arrays; see [handoff](development/FR-17B2A-PUBLIC-PLAN-CARDS.md).
+- **Not yet implemented**: System Admin draft editor/Publish endpoint, commercial source registry, active product catalog seed, subscription/entitlement or coupon/checkout. Until those are added, safe endpoint may return empty and frontend shows no saleable plan. Do not claim live sale or staging proof based on CI.
+
 ## FR-17B-1 — Persistent Plan Catalog with pinned parent revisions (2026-11-10)
 
 - [PR #128](https://github.com/sholehamed/foundation-backend/pull/128) implements **seven additive globally owned Catalog tables** using SQL Server EF migration `20261110230000_versionedplancatalog`: stable Plans, published PlanVersions with pinned ParentPlanVersion, PlanVersionModules, typed CapabilityDefinitions/Values, PriceOffers, ordered database-owned PlanDisplayItems. [Schema and acceptance details](development/FR-17B1-VERSIONED-PLAN-CATALOG.md).

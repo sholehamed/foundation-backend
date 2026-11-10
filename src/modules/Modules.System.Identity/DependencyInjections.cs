@@ -33,6 +33,14 @@ namespace Modules.System.Identity
             services.AddRateLimiter(options =>
             {
                 options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddPolicy("public-plans", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 60, Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
                 options.AddPolicy("public-signup", context =>
                     RateLimitPartition.GetFixedWindowLimiter(
                         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -301,6 +309,7 @@ namespace Modules.System.Identity
             app.UseMiddleware<TenantResolutionMiddleware>();
             app.UseRateLimiter();
             PublicSignup.Map(app, configuration["BackendPrefix"] ?? "api/");
+            PublicPlans.Map(app, configuration["BackendPrefix"] ?? "api/");
             TenantWorkspace.Map(app, configuration["BackendPrefix"] ?? "api/");
             app.MapEndpoints($"{configuration["BackendPrefix"]}System");
 

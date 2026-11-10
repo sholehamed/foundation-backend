@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using Modules.System.Identity.Web.Util;
+using Modules.System.Identity.Web.Endpoints;
 using Xunit;
 
 namespace Shinera.Identity.SqlServerTests;
@@ -103,6 +104,17 @@ public sealed class PlanCatalogSqlServerTests
             });
             db.CatalogPlanDisplayItems.AddRange(
                 new CatalogPlanDisplayItem {
+                    PlanVersionId = baseV1.Id, Kind = "Module",
+                    ModuleId = appointments.Id, Title = "Starter appointments", SortOrder = 0 },
+                new CatalogPlanDisplayItem {
+                    PlanVersionId = baseV1.Id, Kind = "Capability",
+                    CapabilityDefinitionId = recurring.Id,
+                    Title = "Recurring appointments", SortOrder = 1 },
+                new CatalogPlanDisplayItem {
+                    PlanVersionId = proV1.Id, Kind = "Module",
+                    ModuleId = appointments.Id, Title = "Professional appointments",
+                    SortOrder = 0 },
+                new CatalogPlanDisplayItem {
                     PlanVersionId = proV1.Id, Kind = "Module",
                     ModuleId = staff.Id, Title = "Staff management", SortOrder = 0 },
                 new CatalogPlanDisplayItem {
@@ -146,8 +158,15 @@ public sealed class PlanCatalogSqlServerTests
             Assert.True(Assert.Single(result.Capabilities,
                 x => x.Code == "appointments.recurring").BooleanValue);
             Assert.Equal(2000000m, Assert.Single(result.Prices).Amount);
-            Assert.Equal(3, result.DisplayItems.Count);
-            Assert.Equal("Priority support", result.DisplayItems[2].Title);
+            Assert.Equal(5, result.DisplayItems.Count);
+            Assert.Contains(result.DisplayItems,
+                item => item.Title == "Professional appointments");
+            Assert.DoesNotContain(result.DisplayItems,
+                item => item.Title == "Starter appointments");
+            Assert.Contains(result.DisplayItems,
+                item => item.Title == "Recurring appointments");
+            Assert.Contains(result.DisplayItems,
+                item => item.Title == "Priority support");
             Assert.True(result.IsRecommended);
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
@@ -250,6 +269,95 @@ public sealed class PlanCatalogSqlServerTests
             // record may refer to a nonexistent module.
             db.CatalogCapabilityDefinitions.Add(def);
             await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Public_cards_only_show_latest_saleable_version_and_never_create_user_grants()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var module = new Module("appointments", "Appointments", null, 0);
+            db.Modules.Add(module);
+            var plan = new CatalogPlan { Code = "starter", Name = "Starter", IsActive = true };
+            var draftPlan = new CatalogPlan { Code = "draft", Name = "Draft" };
+            db.CatalogPlans.AddRange(plan, draftPlan);
+
+            var published = new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 1, Status = "Published",
+                DisplayTitle = "پلن پایه", PublishedAtUtc = DateTime.UtcNow.AddDays(-2),
+                ContentFingerprint = new string('a', 64)
+            };
+            var newer = new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 2, Status = "Published",
+                DisplayTitle = "پلن جدید", PublishedAtUtc = DateTime.UtcNow.AddDays(-1),
+                ContentFingerprint = new string('b', 64),
+                IsRecommended = true
+            };
+            var draft = new CatalogPlanVersion
+            {
+                PlanId = draftPlan.Id, VersionNumber = 1, Status = "Draft",
+                DisplayTitle = "unpublished"
+            };
+            db.CatalogPlanVersions.AddRange(published, newer, draft);
+            db.CatalogPlanVersionModules.AddRange(
+                new CatalogPlanVersionModule { ModuleId = module.Id,
+                    PlanVersionId = published.Id },
+                new CatalogPlanVersionModule { ModuleId = module.Id,
+                    PlanVersionId = newer.Id },
+                new CatalogPlanVersionModule { ModuleId = module.Id,
+                    PlanVersionId = draft.Id });
+            db.CatalogPlanPriceOffers.AddRange(
+                new CatalogPlanPriceOffer { PlanVersionId = published.Id,
+                    BillingCycle = "monthly", Currency = "IRR", Amount = 9000 },
+                new CatalogPlanPriceOffer { PlanVersionId = newer.Id,
+                    BillingCycle = "monthly", Currency = "IRR", Amount = 12000 },
+                new CatalogPlanPriceOffer { PlanVersionId = draft.Id,
+                    BillingCycle = "monthly", Currency = "IRR", Amount = 1 });
+            db.CatalogPlanDisplayItems.AddRange(
+                new CatalogPlanDisplayItem { PlanVersionId = newer.Id,
+                    Kind = "Module", ModuleId = module.Id, Title = "نوبت‌دهی" },
+                new CatalogPlanDisplayItem { PlanVersionId = newer.Id,
+                    Kind = "Benefit", Title = "پشتیبانی ویژه", SortOrder = 1 });
+            await db.SaveChangesAsync();
+
+            var definitions = new[] { new ResourceContract(
+                "appointments", "bookings", ModuleProductClass.Commercial,
+                ["APPOINTMENTS.READ"]) };
+            var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+            var cards = await PublicPlans.ReadCardsAsync(
+                db, definitions, [], DateTime.UtcNow, logger);
+            var card = Assert.Single(cards);
+            Assert.Equal("starter", card.Code);
+            Assert.Equal(newer.Id, card.VersionId);
+            Assert.Equal("پلن جدید", card.Title);
+            Assert.True(card.IsRecommended);
+            Assert.Equal(12000m, Assert.Single(card.Prices).Amount);
+            Assert.Equal("IRR", card.Prices[0].Currency);
+            Assert.Equal(new[] { "نوبت‌دهی", "پشتیبانی ویژه" },
+                card.Features.Select(x => x.Title).ToArray());
+
+            // No unregistered commercial definitions => fail-closed rather
+            // than selling a DB row that does not correspond to deployed code.
+            var noDeployedModule = await PublicPlans.ReadCardsAsync(
+                db, ModuleResourceContracts.Current(), [], DateTime.UtcNow, logger);
+            Assert.Empty(noDeployedModule);
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+            Assert.Empty(await db.TenantModules.ToArrayAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Public_cards_are_empty_when_nothing_was_published()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var cards = await PublicPlans.ReadCardsAsync(
+                db, [], [], DateTime.UtcNow,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+            Assert.Empty(cards);
         });
     }
 

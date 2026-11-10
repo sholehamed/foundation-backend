@@ -167,27 +167,61 @@ public sealed class PublishedPlanCatalogReader(IdentityDbContext db)
             .ThenBy(x => x.Currency, StringComparer.Ordinal)
             .ToArray();
 
-        var displayRows = await db.CatalogPlanDisplayItems.AsNoTracking()
-            .Where(x => x.PlanVersionId == selected.Id)
-            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToArrayAsync(ct);
-        foreach (var item in displayRows)
+        // Cards inherit published parent-version display items as well as
+        // purchased modules. A child may override the display row of the same
+        // Module/Capability, but cannot inject an unentitled feature.
+        var displayByKey = new Dictionary<string, (int Depth, CatalogPlanDisplayItem Item)>(
+            StringComparer.OrdinalIgnoreCase);
+        for (var depth = 0; depth < chain.Count; depth++)
         {
-            if (item.Kind == "Module" && (
-                    item.ModuleId is not Guid moduleId ||
-                    !allowedModules.Contains(moduleId)))
-                throw new InvalidOperationException(
-                    "Plan card advertises an unentitled Module");
-            if (item.Kind == "Capability")
+            var ancestor = chain[depth];
+            var rows = await db.CatalogPlanDisplayItems.AsNoTracking()
+                .Where(x => x.PlanVersionId == ancestor.Id)
+                .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToArrayAsync(ct);
+            foreach (var item in rows)
             {
-                if (item.CapabilityDefinitionId is not Guid capabilityId)
-                    throw new InvalidOperationException("Unbound card capability");
-                var definition = await db.CatalogCapabilityDefinitions
-                    .AsNoTracking().SingleAsync(x => x.Id == capabilityId, ct);
-                if (!values.ContainsKey(definition.Code))
-                    throw new InvalidOperationException(
-                        "Plan card advertises an unentitled Capability");
+                string key;
+                if (item.Kind == "Module")
+                {
+                    if (item.ModuleId is not Guid moduleId ||
+                        !allowedModules.Contains(moduleId))
+                        throw new InvalidOperationException(
+                            "Plan card advertises an unentitled Module");
+                    key = "M:" + moduleId;
+                }
+                else if (item.Kind == "Capability")
+                {
+                    if (item.CapabilityDefinitionId is not Guid capabilityId)
+                        throw new InvalidOperationException("Unbound card capability");
+                    var definition = await db.CatalogCapabilityDefinitions
+                        .AsNoTracking().SingleOrDefaultAsync(x => x.Id == capabilityId, ct)
+                        ?? throw new InvalidOperationException("Missing display capability");
+                    if (!values.TryGetValue(definition.Code, out var allowance))
+                        throw new InvalidOperationException(
+                            "Plan card advertises an unentitled Capability");
+                    // Disabled features/zero allowances must not appear as
+                    // positive claims inherited from an older parent version.
+                    if (allowance.BooleanValue == false ||
+                        (allowance.IntegerValue == 0 && !allowance.IsUnlimited))
+                        continue;
+                    key = "C:" + capabilityId;
+                }
+                else if (item.Kind == "Benefit")
+                {
+                    key = "B:" + item.Title.Trim();
+                }
+                else
+                    throw new InvalidOperationException("Unknown plan card item kind");
+
+                displayByKey[key] = (depth, item);
             }
         }
+        var displayRows = displayByKey.Values
+            .OrderBy(x => x.Depth)
+            .ThenBy(x => x.Item.SortOrder)
+            .ThenBy(x => x.Item.Id)
+            .Select(x => x.Item)
+            .ToArray();
 
         return new ResolvedCatalogPlan(
             plan.Id, selected.Id, plan.Code,
