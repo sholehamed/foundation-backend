@@ -304,6 +304,17 @@ public sealed class SystemPlanCatalogAdminService(
                     record.ValueKind != source.ValueKind.ToString() ||
                     record.MergePolicy != source.MergePolicy.ToString())
                     return new OperationResult(false, "invalid_capability_owner");
+                if (record.ResourceId is Guid resourceId)
+                {
+                    var ownedResource = await db.Resources.AsNoTracking()
+                        .SingleOrDefaultAsync(x => x.Id == resourceId, ct);
+                    if (ownedResource is null || !ownedResource.IsActive ||
+                        ownedResource.ModuleId != record.ModuleId ||
+                        ownedResource.Code != source.ResourceCode)
+                        return new OperationResult(false, "invalid_capability_resource");
+                }
+                else if (source.ResourceCode is not null)
+                    return new OperationResult(false, "missing_capability_resource");
                 if (!ValidCapabilityInput(capability, source))
                     return new OperationResult(false, "invalid_capability_value");
             }
@@ -427,6 +438,54 @@ public sealed class SystemPlanCatalogAdminService(
             else effective.Add(module.Code);
         }
         if (effective.Count == 0) issues.Add("no_commercial_module");
+
+        // A database row does not register executable capability behavior.
+        // Reject fake/foreign/invalid typed allowance values on either the
+        // selected Draft or a pinned parent version.
+        var sourceCapabilities = capabilities.ToDictionary(x => x.Code,
+            StringComparer.Ordinal);
+        var relevantCaps = await db.CatalogPlanVersionCapabilityValues.AsNoTracking()
+            .Where(x => allVersionIds.Contains(x.PlanVersionId)).ToArrayAsync(ct);
+        var capabilityIds = relevantCaps.Select(x => x.CapabilityDefinitionId)
+            .Distinct().ToArray();
+        var definitions = await db.CatalogCapabilityDefinitions.AsNoTracking()
+            .Where(x => capabilityIds.Contains(x.Id)).ToArrayAsync(ct);
+        var resourceOwners = await db.Resources.AsNoTracking()
+            .Where(x => definitions.Where(d => d.ResourceId.HasValue)
+                .Select(d => d.ResourceId!.Value).Contains(x.Id))
+            .ToArrayAsync(ct);
+        foreach (var value in relevantCaps)
+        {
+            var definition = definitions.SingleOrDefault(x =>
+                x.Id == value.CapabilityDefinitionId);
+            if (definition is null || !definition.IsActive ||
+                !sourceCapabilities.TryGetValue(definition.Code, out var source))
+            {
+                issues.Add("unknown_capability_definition");
+                continue;
+            }
+            var module = modules.SingleOrDefault(x => x.Id == definition.ModuleId);
+            var ownedResource = definition.ResourceId is Guid resourceId
+                ? resourceOwners.SingleOrDefault(x => x.Id == resourceId)
+                : null;
+            if (module is null || !module.IsActive ||
+                !effective.Contains(module.Code) ||
+                module.Code != source.ModuleCode ||
+                definition.Kind != source.Kind.ToString() ||
+                definition.ValueKind != source.ValueKind.ToString() ||
+                definition.MergePolicy != source.MergePolicy.ToString() ||
+                (ownedResource is null) != (source.ResourceCode is null) ||
+                (ownedResource is not null && (!ownedResource.IsActive ||
+                    ownedResource.ModuleId != module.Id ||
+                    ownedResource.Code != source.ResourceCode)))
+                issues.Add("invalid_capability_owner");
+            else if (!ValidCapabilityInput(new CapabilityInput(
+                definition.Code, value.BooleanValue, value.IntegerValue,
+                value.IsUnlimited, value.ModeSetJson is null ? null :
+                    JsonSerializer.Deserialize<string[]>(value.ModeSetJson)), source))
+                issues.Add("invalid_capability_value");
+        }
+
         var prices = await db.CatalogPlanPriceOffers.AsNoTracking()
             .Where(x => x.PlanVersionId == version.Id).ToArrayAsync(ct);
         if (prices.Length == 0 || !prices.Any(x => x.IsActive &&
@@ -478,7 +537,10 @@ public sealed class SystemPlanCatalogAdminService(
                     x.Title, x.Description, x.SortOrder, x.IsHighlighted }),
             Source = resources.OrderBy(x => x.ModuleCode).ThenBy(x => x.ResourceCode)
                 .Select(x => new { x.ModuleCode, x.ResourceCode, Class = x.ProductClass,
-                    Permissions = x.PermissionCodes.OrderBy(p => p, StringComparer.Ordinal) })
+                    Permissions = x.PermissionCodes.OrderBy(p => p, StringComparer.Ordinal) }),
+            CapabilitySource = capabilities.OrderBy(x => x.Code, StringComparer.Ordinal)
+                .Select(x => new { x.Code, x.ModuleCode, x.ResourceCode,
+                    x.Kind, x.ValueKind, x.MergePolicy })
         };
         var hash = Convert.ToHexString(SHA256.HashData(
             Encoding.UTF8.GetBytes(JsonSerializer.Serialize(snapshot)))).ToLowerInvariant();
