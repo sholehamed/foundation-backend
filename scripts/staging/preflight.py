@@ -56,6 +56,15 @@ def validate(config):
     stage = config.get("stage")
     if stage not in ("baseline", "tenant-bff-pilot"):
         raise PreflightError("stage must be baseline or tenant-bff-pilot")
+    # Never accept accidental tokens, passwords, connection strings or unknown
+    # feature flags in this NON-SECRET manifest or the approved Actions variable.
+    allowed = {
+        "environment", "stage", "tenant_base_domain", "system_origin",
+        "identity_origin", "tenant_origin", "second_tenant_origin",
+        "backend", "frontend",
+    }
+    if set(config) - allowed:
+        raise PreflightError("unknown top-level field in non-secret staging manifest")
     zone = config.get("tenant_base_domain")
     if not isinstance(zone, str) or zone != zone.lower() or not _valid_dns_name(zone):
         raise PreflightError("tenant_base_domain must be a valid lowercase DNS suffix")
@@ -81,6 +90,10 @@ def validate(config):
     frontend = config.get("frontend")
     if not isinstance(backend, dict) or not isinstance(frontend, dict):
         raise PreflightError("backend and frontend flag sets are required")
+    if set(backend) != {"bff_enabled", "tenant_cookie_bridge_enabled", "registry_apply_enabled"}:
+        raise PreflightError("backend manifest flags must exactly match reviewed non-secret schema")
+    if set(frontend) != {"tenant_bff_pilot_enabled", "system_ui_access_pilot_enabled"}:
+        raise PreflightError("frontend manifest flags must exactly match reviewed non-secret schema")
     for section, keys in (
         (backend, ("bff_enabled", "tenant_cookie_bridge_enabled", "registry_apply_enabled")),
         (frontend, ("tenant_bff_pilot_enabled", "system_ui_access_pilot_enabled")),
