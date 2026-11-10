@@ -160,6 +160,12 @@ def verify_central_registry_reads(admin: str, owner: str, staff: str):
     assert isinstance(registry["canApply"], bool)
     assert isinstance(registry["hasPending"], bool)
     assert len(registry["fingerprint"]) == 64
+    # The System Apply deployment flag stays OFF in this isolated fixture.
+    # An approved preview token alone does not authorize a catalog mutation.
+    check("POST", base + "/apply", 409, token=admin,
+          data={"fingerprint": registry["fingerprint"]})
+    assert check("GET", base + "/preview", 200, token=admin)[
+        "fingerprint"] == registry["fingerprint"]
     check("GET", base + "/preview", 403, token=owner)
     print("PASS: live System-owned central diagnostics and Tenant deny checks; "
           "no registry auto-Apply or feature flags changed.", flush=True)
