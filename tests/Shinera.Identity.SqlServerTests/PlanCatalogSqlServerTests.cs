@@ -318,7 +318,7 @@ public sealed class PlanCatalogSqlServerTests
             Assert.True(card.IsRecommended);
             Assert.Equal(12000m, Assert.Single(card.Prices).Amount);
             Assert.Equal("IRR", card.Prices[0].Currency);
-            Assert.Equal(["نوبت‌دهی", "پشتیبانی ویژه"],
+            Assert.Equal(new[] { "نوبت‌دهی", "پشتیبانی ویژه" },
                 card.Features.Select(x => x.Title).ToArray());
 
             // No unregistered commercial definitions => fail-closed rather
