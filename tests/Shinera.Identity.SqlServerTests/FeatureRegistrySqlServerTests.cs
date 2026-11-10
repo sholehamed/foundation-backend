@@ -319,7 +319,7 @@ public sealed class FeatureRegistrySqlServerTests
                 _ => Task.CompletedTask,
                 Microsoft.AspNetCore.Routing.Patterns.RoutePatternFactory.Parse(
                     "/api/System/Roles"), 0);
-            builder.Metadata.Add(new Microsoft.AspNetCore.Http.HttpMethodMetadata(["POST"]));
+            builder.Metadata.Add(new Microsoft.AspNetCore.Routing.HttpMethodMetadata(["POST"]));
             builder.Metadata.Add(new FeatureEndpointMetadata(
                 "SYSTEM.ROLES.CREATE", "roles", "ROLES.CREATE", "Create role"));
             builder.Metadata.Add(
