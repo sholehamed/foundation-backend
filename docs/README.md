@@ -11,6 +11,7 @@
 - [ADR-0001 — Full BFF for browser clients](decisions/ADR-0001-browser-bff.md)
 - [BFF implementation design](architecture/browser-bff.md)
 - [FR-17A architecture — Modules/Resources, entitlement, plans, limits and extensible workflows](architecture/modular-entitlements-plans-limits.md)
+- [FR-17B-1 — Versioned Plan Catalog, SQL schema, inherited capabilities and plan cards](development/FR-17B1-VERSIONED-PLAN-CATALOG.md)
 - [FR-17A-2 — Typed Module/Resource/Permission and capability contract diagnostics](development/FR-17A2-TYPED-RESOURCE-CONTRACTS.md)
 - [FR-17A SQL Server catalog/legacy entitlement inventory (SELECT-only)](sql/fr-17a-module-resource-entitlement-inventory.sql)
 - [FR-17A source Resource/EndpointGroup inventory — verified System mappings, Tenant exceptions and pending SQL](development/FR-17A-RESOURCE-INVENTORY.md)
