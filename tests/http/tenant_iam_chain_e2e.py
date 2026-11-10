@@ -230,6 +230,35 @@ def run():
     owner = login("e2e-tenant", "tenant", SLUG)
     staff = login(STAFF_NAME, "tenant", SLUG)
 
+    # FR-16B: the disposable Owner must mirror a real new Tenant signup.
+    # It receives 17 explicit globally owned Tenant permissions at creation,
+    # while a brand-new staff member has no role grant. This ensures the
+    # dynamic menu's *permission projection*, not merely legacy Owner fallback.
+    def nav_routes(categories):
+        routes = []
+        def walk(items):
+            for item in items:
+                if item.get("route"):
+                    routes.append(item["route"])
+                walk(item.get("childs") or [])
+        for category in categories:
+            walk(category.get("items") or [])
+        return routes
+
+    owner_routes = nav_routes(check(
+        "GET", TENANT_PATH + "/navigation/me", 200, token=owner))
+    assert set(owner_routes) == {
+        "/dashboard", "/dashboard/business", "/dashboard/branches",
+        "/dashboard/members", "/dashboard/roles", "/dashboard/groups",
+    }, "Initial Owner must see all six centrally defined Tenant menus"
+    assert len(owner_routes) == 6, "Initial Tenant menu routes must not duplicate"
+    staff_routes = nav_routes(check(
+        "GET", TENANT_PATH + "/navigation/me", 200, token=staff))
+    assert set(staff_routes) == {
+        "/dashboard", "/dashboard/business", "/dashboard/branches",
+    }, "Ungrantable new staff must not see Owner navigation"
+    assert len(staff_routes) == 3
+
     # All HTTP calls have live, independently validated OpenIddict signatures.
     check("GET", TENANT_PATH + "/members", 401)
     check("POST", TENANT_PATH + "/roles", 401,
