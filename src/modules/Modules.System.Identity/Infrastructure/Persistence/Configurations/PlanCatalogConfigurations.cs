@@ -14,7 +14,6 @@ internal sealed class CatalogPlanConfiguration : AuditEntityConfiguration<Catalo
         base.Configure(b);
         b.ToTable("CatalogPlans", t =>
         {
-            t.HasCheckConstraint("CK_CatalogPlans_Code", "LEN([Code]) > 0");
             t.HasCheckConstraint("CK_CatalogPlans_Parent", "[ParentPlanId] IS NULL OR [ParentPlanId] <> [Id]");
         });
         b.Property(x => x.Code).HasMaxLength(80).IsRequired();
@@ -107,12 +106,7 @@ internal sealed class CatalogPlanVersionCapabilityValueConfiguration
         b.ToTable("CatalogPlanVersionCapabilityValues", t =>
         {
             t.HasCheckConstraint("CK_CatalogPlanVersionCapabilityValues_ExactlyOne",
-                """
-                (CASE WHEN [BooleanValue] IS NOT NULL THEN 1 ELSE 0 END
-                + CASE WHEN [IntegerValue] IS NOT NULL THEN 1 ELSE 0 END
-                + CASE WHEN [ModeSetJson] IS NOT NULL THEN 1 ELSE 0 END
-                + CASE WHEN [IsUnlimited] = 1 THEN 1 ELSE 0 END) = 1
-                """);
+                "(CASE WHEN [BooleanValue] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [IntegerValue] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [ModeSetJson] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [IsUnlimited] = 1 THEN 1 ELSE 0 END) = 1");
             t.HasCheckConstraint("CK_CatalogPlanVersionCapabilityValues_NonNegative",
                 "[IntegerValue] IS NULL OR [IntegerValue] >= 0");
         });
@@ -157,11 +151,7 @@ internal sealed class CatalogPlanDisplayItemConfiguration
             t.HasCheckConstraint("CK_CatalogPlanDisplayItems_Kind",
                 "[Kind] IN ('Module','Capability','Benefit')");
             t.HasCheckConstraint("CK_CatalogPlanDisplayItems_Owner",
-                """
-                ([Kind] = 'Module' AND [ModuleId] IS NOT NULL AND [CapabilityDefinitionId] IS NULL)
-                OR ([Kind] = 'Capability' AND [CapabilityDefinitionId] IS NOT NULL AND [ModuleId] IS NULL)
-                OR ([Kind] = 'Benefit' AND [ModuleId] IS NULL AND [CapabilityDefinitionId] IS NULL)
-                """);
+                "([Kind] = 'Module' AND [ModuleId] IS NOT NULL AND [CapabilityDefinitionId] IS NULL) OR ([Kind] = 'Capability' AND [CapabilityDefinitionId] IS NOT NULL AND [ModuleId] IS NULL) OR ([Kind] = 'Benefit' AND [ModuleId] IS NULL AND [CapabilityDefinitionId] IS NULL)");
         });
         b.Property(x => x.Kind).HasMaxLength(20).IsRequired();
         b.Property(x => x.Title).HasMaxLength(200).IsRequired();
