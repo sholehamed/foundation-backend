@@ -99,21 +99,30 @@ public sealed class TenantPermissionCatalogSync(IdentityDbContext db)
             Add("UiResource", definition.UiKey, uiState,
                 uiState == "Conflict" ? "Inactive or incompatible UI record; manual review required" : null);
 
-            var matching = (p is not null && u is not null)
-                ? links.Count(x => x.PermissionId == p.Id && x.UiResourceId == u.Id)
-                : 0;
-            if (p is not null && u is not null)
-                fingerprintFacts.AddRange(links.Where(x =>
+            // The code catalog declares a 1:1 Permission -> UI relationship.
+            // A second link to this UI may introduce OR authorization, while
+            // linking this Permission to an unrelated UI grants it an
+            // unreviewed surface. Neither may be silently marked Present.
+            // Include *all* touching links in the fingerprint so a foreign
+            // link inserted after Preview invalidates a reviewed Apply.
+            var relatedLinks = links.Where(x =>
+                (p is not null && x.PermissionId == p.Id) ||
+                (u is not null && x.UiResourceId == u.Id)).ToList();
+            fingerprintFacts.AddRange(relatedLinks.OrderBy(x => x.Id).Select(x =>
+                $"link:{x.Id:N}:{x.PermissionId:N}:{x.UiResourceId:N}"));
+            var matching = p is not null && u is not null
+                ? relatedLinks.Count(x =>
                     x.PermissionId == p.Id && x.UiResourceId == u.Id)
-                    .OrderBy(x => x.Id).Select(x =>
-                        $"link:{x.Id:N}:{x.PermissionId:N}:{x.UiResourceId:N}"));
+                : 0;
+            var foreignLink = relatedLinks.Any(x =>
+                p is null || u is null ||
+                x.PermissionId != p.Id || x.UiResourceId != u.Id);
+            var duplicateLink = matching > 1;
             Add("PermissionUiResource", definition.Key + " -> " + definition.UiKey,
-                matching switch
-                {
-                    0 => "Create",
-                    1 => "Present",
-                    _ => "Conflict"
-                }, matching > 1 ? "Duplicate permission/UI link" : null);
+                foreignLink || duplicateLink ? "Conflict" :
+                    matching == 1 ? "Present" : "Create",
+                foreignLink ? "Foreign Permission/UI link; operator reconciliation required" :
+                    duplicateLink ? "Duplicate permission/UI link" : null);
         }
 
         // Fingerprint binds an approved preview to the exact examined states.

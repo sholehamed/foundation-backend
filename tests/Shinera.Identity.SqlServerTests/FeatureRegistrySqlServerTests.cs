@@ -242,6 +242,81 @@ public sealed class FeatureRegistrySqlServerTests
     }
 
     [Fact]
+    public async Task Tenant_catalog_rejects_crosslinked_PAGE_ACTION_permissions_and_stale_SQL_approval()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            var registry = new TenantPermissionCatalogSync(db);
+            await registry.ApplyAsync((await registry.PreviewAsync()).Fingerprint);
+            var stable = await registry.PreviewAsync();
+            Assert.True(stable.CanApply);
+            Assert.False(stable.HasPending);
+
+            var rolesPermission = await db.Permissions.SingleAsync(p =>
+                p.Code == TenantWorkspacePermissionCatalog.RolesRead);
+            var membersPermission = await db.Permissions.SingleAsync(p =>
+                p.Code == TenantWorkspacePermissionCatalog.MembersRead);
+            var membersPage = await db.UiResources.SingleAsync(p =>
+                p.Key == "tenant.workspace.members");
+            var properLink = await db.PermissionUiResources.SingleAsync(x =>
+                x.PermissionId == membersPermission.Id &&
+                x.UiResourceId == membersPage.Id);
+
+            // One additional valid Tenant Permission on the same PAGE must
+            // not be mistaken for an intact approved System-owned catalog.
+            var foreign = new Modules.System.Identity.Domain.Entities.PermissionUiResource(
+                rolesPermission.Id, membersPage.Id) { RowVersion = [1] };
+            db.PermissionUiResources.Add(foreign);
+            await db.SaveChangesAsync();
+            var conflicted = await registry.PreviewAsync();
+            Assert.False(conflicted.CanApply);
+            Assert.NotEqual(stable.Fingerprint, conflicted.Fingerprint);
+            Assert.Contains(conflicted.Changes, x =>
+                x.Entity == "PermissionUiResource" && x.State == "Conflict" &&
+                x.Key == TenantWorkspacePermissionCatalog.MembersRead +
+                    " -> tenant.workspace.members");
+            Assert.Contains(conflicted.Changes, x =>
+                x.Entity == "PermissionUiResource" && x.State == "Conflict" &&
+                x.Key == TenantWorkspacePermissionCatalog.RolesRead +
+                    " -> tenant.workspace.roles");
+
+            // Even an earlier authorized operator fingerprint cannot repair
+            // or silently adopt the cross-link. No UI/role grants are changed.
+            var denied = await registry.ApplyAsync(stable.Fingerprint);
+            Assert.False(denied.CanApply);
+            Assert.Equal(18, await db.PermissionUiResources.CountAsync());
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+
+            // A foreign link is still a Conflict when the intended link is
+            // missing (not a harmless Create eligible for additive Apply).
+            db.PermissionUiResources.Remove(properLink);
+            await db.SaveChangesAsync();
+            var replaced = await registry.PreviewAsync();
+            Assert.False(replaced.CanApply);
+            Assert.Contains(replaced.Changes, x =>
+                x.Entity == "PermissionUiResource" && x.State == "Conflict" &&
+                x.Key == TenantWorkspacePermissionCatalog.MembersRead +
+                    " -> tenant.workspace.members");
+            Assert.Equal(17, await db.PermissionUiResources.CountAsync());
+
+            // Explicit fixture cleanup only: never auto-delete external
+            // links from any real Tenant or System catalog.
+            db.PermissionUiResources.Remove(foreign);
+            await db.SaveChangesAsync();
+            var repairable = await registry.PreviewAsync();
+            Assert.True(repairable.CanApply);
+            Assert.True(repairable.HasPending);
+            var applied = await registry.ApplyAsync(repairable.Fingerprint);
+            Assert.True(applied.CanApply);
+            var restored = await registry.PreviewAsync();
+            Assert.True(restored.CanApply);
+            Assert.False(restored.HasPending);
+            Assert.Equal(17, await db.PermissionUiResources.CountAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+        });
+    }
+
+    [Fact]
     public async Task Central_tenant_menu_readiness_requires_exact_system_catalog_and_never_writes()
     {
         await WithIsolatedDatabaseAsync(async db =>
@@ -296,6 +371,25 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.All(ready.Routes, r => Assert.Equal("ready", r.Status));
             Assert.Equal(6, await db.Menus.CountAsync());
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+
+            // Additional, unreviewed PAGE Permission link must block dynamic
+            // navigation readiness even if the canonical link still exists.
+            var foreignPagePermission = await db.Permissions.SingleAsync(p =>
+                p.Code == TenantWorkspacePermissionCatalog.RolesRead);
+            var membersPage = await db.UiResources.SingleAsync(u =>
+                u.Key == "tenant.workspace.members");
+            var extraPageLink = new Modules.System.Identity.Domain.Entities.PermissionUiResource(
+                foreignPagePermission.Id, membersPage.Id) { RowVersion = [1] };
+            db.PermissionUiResources.Add(extraPageLink);
+            await db.SaveChangesAsync();
+            var crosslinked = await CentralTenantNavigationReadiness.ReadAsync(db);
+            Assert.False(crosslinked.ReadyForDynamicPilot);
+            Assert.Contains("page_ui_permission_link_conflict",
+                crosslinked.Routes.Single(r => r.Route == "/dashboard/members").Issues);
+            db.PermissionUiResources.Remove(extraPageLink);
+            await db.SaveChangesAsync();
+            Assert.True((await CentralTenantNavigationReadiness.ReadAsync(db))
+                .ReadyForDynamicPilot);
 
             // Missing/inactive Page definition is detected without mutating it.
             var page = await db.UiResources.SingleAsync(u =>

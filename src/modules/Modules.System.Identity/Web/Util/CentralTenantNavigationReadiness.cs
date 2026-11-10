@@ -101,9 +101,19 @@ public static class CentralTenantNavigationReadiness
                             pageMatches[0].Description != route.Key ||
                             pageMatches[0].ResourceId != permission.ResourceId)
                             issues.Add("page_ui_not_registered");
-                        else if (links.Count(x => x.PermissionId == permission.Id &&
-                                x.UiResourceId == pageMatches[0].Id) != 1)
-                            issues.Add("page_ui_permission_link_missing");
+                        else
+                        {
+                            // PAGE authorization must have exactly the
+                            // centrally defined link, not an additional
+                            // unrelated Permission which can broaden access.
+                            var pageLinks = links.Where(x =>
+                                x.UiResourceId == pageMatches[0].Id).ToList();
+                            if (pageLinks.Count == 0)
+                                issues.Add("page_ui_permission_link_missing");
+                            else if (pageLinks.Count != 1 ||
+                                     pageLinks[0].PermissionId != permission.Id)
+                                issues.Add("page_ui_permission_link_conflict");
+                        }
                     }
                 }
             }
