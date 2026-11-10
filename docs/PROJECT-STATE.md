@@ -1,3 +1,9 @@
+## FR-14C — consolidated central access operator gate (2026-11-10)
+
+- Added **read-only**, live System SuperAdmin-only `GET /System/FeatureRegistry/central-access/readiness`, combining System Registry Preview, 17-definition Tenant Permission Catalog Preview, exactly six central Tenant Menu route checks and runtime System Endpoint Integrity. The gate is green only if **all four** are fully registered, nonempty, consistent and without pending drift; returns blocking check IDs and both SHA-256 preview fingerprints.
+- Unit, real disposable SQL Server and real signed Kestrel HTTP tests cover anonymous/Tenant denial, separate System allow, fail-closed missing menus or endpoint registrations, no writes or grants, and consistency with four independent reports. [Operator runbook](development/FR-14C-CONSOLIDATED-CENTRAL-ACCESS-GATE.md).
+- This gate reports **code/database consistency**, NOT Staging certification or rollout approval. There are no SQL migrations, flags, automated Registry Apply or Tenant menu authorship changes. **Next:** PR/head/main CI verification, approved environment diagnostics and human-controlled central catalog/menu reconciliation before separate dynamic sidebar pilot.
+
 ## FR-14C — Tenant catalog Permission/UI link drift guard (2026-11-10)
 
 - Central Tenant Permission Catalog Preview now rejects foreign and extra `PermissionUiResource` links on either end of its 17 PAGE/ACTION definitions; fingerprints include all adjacent links, so a stale approved Apply cannot hide a new foreign mapping. Central Tenant Navigation Readiness rejects PAGE UI links other than the exact intended single Permission.
