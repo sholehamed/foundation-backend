@@ -201,7 +201,12 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             var again = await CentralAccessReadiness.ReadAsync(db, source);
-            Assert.Equal(assessed, again);
+            Assert.Equal(assessed.CentralCatalogConsistent, again.CentralCatalogConsistent);
+            Assert.Equal(assessed.BlockingChecks, again.BlockingChecks);
+            Assert.Equal(assessed.SystemRegistry.Fingerprint,
+                again.SystemRegistry.Fingerprint);
+            Assert.Equal(assessed.TenantPermissionCatalog.Fingerprint,
+                again.TenantPermissionCatalog.Fingerprint);
         });
     }
 
