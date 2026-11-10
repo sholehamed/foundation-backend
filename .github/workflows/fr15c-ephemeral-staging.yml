@@ -1,0 +1,77 @@
+name: FR-15C Launch Ephemeral Staging
+
+# This launcher starts the existing trusted-main SQL/Kestrel/HTTPS/Angular/
+# OpenIddict/two-Tenant Chromium job. Runner hosts are not externally published.
+# No SSH, cloud account, persistent database, deployment or catalog Apply.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fr15c-ephemeral-staging.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: fr15c-launch-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  launch-ephemeral-fullstack:
+    if: github.repository == 'sholehamed/foundation-backend' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Launch trusted ephemeral full-stack acceptance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          workflow='tenant-bff-live-browser-e2e.yml'
+          # Observe last known run BEFORE dispatch. Never confuse an old
+          # successful run with this launch.
+          baseline="$(gh api "repos/$repo/actions/workflows/$workflow/runs?branch=main&per_page=1" \
+            --jq '.workflow_runs[0].id // 0')"
+          gh workflow run "$workflow" --repo "$repo" --ref main
+          echo "Requested ephemeral runner for $GITHUB_SHA; baseline run ID=$baseline"
+
+          # The GitHub dispatch endpoint returns 204 without a run ID.
+          # Wait briefly only for the new run to appear; the expensive build
+          # and browser tests run in the EXISTING workflow, not this launcher.
+          match=''
+          for attempt in $(seq 1 15); do
+            matches="$(gh api "repos/$repo/actions/workflows/$workflow/runs?branch=main&per_page=30" \
+              --jq ".workflow_runs | map(select(.id > $baseline and .event == \"workflow_dispatch\" and .head_sha == \"$GITHUB_SHA\")) | .[].id")"
+            count="$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l)"
+            if [[ "$count" == 1 ]]; then
+              match="$(printf '%s\n' "$matches" | head -n 1)"
+              break
+            fi
+            if [[ "$count" -gt 1 ]]; then
+              echo "::error::Multiple concurrent matching browser runs; cannot attest a unique launched run."
+              exit 1
+            fi
+            sleep 4
+          done
+          if [[ -z "$match" ]]; then
+            echo "::error::Dispatch accepted but the new run could not be uniquely identified."
+            echo "Inspect Actions > FR-12G-C live HTTPS BFF browser E2E."
+            exit 1
+          fi
+
+          url="https://github.com/$repo/actions/runs/$match"
+          {
+            echo "## Ephemeral Actions Staging launched"
+            echo
+            echo "- **Full-stack acceptance:** [$match]($url)"
+            echo "- **Backend commit:** \`$GITHUB_SHA\`"
+            echo "- **Components:** disposable SQL Server, .NET/Kestrel, compiled Angular, local HTTPS reverse proxy, OpenIddict/BFF, two-Tenant Chromium."
+            echo "- **Visibility:** local runner only; no persistent public Staging URL."
+            echo "- **Release guard:** dynamic navigation pilot stays OFF; live System catalog/menu reconciliation and hosted Staging are not certified."
+            echo "- **Outcome:** review the linked acceptance run. Launch success is not test success."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Ephemeral staging started::$url"
