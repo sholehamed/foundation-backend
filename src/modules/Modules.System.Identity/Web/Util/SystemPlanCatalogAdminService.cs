@@ -450,10 +450,10 @@ public sealed class SystemPlanCatalogAdminService(
             .Distinct().ToArray();
         var definitions = await db.CatalogCapabilityDefinitions.AsNoTracking()
             .Where(x => capabilityIds.Contains(x.Id)).ToArrayAsync(ct);
+        var resourceIds = definitions.Where(d => d.ResourceId.HasValue)
+            .Select(d => d.ResourceId!.Value).ToArray();
         var resourceOwners = await db.Resources.AsNoTracking()
-            .Where(x => definitions.Where(d => d.ResourceId.HasValue)
-                .Select(d => d.ResourceId!.Value).Contains(x.Id))
-            .ToArrayAsync(ct);
+            .Where(x => resourceIds.Contains(x.Id)).ToArrayAsync(ct);
         foreach (var value in relevantCaps)
         {
             var definition = definitions.SingleOrDefault(x =>
