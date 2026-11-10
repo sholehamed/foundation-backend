@@ -104,6 +104,17 @@ public sealed class PlanCatalogSqlServerTests
             });
             db.CatalogPlanDisplayItems.AddRange(
                 new CatalogPlanDisplayItem {
+                    PlanVersionId = baseV1.Id, Kind = "Module",
+                    ModuleId = appointments.Id, Title = "Starter appointments", SortOrder = 0 },
+                new CatalogPlanDisplayItem {
+                    PlanVersionId = baseV1.Id, Kind = "Capability",
+                    CapabilityDefinitionId = recurring.Id,
+                    Title = "Recurring appointments", SortOrder = 1 },
+                new CatalogPlanDisplayItem {
+                    PlanVersionId = proV1.Id, Kind = "Module",
+                    ModuleId = appointments.Id, Title = "Professional appointments",
+                    SortOrder = 0 },
+                new CatalogPlanDisplayItem {
                     PlanVersionId = proV1.Id, Kind = "Module",
                     ModuleId = staff.Id, Title = "Staff management", SortOrder = 0 },
                 new CatalogPlanDisplayItem {
@@ -147,8 +158,15 @@ public sealed class PlanCatalogSqlServerTests
             Assert.True(Assert.Single(result.Capabilities,
                 x => x.Code == "appointments.recurring").BooleanValue);
             Assert.Equal(2000000m, Assert.Single(result.Prices).Amount);
-            Assert.Equal(3, result.DisplayItems.Count);
-            Assert.Equal("Priority support", result.DisplayItems[2].Title);
+            Assert.Equal(5, result.DisplayItems.Count);
+            Assert.Contains(result.DisplayItems,
+                item => item.Title == "Professional appointments");
+            Assert.DoesNotContain(result.DisplayItems,
+                item => item.Title == "Starter appointments");
+            Assert.Contains(result.DisplayItems,
+                item => item.Title == "Recurring appointments");
+            Assert.Contains(result.DisplayItems,
+                item => item.Title == "Priority support");
             Assert.True(result.IsRecommended);
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
