@@ -23,3 +23,7 @@ Disposable SQL Server integration verifies valid/stale fingerprints, exact no-wr
 ## Remaining before enabling dynamic Tenant navigation
 
 Run System Feature Registry and Tenant Permission Catalog previews against a **real deployed target**, resolve central records and six approved Tenant Menu routes with reviewable System Admin operations, check runtime endpoint integrity, verify current grants/entitlements/branch bounds and two-Tenant browser BFF revocation, then separately enable the independently OFF Tenant dynamic navigation pilot. This PR is a safe prerequisite, not operational Staging certification.
+
+## Real signed HTTP follow-up acceptance
+
+The existing disposable `tests/http/tenant_iam_chain_e2e.py` now confirms that an authenticated System SuperAdmin receives the 64-character live System Registry Preview fingerprint and that the same fingerprint cannot trigger System catalog Apply while the independently default-OFF deployment flag is not enabled (HTTP 409). It also demands anonymous 401 and Tenant Owner/staff 403 for the Apply route, and re-fetches the unchanged Preview fingerprint to detect any unintended SQL catalog write. The existing positive/rollback/stale-fingerprint checks run against a separate disposable real SQL integration fixture. Neither test touches Staging/Production or enables a feature flag.
