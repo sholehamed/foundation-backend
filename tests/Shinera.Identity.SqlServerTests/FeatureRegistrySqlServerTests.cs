@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using Modules.System.Identity.Web.Endpoints;
 using Modules.System.Identity.Web.Util;
@@ -15,6 +16,74 @@ namespace Shinera.Identity.SqlServerTests;
 /// </summary>
 public sealed class FeatureRegistrySqlServerTests
 {
+    [Fact]
+    public async Task Reviewed_System_apply_requires_fresh_fingerprint_and_atomic_real_SQL()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            var registry = new FeatureRegistrySyncService(db,
+                new DefaultEndpointDataSource([]));
+            var preview = await registry.PreviewAsync();
+            Assert.True(preview.CanApply);
+            Assert.True(preview.HasPending);
+            Assert.Equal(64, preview.Fingerprint.Length);
+
+            var fake = await registry.ApplyReviewedAsync(new string('0', 64));
+            Assert.NotEqual(preview.Fingerprint, new string('0', 64));
+            Assert.Equal(preview.Fingerprint, fake.Fingerprint);
+            Assert.Empty(await db.Modules.ToListAsync());
+            Assert.Empty(await db.Menus.ToListAsync());
+
+            // An untrusted caller cannot bypass the live Master SuperAdmin
+            // check to commit the approved snapshot.
+            var denied = await FeatureRegistry.Apply(
+                registry, new TenantContext(), db,
+                new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+                    .AddInMemoryCollection(new Dictionary<string, string?> {
+                        ["Identity:FeatureRegistry:EnableApply"] = "true"
+                    }).Build(),
+                new Microsoft.AspNetCore.Http.DefaultHttpContext(),
+                new FeatureRegistry.SystemFeatureApplyRequest(preview.Fingerprint),
+                CancellationToken.None);
+            Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>(denied);
+            Assert.Empty(await db.Modules.ToListAsync());
+
+            var accepted = await registry.ApplyReviewedAsync(preview.Fingerprint);
+            Assert.True(accepted.CanApply);
+            Assert.Equal(preview.Fingerprint, accepted.Fingerprint);
+            Assert.Equal(13, await db.Resources.CountAsync());
+            Assert.Equal(13, await db.Menus.CountAsync());
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+
+            var stable = await registry.PreviewAsync();
+            Assert.True(stable.CanApply);
+            Assert.False(stable.HasPending);
+            Assert.NotEqual(preview.Fingerprint, stable.Fingerprint);
+            var stale = await registry.ApplyReviewedAsync(preview.Fingerprint);
+            Assert.NotEqual(preview.Fingerprint, stale.Fingerprint);
+            Assert.Equal(13, await db.Menus.CountAsync());
+
+            // A change to an already Present row must invalidate the token,
+            // even if the change-state remains Present (no new records).
+            var page = await db.UiResources.SingleAsync(x => x.Key == "system.roles");
+            page.IsActive = false;
+            await db.SaveChangesAsync();
+            var changed = await registry.PreviewAsync();
+            Assert.NotEqual(stable.Fingerprint, changed.Fingerprint);
+            var rejected = await registry.ApplyReviewedAsync(stable.Fingerprint);
+            Assert.NotEqual(stable.Fingerprint, rejected.Fingerprint);
+            Assert.False((await db.UiResources.SingleAsync(x => x.Id == page.Id)).IsActive);
+            Assert.Equal(13, await db.Menus.CountAsync());
+
+            // Repeating the approved no-pending snapshot is idempotent.
+            var repeat = await registry.ApplyReviewedAsync(changed.Fingerprint);
+            Assert.False(repeat.HasPending);
+            Assert.True(repeat.CanApply);
+            Assert.Equal(13, await db.Menus.CountAsync());
+        });
+    }
+
     [Fact]
     public async Task Approved_apply_is_idempotent_preserves_disabled_ui_and_never_grants()
     {

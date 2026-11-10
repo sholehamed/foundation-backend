@@ -54,34 +54,46 @@ public sealed class FeatureRegistry : EndpointGroupBase
         return TypedResults.Ok(await registry.PreviewAsync(cancellationToken));
     }
 
+    public sealed record SystemFeatureApplyRequest(string Fingerprint);
+
     public static async Task<IResult> Apply(
         FeatureRegistrySyncService registry,
+        ITenantContext current,
+        IdentityDbContext db,
         IConfiguration configuration,
         HttpContext http,
+        SystemFeatureApplyRequest request,
         CancellationToken cancellationToken)
     {
         http.Response.Headers.CacheControl = "no-store";
+        // Keep an independent persisted System SuperAdmin check, in addition
+        // to the live SystemAdministrator policy and optional granular ACTION.
+        if (!await IsLiveSystemAdministratorAsync(current, db, cancellationToken))
+            return TypedResults.Forbid();
+
         // Default OFF in every environment, including Development.
-        // Operators must explicitly enable reviewed catalog registration.
         if (!configuration.GetValue<bool>("Identity:FeatureRegistry:EnableApply"))
             return TypedResults.Problem(
                 statusCode: StatusCodes.Status409Conflict,
-                title: "Feature Registry apply is disabled",
-                detail: "Set Identity:FeatureRegistry:EnableApply only for an approved catalog sync.");
+                title: "Feature Registry apply is disabled");
+
+        if (request?.Fingerprint is not { Length: 64 } fingerprint ||
+            fingerprint.Any(c => !Uri.IsHexDigit(c)))
+            return TypedResults.BadRequest();
 
         try
         {
-            var preview = await registry.ApplyAsync(cancellationToken);
-            return preview.CanApply ? TypedResults.Ok(preview)
+            var preview = await registry.ApplyReviewedAsync(fingerprint, cancellationToken);
+            return preview.CanApply &&
+                   string.Equals(preview.Fingerprint, fingerprint, StringComparison.Ordinal)
+                ? TypedResults.Ok(preview)
                 : TypedResults.Conflict(preview);
         }
         catch (DbUpdateException)
         {
-            // Concurrency, FK or uniqueness drift may invalidate preview.
-            // Do not expose target SQL schema diagnostics to API consumers.
             return TypedResults.Problem(
                 statusCode: StatusCodes.Status409Conflict,
-                title: "Feature Registry changed during apply",
+                title: "Feature Registry changed during reviewed apply",
                 detail: "Re-run preview and review the target database.");
         }
     }
