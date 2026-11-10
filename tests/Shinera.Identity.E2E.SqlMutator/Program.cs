@@ -97,7 +97,7 @@ if (isNavigationFixture)
     var options = new DbContextOptionsBuilder<IdentityDbContext>()
         .UseSqlServer(connectionString).Options;
     await using var db = new IdentityDbContext(options, new TenantContext());
-    await using var transaction = await db.Database.BeginTransactionAsync(
+    await using var menuTransaction = await db.Database.BeginTransactionAsync(
         IsolationLevel.Serializable);
 
     var reviewed = TenantWorkspaceNavigationService.RoutePermissions;
@@ -166,7 +166,7 @@ if (isNavigationFixture)
         await db.UserPermissions.IgnoreQueryFilters(["tenant"]).CountAsync() != directGrantsBefore)
         throw new InvalidOperationException(
             "Central Tenant menu fixture did not meet six-route readiness or changed grants.");
-    await transaction.CommitAsync();
+    await menuTransaction.CommitAsync();
     Console.WriteLine("PASS: exactly six System-owned Tenant Menu roots seeded in isolated browser SQL; no grants.");
     return;
 }
