@@ -35,6 +35,15 @@ public static class InitialAccessBootstrap
 
         if (!fresh) return false;
 
+        // Production's startup migration guard may stop before the reviewed
+        // unique Permission.Code index. Never create a partial catalog with
+        // an ambiguous global Permission.Code namespace.
+        var applied = await db.Database.GetAppliedMigrationsAsync(ct);
+        if (!applied.Contains("20261024200000_permissioncodeuniqueness",
+                StringComparer.Ordinal))
+            throw new InvalidOperationException(
+                "Fresh-install catalog bootstrap requires the reviewed Permission.Code uniqueness migration.");
+
         var master = DefaultSeedData.MasterTenant.Id;
         if (await db.Tenants.CountAsync(ct) != 1 ||
             !await db.Tenants.AnyAsync(x => x.Id == master && x.IsActive, ct))
