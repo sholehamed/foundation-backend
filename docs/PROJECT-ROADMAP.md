@@ -1,3 +1,9 @@
+## FR-17B-2B — System Plan Catalog draft/publish + Angular System Admin (2026-11-10)
+
+- [PR #131](https://github.com/sholehamed/foundation-backend/pull/131) adds central `plan-catalog` Resource with four fine-grained System permissions and initial System Admin navigation/grants on **fresh install only**. Adds typed draft read/edit/version creation and reviewed hash-bound SQL Server publication endpoints, no tenant purchase or user grants. [Detailed implementation and security caveats](development/FR-17B2B-SYSTEM-PLAN-CATALOG-ADMIN.md).
+- Frontend [PR #61](https://github.com/sholehamed/foundation-frontend/pull/61) System Admin page for new Plan, pinned parent, draft editing, IRR price cards, source-approved Module selection, read-only Publish Preview and guarded Publish action. Zero commercial source modules means selling is **not operational** yet; no fake plan inventory.
+- Next B2B hardening: enforce published content immutability at SQL permissions/trigger layer, audited concurrency/CAS HTTP tests, existing-db controlled permission rollout, and registered real Commercial Modules. Later FR-17C subscription source-of-truth and effective entitlement, FR-17D quotas and FR-17E verified discount/zero-amount settlement/payment adapter. Do not enable paid entitlements from catalog alone.
+
 ## FR-17B-2A — Plan card read API and Angular consumer (2026-11-10)
 
 - Introduces a public rate-limited latest-published PlanCatalog projection, exact price/currency/cycle, dynamic Module/Capability/Benefit card copy, safe signup `unselected` intent and validation of new PlanKeys against current published offer. Cross-repo Angular UI consumes the same DTO and has retry/empty states. [Design, security and acceptance](development/FR-17B2A-PUBLIC-PLAN-CARDS.md).
