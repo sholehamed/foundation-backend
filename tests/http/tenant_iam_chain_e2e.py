@@ -119,6 +119,28 @@ def verify_central_registry_reads(admin: str, owner: str, staff: str):
         check("GET", path, 403, token=owner)
         check("GET", path, 403, token=staff)
 
+    # FR-16: the FIRST administrator can see registered System pages
+    # without needing to navigate to a page to grant it to itself.
+    own_menu = check("GET", "/api/System/Menus/me", 200, token=admin)
+    def menu_paths(categories):
+        result = []
+        def visit(items):
+            for item in items:
+                if item.get("route"):
+                    result.append(item["route"])
+                visit(item.get("childs") or [])
+        for category in categories:
+            visit(category.get("items") or [])
+        return result
+    system_routes = set(menu_paths(own_menu))
+    assert {
+        "/system/dashboard", "/system/roles", "/system/permissions",
+        "/system/users", "/system/feature-registry",
+        "/system/menu-management",
+    } <= system_routes, "Seeded SuperAdmin must see System administration roots"
+    assert not any(route.startswith("/dashboard")
+                   for route in system_routes), "System role must not see Tenant nav"
+
     tenant = check("GET", diagnostic_paths[0], 200, token=admin)
     assert tenant["canApply"] and not tenant["hasPending"], (
         "Reviewed disposable Tenant permission catalog must match the code")
