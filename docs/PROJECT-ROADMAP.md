@@ -1,3 +1,8 @@
+## FR-17B-2A — Plan card read API and Angular consumer (2026-11-10)
+
+- Introduces a public rate-limited latest-published PlanCatalog projection, exact price/currency/cycle, dynamic Module/Capability/Benefit card copy, safe signup `unselected` intent and validation of new PlanKeys against current published offer. Cross-repo Angular UI consumes the same DTO and has retry/empty states. [Design, security and acceptance](development/FR-17B2A-PUBLIC-PLAN-CARDS.md).
+- Next **FR-17B-2B** transactional System Admin draft/edit/publish with content fingerprint, immutable published snapshots, code-owned commercial Module registration, and tested System menu/permissions. **FR-17C** follows with Subscription/Entitlements; then quotas and verified checkout/discounts. No catalog publication, paid permissions, grant or payment occurs here.
+
 ## FR-17B-1 — Persisted parent-versioned Plan Catalog and dynamic card data contract (2026-11-10)
 
 - [PR #128](https://github.com/sholehamed/foundation-backend/pull/128) contains seven new additive SQL tables with FKs/unique/check constraints; a read-only pinned PlanVersion inheritance resolver with Module union, typed quota/feature/limit merge, source-owned Commercial eligibility, price filters and DB-driven card items. [Full handoff](development/FR-17B1-VERSIONED-PLAN-CATALOG.md).
