@@ -39,6 +39,8 @@ For every routed Minimal API EndpointGroup and any MVC Controller:
 
 Required output artifact (no assumptions): `docs/development/FR-17A-RESOURCE-INVENTORY.md` with a reviewable one-row-per-EndpointGroup/Controller mapping and a gap table. If the repo or database cannot be introspected, mark each missing source/evidence “not verified.”
 
+**Initial source evidence:** [FR-17A Resource/EndpointGroup inventory](FR-17A-RESOURCE-INVENTORY.md) now documents the 13 current System resources, real endpoint file groupings, shared Menus/MenuCategories resource and Tenant/PublicSignup exceptions. This completes only the *first source mapping pass*; exhaustive routes and target SQL are still pending.
+
 ## 4. Metadata contract proposal and guardrails
 
 Proposed typed C# concepts (example *not implemented*):
