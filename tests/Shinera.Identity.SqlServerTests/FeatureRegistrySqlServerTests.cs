@@ -337,10 +337,18 @@ public sealed class FeatureRegistrySqlServerTests
             var restored = await CentralAccessReadiness.ReadAsync(db, endpoints);
             Assert.True(restored.CentralCatalogConsistent);
             Assert.Empty(restored.BlockingChecks);
-            Assert.Equal(green.SystemRegistry.Fingerprint,
-                restored.SystemRegistry.Fingerprint);
-            Assert.Equal(green.TenantPermissionCatalog.Fingerprint,
-                restored.TenantPermissionCatalog.Fingerprint);
+            // Catalog history/row versions can change even when an
+            // operator reverts a field to its previous value. A PRE-DRIFT
+            // fingerprint must not be assumed reusable. Only an unchanged
+            // freshly reviewed read-only snapshot may be stable.
+            var reread = await CentralAccessReadiness.ReadAsync(db, endpoints);
+            Assert.True(reread.CentralCatalogConsistent);
+            Assert.Equal(64, restored.SystemRegistry.Fingerprint!.Length);
+            Assert.Equal(64, restored.TenantPermissionCatalog.Fingerprint!.Length);
+            Assert.Equal(restored.SystemRegistry.Fingerprint,
+                reread.SystemRegistry.Fingerprint);
+            Assert.Equal(restored.TenantPermissionCatalog.Fingerprint,
+                reread.TenantPermissionCatalog.Fingerprint);
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
         });
