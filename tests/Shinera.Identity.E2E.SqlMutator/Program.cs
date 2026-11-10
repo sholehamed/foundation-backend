@@ -7,6 +7,7 @@ using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using Microsoft.Data.SqlClient;
 using Modules.System.Identity.Infrastructure.Persistence;
 using Modules.System.Identity.Web.Util;
+using Modules.System.Identity.Web.Endpoints;
 
 // Deliberately separate from the Web API: no development mutation endpoint,
 // authentication bypass, or production-registered service is introduced.
@@ -225,6 +226,49 @@ if (isTenantFixture)
         await db.SaveChangesAsync();
     }
 
+    // The old disposable fixture created an Owner role with ZERO
+    // RolePermissions, unlike FR-16 real Tenant signup (17 initial scoped
+    // grants). That bypassed the legacy Owner fallback in endpoint evaluation
+    // but hid the three gated links in database-driven Angular navigation.
+    // Seed exactly the reviewed code-owned Tenant permissions, never System.
+    // This path is deliberately unavailable from the application runtime.
+    var reviewedCodes = TenantWorkspacePermissionCatalog.Definitions
+        .Select(x => x.Key).ToArray();
+    if (reviewedCodes.Length != 17)
+        throw new InvalidOperationException("Reviewed Tenant initial access catalog changed.");
+
+    var tenantPermissions = await db.Permissions.AsNoTracking()
+        .Where(p => reviewedCodes.Contains(p.Code) && p.IsActive &&
+            p.Resource != null &&
+            p.Resource.IsActive &&
+            p.Resource.Code == TenantPermissionCatalogSync.ResourceCode &&
+            p.Resource.Module != null &&
+            p.Resource.Module.IsActive &&
+            p.Resource.Module.Code == TenantPermissionCatalogSync.ModuleCode)
+        .Select(p => new { p.Id, p.Code }).ToArrayAsync();
+    if (tenantPermissions.Length != reviewedCodes.Length ||
+        !tenantPermissions.Select(p => p.Code).ToHashSet(StringComparer.Ordinal)
+            .SetEquals(reviewedCodes))
+        throw new InvalidOperationException(
+            "Disposable Owner grant fixture requires all 17 globally owned Tenant definitions.");
+
+    var existingGrants = await db.RolePermissions.AsNoTracking()
+        .Where(x => x.TenantId == tenant.Id && x.RoleId == ownerRole.Id)
+        .Select(x => x.PermissionId).ToArrayAsync();
+    var expectedIds = tenantPermissions.Select(p => p.Id).ToHashSet();
+    if (existingGrants.Length != 0 &&
+        (existingGrants.Length != expectedIds.Count ||
+         !existingGrants.ToHashSet().SetEquals(expectedIds)))
+        throw new InvalidOperationException(
+            "Fixture Owner permissions drifted; never silently restore or broaden.");
+
+    if (existingGrants.Length == 0)
+    {
+        db.RolePermissions.AddRange(tenantPermissions.Select(p =>
+            new RolePermission(tenant.Id, ownerRole.Id, p.Id)));
+        await db.SaveChangesAsync();
+    }
+
     var staff = await db.Users.SingleOrDefaultAsync(x =>
         x.TenantId == tenant.Id && x.NormalizedUserName == "E2E-IAM-STAFF");
     if (staff is null)
@@ -249,7 +293,7 @@ if (isTenantFixture)
             x.UserId == staff.Id))
         throw new InvalidOperationException("Fixture staff must start without roles.");
     await tx.CommitAsync();
-    Console.WriteLine("PASS: disposable Tenant IAM fixture provisioned (Owner and role-free staff).");
+    Console.WriteLine("PASS: disposable Tenant IAM fixture provisioned (Owner with exactly 17 scoped grants; role-free staff).");
     return;
 }
 
