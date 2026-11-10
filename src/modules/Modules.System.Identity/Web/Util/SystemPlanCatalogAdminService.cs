@@ -86,8 +86,9 @@ public sealed class SystemPlanCatalogAdminService(
             .SingleAsync(x => x.Id == version.PlanId, ct);
         var attached = await db.CatalogPlanVersionModules.AsNoTracking()
             .Where(x => x.PlanVersionId == versionId).ToArrayAsync(ct);
+        var attachedModuleIds = attached.Select(x => x.ModuleId).ToArray();
         var modules = await db.Modules.AsNoTracking()
-            .Where(x => attached.Select(m => m.ModuleId).Contains(x.Id)).ToArrayAsync(ct);
+            .Where(x => attachedModuleIds.Contains(x.Id)).ToArrayAsync(ct);
         var offers = await db.CatalogPlanPriceOffers.AsNoTracking()
             .Where(x => x.PlanVersionId == versionId)
             .OrderBy(x => x.BillingCycle).ToArrayAsync(ct);
