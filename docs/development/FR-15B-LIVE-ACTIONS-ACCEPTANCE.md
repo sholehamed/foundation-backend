@@ -23,3 +23,12 @@ It also asserts 401/403 for a protected Tenant Members read through the **second
 - An E2E CI result does not demonstrate an approved System Admin browser flow, deployed configuration parity, multi-node persistence, Tenant branch RBAC, entitlement restrictions or production readiness. Those are remaining operational gates.
 
 This change performs no remote deployment, database migration, Registry Apply to any operator database, user grants or production feature-flag activation.
+
+## Verified result — 2026-11-10
+
+- Initial trusted-main browser run [#42780940636](https://github.com/sholehamed/foundation-backend/actions/runs/42780940636) exposed a **test-only** expectation mismatch: the System-only Catalog returned 401 for a Tenant Owner BFF principal rather than the test's 403-only expectation. This was a valid denial, not unauthorized access.
+- [PR #109](https://github.com/sholehamed/foundation-backend/pull/109) corrected the Chromium expectation to accept precisely **401 or 403**; a successful (200) central Registry response still fails the test. The API's live role checks and policies were not modified.
+- **PASS:** trusted Backend main workflow [#42781976862](https://github.com/sholehamed/foundation-backend/actions/runs/42781976862), real SQL Server / Kestrel / HTTPS reverse proxy / compiled Angular / OIDC + PKCE / Chromium. Logs explicitly confirm **135 real HTTP checks succeeded** (including central System Registry and Tenant denials), and **2/2 real browser E2E tests passed** (Owner/staff BFF permissions/revoke and first-login password rotation).
+- **PASS:** matched Backend main [BFF foundation CI #42781977240](https://github.com/sholehamed/foundation-backend/actions/runs/42781977240), including solution, Identity and SQL tests.
+- Backend main SHA tested: `21e4496dd4c3fb840757ae0e5debca2b5fac6561` (merge of PR #109). This is **disposable real integration acceptance**, not an externally hosted Staging deployment or a Production readiness certification.
+

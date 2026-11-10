@@ -1,3 +1,9 @@
+## FR-15B — GitHub Actions real integration E2E verified green (2026-11-10)
+
+- Backend main `21e4496dd4c3fb840757ae0e5debca2b5fac6561` passed [real HTTPS + OIDC + SQL + Chromium Actions run #42781976862](https://github.com/sholehamed/foundation-backend/actions/runs/42781976862): **135 real signed HTTP checks**, **2/2 Chromium browser tests**, and correct Tenant Owner 401/403 denial of three System-only Registry routes plus second-Tenant isolation. [Main BFF/SQL CI #42781977240](https://github.com/sholehamed/foundation-backend/actions/runs/42781977240) also passed.
+- Initial browser run exposed a 401-vs-403 test expectation mismatch, fixed in PR #109 with no API authorization change. [Evidence and live-vs-Staging distinction](development/FR-15B-LIVE-ACTIONS-ACCEPTANCE.md).
+- **Remaining:** Actual approved Staging DNS/TLS/SQL + backup/restore, keyring/BFF session store, read-only FR-15A live probe, deployed browser acceptance and operator-controlled central Catalog/Menu reconciliation; no Production activation.
+
 ## FR-15B — live GitHub Actions HTTPS/SQL/Chromium two-Tenant acceptance (2026-11-10)
 
 - Added live Chromium negative checks: a real Tenant Owner BFF cookie cannot access three System-only central Registry diagnostics (403), and must be denied on the second Tenant host's protected Members API (401/403). Existing Code+PKCE, CSRF, cookies and live grants/revoke tests remain intact.
