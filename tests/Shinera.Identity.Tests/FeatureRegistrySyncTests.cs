@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using IdentityHttpMethod = Modules.System.Identity.Domain.Entities.HttpMethod;
+using Modules.System.Identity.Web.Endpoints;
 using Modules.System.Identity.Web.Util;
 using Xunit;
 
@@ -50,6 +51,27 @@ public sealed class FeatureRegistrySyncTests
             x.ReadPermission == "USERS.READ" && x.ResourceCode == "users");
         Assert.Equal(contract.Features.Count, contract.Features
             .Select(x => x.Key).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
+    [Fact]
+    public void Tenant_navigation_routes_are_exact_system_defined_page_contracts()
+    {
+        var routePolicy = TenantWorkspaceNavigationService.RoutePermissions;
+        Assert.Equal(6, routePolicy.Count);
+        Assert.Equal(new[] {
+            "/dashboard", "/dashboard/branches", "/dashboard/business",
+            "/dashboard/groups", "/dashboard/members", "/dashboard/roles"
+        }, routePolicy.Keys.OrderBy(x => x, StringComparer.Ordinal));
+        Assert.Equal(3, routePolicy.Count(x => x.Value is null));
+        foreach (var entry in routePolicy.Where(x => x.Value is not null))
+        {
+            var definition = Assert.Single(
+                TenantWorkspacePermissionCatalog.Definitions.Where(x =>
+                    x.Key == entry.Value && x.Kind == "PAGE"));
+            Assert.Equal(entry.Key, definition.Route);
+        }
+        Assert.DoesNotContain(routePolicy.Keys, x =>
+            x.StartsWith("/system", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

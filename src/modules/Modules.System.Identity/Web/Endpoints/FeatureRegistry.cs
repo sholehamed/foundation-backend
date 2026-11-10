@@ -26,7 +26,12 @@ public sealed class FeatureRegistry : EndpointGroupBase
                 "FEATURE-REGISTRY.READ", "Preview Tenant permission catalog"))
             .MapPost(TenantPermissionApply, "tenant-permissions/apply", configure: e => e.WithFeatureEndpoint(
                 "SYSTEM.FEATURE-REGISTRY.TENANT-PERMISSIONS-APPLY", "feature-registry",
-                "FEATURE-REGISTRY.APPLY", "Apply Tenant permission catalog"));
+                "FEATURE-REGISTRY.APPLY", "Apply Tenant permission catalog"))
+            .MapGet(TenantNavigationReadiness, "tenant-navigation/readiness",
+                configure: e => e.WithFeatureEndpoint(
+                    "SYSTEM.FEATURE-REGISTRY.TENANT-NAVIGATION-READINESS",
+                    "feature-registry", "FEATURE-REGISTRY.READ",
+                    "Read-only central Tenant navigation readiness"));
     }
 
     public static IResult Manifest(HttpContext http)
@@ -103,6 +108,18 @@ public sealed class FeatureRegistry : EndpointGroupBase
         if (!await IsLiveSystemAdministratorAsync(current, db, ct))
             return TypedResults.Forbid();
         return TypedResults.Ok(await new TenantPermissionCatalogSync(db).PreviewAsync(ct));
+    }
+
+    // No Apply companion. This inspects the single System-defined Menu tree
+    // for the six reviewed Tenant routes; it never creates pages or grants.
+    public static async Task<IResult> TenantNavigationReadiness(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await IsLiveSystemAdministratorAsync(current, db, ct))
+            return TypedResults.Forbid();
+        return TypedResults.Ok(await CentralTenantNavigationReadiness.ReadAsync(db, ct));
     }
 
     public static async Task<IResult> TenantPermissionApply(

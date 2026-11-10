@@ -172,6 +172,144 @@ public sealed class FeatureRegistrySqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Central_tenant_menu_readiness_requires_exact_system_catalog_and_never_writes()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            // Only a live System SuperAdmin can open the read-only report.
+            var deniedHttp = await FeatureRegistry.TenantNavigationReadiness(
+                new TenantContext(), db, new Microsoft.AspNetCore.Http.DefaultHttpContext(),
+                CancellationToken.None);
+            Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>(deniedHttp);
+
+            var missing = await CentralTenantNavigationReadiness.ReadAsync(db);
+            Assert.False(missing.ReadyForDynamicPilot);
+            Assert.Equal(6, missing.RequiredRoutes);
+            Assert.Equal(0, missing.ReadyRoutes);
+            Assert.All(missing.Routes,
+                r => Assert.Contains("menu_missing", r.Issues));
+            Assert.Empty(await db.Menus.ToListAsync());
+
+            // System Admin's permission Preview/Apply prepares definitions,
+            // not menus or Tenant grants. The audit never does either.
+            var sync = new TenantPermissionCatalogSync(db);
+            await sync.ApplyAsync((await sync.PreviewAsync()).Fingerprint);
+            Assert.Empty(await db.Menus.ToListAsync());
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+
+            var category = new Modules.System.Identity.Domain.Entities.MenuCategory(
+                Guid.NewGuid())
+            { Title = "Tenant dashboard", Order = 0, IsActive = true };
+            db.MenuCategories.Add(category);
+            var menuIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
+            foreach (var route in TenantWorkspaceNavigationService.RoutePermissions)
+            {
+                var permissionId = route.Value is string key
+                    ? (Guid?)await db.Permissions.Where(p => p.Code == key)
+                        .Select(p => p.Id).SingleAsync()
+                    : null;
+                var menu = new Modules.System.Identity.Domain.Entities.Menu(Guid.NewGuid())
+                {
+                    CategoryId = category.Id, Title = route.Key,
+                    Route = route.Key, Icon = "dashboard", Order = 0,
+                    IsActive = true, IsHidden = false, PermissionId = permissionId
+                };
+                db.Menus.Add(menu);
+                menuIds[route.Key] = menu.Id;
+            }
+            await db.SaveChangesAsync();
+
+            var ready = await CentralTenantNavigationReadiness.ReadAsync(db);
+            Assert.True(ready.ReadyForDynamicPilot);
+            Assert.Equal(6, ready.ReadyRoutes);
+            Assert.All(ready.Routes, r => Assert.Equal("ready", r.Status));
+            Assert.Equal(6, await db.Menus.CountAsync());
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+
+            // Missing/inactive Page definition is detected without mutating it.
+            var page = await db.UiResources.SingleAsync(u =>
+                u.Key == "tenant.workspace.members");
+            page.IsActive = false;
+            await db.SaveChangesAsync();
+            var brokenUi = await CentralTenantNavigationReadiness.ReadAsync(db);
+            Assert.False(brokenUi.ReadyForDynamicPilot);
+            Assert.Contains("page_ui_not_registered", brokenUi.Routes.Single(r =>
+                r.Route == "/dashboard/members").Issues);
+            page.IsActive = true;
+            await db.SaveChangesAsync();
+
+            // A System-owned Menu pointing at a different Permission is NOT
+            // treated as Tenant access even if the route string matches.
+            var membersMenu = await db.Menus.SingleAsync(m =>
+                m.Id == menuIds["/dashboard/members"]);
+            var oldPermission = membersMenu.PermissionId;
+            membersMenu.PermissionId = null;
+            await db.SaveChangesAsync();
+            var wrong = await CentralTenantNavigationReadiness.ReadAsync(db);
+            Assert.False(wrong.ReadyForDynamicPilot);
+            Assert.Contains("menu_page_permission_mismatch",
+                wrong.Routes.Single(r => r.Route == "/dashboard/members").Issues);
+            membersMenu.PermissionId = oldPermission;
+            await db.SaveChangesAsync();
+
+            // Duplicate URL definitions are a conflict; never pick the first.
+            db.Menus.Add(new Modules.System.Identity.Domain.Entities.Menu(Guid.NewGuid())
+            {
+                CategoryId = category.Id, Title = "Duplicated members",
+                Route = "/dashboard/members", Icon = "people",
+                IsActive = true, IsHidden = false, PermissionId = oldPermission
+            });
+            await db.SaveChangesAsync();
+            var duplicated = await CentralTenantNavigationReadiness.ReadAsync(db);
+            Assert.Contains("menu_route_duplicate",
+                duplicated.Routes.Single(r => r.Route == "/dashboard/members").Issues);
+            var duplicate = await db.Menus.SingleAsync(m =>
+                m.Title == "Duplicated members");
+            db.Menus.Remove(duplicate);
+            await db.SaveChangesAsync();
+
+            // Unregistered Tenant route and public external Menu are visible
+            // only as operator diagnostics, never silently approved.
+            var extra = new Modules.System.Identity.Domain.Entities.Menu(Guid.NewGuid())
+            {
+                CategoryId = category.Id, Title = "Unknown route",
+                Route = "/dashboard/unregistered", Icon = "warning",
+                IsActive = true, IsHidden = false
+            };
+            var external = new Modules.System.Identity.Domain.Entities.Menu(Guid.NewGuid())
+            {
+                CategoryId = category.Id, Title = "External public link",
+                ExternalUrl = "https://example.test", Icon = "link",
+                IsActive = true, IsHidden = false
+            };
+            db.Menus.AddRange(extra, external);
+            await db.SaveChangesAsync();
+            var dirty = await CentralTenantNavigationReadiness.ReadAsync(db);
+            Assert.False(dirty.ReadyForDynamicPilot);
+            Assert.Contains("/dashboard/unregistered", dirty.UnregisteredTenantRoutes);
+            Assert.Equal(1, dirty.UngatedExternalMenuCount);
+            db.Menus.RemoveRange(extra, external);
+            await db.SaveChangesAsync();
+
+            // Invalid Parent graph or inactive category must fail readiness.
+            var roles = await db.Menus.SingleAsync(m =>
+                m.Id == menuIds["/dashboard/roles"]);
+            roles.ParentId = roles.Id;
+            await db.SaveChangesAsync();
+            var cycle = await CentralTenantNavigationReadiness.ReadAsync(db);
+            Assert.Contains("parent_chain_invalid",
+                cycle.Routes.Single(r => r.Route == "/dashboard/roles").Issues);
+            roles.ParentId = null;
+            await db.SaveChangesAsync();
+            category.IsActive = false;
+            await db.SaveChangesAsync();
+            Assert.False((await CentralTenantNavigationReadiness.ReadAsync(db))
+                .ReadyForDynamicPilot);
+        });
+    }
+
     private static async Task WithIsolatedDatabaseAsync(Func<IdentityDbContext, Task> test)
     {
         var raw = Environment.GetEnvironmentVariable("SHINERA_SQLSERVER_TEST_CONNECTION");
