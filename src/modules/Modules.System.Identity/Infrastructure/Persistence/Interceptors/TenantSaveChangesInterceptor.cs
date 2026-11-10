@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Domain.Entities;
+using Modules.System.Identity.Web.Endpoints;
+using Modules.System.Identity.Web.Util;
 
 namespace Modules.System.Identity.Infrastructure.Persistence.Interceptors;
 
@@ -99,6 +101,11 @@ public sealed class TenantSaveChangesInterceptor(
                     IsNewSignupOwner(context, targetTenant, initial))
                     continue;
 
+                if (entry.State == EntityState.Added &&
+                    entry.Entity is RolePermission initialOwnerGrant &&
+                    IsNewSignupOwnerPermission(context, targetTenant, initialOwnerGrant))
+                    continue;
+
                 if (!trustedWrites.AllowsTenantGrantMutation(entry.Entity))
                     throw new UnauthorizedAccessException(
                         "Tenant grant mutation requires a reviewed, target-bound operation.");
@@ -111,6 +118,33 @@ public sealed class TenantSaveChangesInterceptor(
                 throw new UnauthorizedAccessException(
                     "Tenant group/user permission grants require a dedicated audited API.");
         }
+    }
+
+    // The ONLY extra unaudited RolePermission case is the signup transaction
+    // that creates a completely new Tenant, User and Owner role together.
+    // Permission rows must come from the active, code-owned GLOBAL catalog.
+    // Ordinary Tenant role edits remain protected by target-bound audit/CAS.
+    private bool IsNewSignupOwnerPermission(
+        DbContext db, Guid tenantId, RolePermission grant)
+    {
+        var signup = db.ChangeTracker.Entries<UserRole>()
+            .Where(x => x.State == EntityState.Added &&
+                x.Entity.TenantId == tenantId &&
+                x.Entity.RoleId == grant.RoleId)
+            .Select(x => x.Entity)
+            .SingleOrDefault();
+        if (signup is null || !IsNewSignupOwner(db, tenantId, signup))
+            return false;
+
+        var permission = grant.Permission;
+        return grant.TenantId == tenantId &&
+            permission is { IsActive: true } &&
+            permission.Id == grant.PermissionId &&
+            TenantWorkspacePermissionCatalog.IsKnownKey(permission.Code) &&
+            permission.Resource is { IsActive: true } resource &&
+            resource.Code == TenantPermissionCatalogSync.ResourceCode &&
+            resource.Module is { IsActive: true } module &&
+            module.Code == TenantPermissionCatalogSync.ModuleCode;
     }
 
     private bool IsNewSignupOwner(
