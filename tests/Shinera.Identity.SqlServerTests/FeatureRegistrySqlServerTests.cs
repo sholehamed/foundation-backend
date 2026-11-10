@@ -346,7 +346,7 @@ public sealed class FeatureRegistrySqlServerTests
             var api = await db.ApiResources.SingleAsync();
             var unrelated = await db.Permissions.SingleAsync(p => p.Code == "USERS.READ");
             var link = new Modules.System.Identity.Domain.Entities.PermissionApiResource(
-                unrelated.Id, api.Id);
+                unrelated.Id, api.Id) { RowVersion = [1] };
             db.PermissionApiResources.Add(link);
             await db.SaveChangesAsync();
             var expanded = await SystemEndpointRegistryIntegrity.ReadAsync(db, source);
