@@ -159,6 +159,7 @@ def verify_central_registry_reads(admin: str, owner: str, staff: str):
     assert isinstance(registry["changes"], list)
     assert isinstance(registry["canApply"], bool)
     assert isinstance(registry["hasPending"], bool)
+    assert len(registry["fingerprint"]) == 64
     check("GET", base + "/preview", 403, token=owner)
     print("PASS: live System-owned central diagnostics and Tenant deny checks; "
           "no registry auto-Apply or feature flags changed.", flush=True)
