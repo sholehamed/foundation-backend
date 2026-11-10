@@ -1,3 +1,8 @@
+## FR-16B — remove unusable sample SeedData and consolidate executable first-install seed (2026-11-10)
+
+- Replaced historical 16 KB `DefaultSeedData` demo lists and obsolete `/system/admin/...` routes with a minimal stable Master Tenant ID factory and Development System admin blueprint. Startup now has **one authoritative, executable** System/Tenant bootstrap path and no commented-out placeholder CRUD seed calls. System definitions live in `FeatureRegistryDefinitions`; Tenant permissions/navigation remain centrally authored. Master Tenant ID and E2E fixture IDs are preserved.
+- First-install FR-16 System/Tenant role grants and new Tenant Owner grants remain intact; restarts never regrant revoked permissions. Production initial account provisioning stays secure and separate; dynamic Tenant navigation remains OFF outside runner-only pilot. [Runbook](development/FR-16B-AUTHORITATIVE-SEED-REFACTOR.md). Next: re-run real SQL/HTTP/Chromium CI, separately review legacy existing-database bootstrap.
+
 ## FR-16 — initial System/Tenant administrator menu and permission seed (2026-11-10)
 
 - New **clean-DB-only** bootstrap creates 13 central System roots, 17 Tenant PAGE/ACTION definitions, six System-owned Tenant menus and Master-scoped System SuperAdmin role/permissions before legacy unowned platform catalog seeding. Requires Permission.Code migration; no System privileges ever assigned to Tenant role. New Tenant signup atomically grants 17 centrally reviewed Tenant privileges to its brand-new Owner role under narrow first-signup interceptor exception; subsequent Tenant grant writes remain audited/CAS-protected.
