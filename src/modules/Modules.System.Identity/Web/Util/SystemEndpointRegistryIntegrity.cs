@@ -25,7 +25,7 @@ public static class SystemEndpointRegistryIntegrity
         IReadOnlyList<EndpointStatus> Endpoints,
         IReadOnlyList<string> UncatalogedSystemAdminRoutes,
         IReadOnlyList<string> UnreviewedActiveSystemApiKeys,
-        int OutOfScopeRouteCount);
+        int ReviewedInternalSystemRoutes, int OutOfScopeRouteCount);
 
     private sealed record RuntimeFeature(
         RouteEndpoint Route, FeatureEndpointMetadata Metadata,
@@ -44,6 +44,7 @@ public static class SystemEndpointRegistryIntegrity
         var found = new List<RuntimeFeature>();
         var untagged = new List<string>();
         var outOfScope = 0;
+        var reviewedInternal = 0;
         foreach (var route in dataSource.Endpoints.OfType<RouteEndpoint>())
         {
             var meta = route.Metadata.GetMetadata<FeatureEndpointMetadata>();
@@ -60,7 +61,10 @@ public static class SystemEndpointRegistryIntegrity
                 // separate security contracts and must NOT be counted as
                 // System feature coverage. But unannotated routes under the
                 // SystemAdministrator policy are an explicit review failure.
-                if (systemAdministrator)
+                if (systemAdministrator && IsReviewedInternalRoute(methods, rawRoute,
+                        route.Metadata.GetMetadata<IAllowAnonymous>() is not null))
+                    reviewedInternal++;
+                else if (systemAdministrator)
                     untagged.Add(Describe(methods, rawRoute));
                 else
                     outOfScope++;
@@ -126,10 +130,10 @@ public static class SystemEndpointRegistryIntegrity
             if (granular.Count != 1)
                 issues.Add("granular_requirement_missing_or_mismatched");
 
-            var moduleRows = feature is null ? [] : modules.Where(x =>
+            List<Module> moduleRows = feature is null ? [] : modules.Where(x =>
                 x.Code == feature.ModuleCode && x.IsActive).ToList();
             if (moduleRows.Count != 1) issues.Add("module_missing_or_inactive");
-            var resourceRows = moduleRows.Count == 1
+            List<Resource> resourceRows = moduleRows.Count == 1
                 ? resources.Where(x => x.ModuleId == moduleRows[0].Id &&
                     x.Code == meta.ResourceCode && x.IsActive).ToList()
                 : [];
@@ -186,7 +190,25 @@ public static class SystemEndpointRegistryIntegrity
         return new Report(output.Count > 0 && ready == output.Count &&
                 uncataloged.Length == 0 && unknownActive.Length == 0,
             output.Count, ready, output, uncataloged,
-            unknownActive, outOfScope);
+            unknownActive, reviewedInternal, outOfScope);
+    }
+
+    // Internal exception list is intentionally exact and GET-only. Adding
+    // another unannotated SystemAdministrator endpoint fails readiness until
+    // separately reviewed and added here; this must not become a broad
+    // /System/* or AllowAnonymous exception.
+    private static bool IsReviewedInternalRoute(
+        IReadOnlyList<string>? verbs, string route, bool anonymous)
+    {
+        if (verbs is not { Count: 1 } ||
+            !string.Equals(verbs[0], "GET", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var normalized = "/" + route.Trim('/').ToLowerInvariant();
+        return (normalized.EndsWith("/system/uiaccess/me", StringComparison.Ordinal) ||
+                normalized.EndsWith("/system/uiaccess/me/{key}", StringComparison.Ordinal))
+            ? !anonymous
+            : normalized.EndsWith("/system/tenants/resolve", StringComparison.Ordinal) &&
+              anonymous;
     }
 
     private static string Describe(IReadOnlyList<string>? methods, string route) =>
