@@ -206,7 +206,7 @@ public sealed class CurrentSystemUiAccessTests
         Assert.NotNull(snapshot);
         Assert.Equal(2, snapshot.SchemaVersion);
         Assert.Equal(82, snapshot.Entries.Count);
-        Assert.Equal(45, snapshot.Entries.Count(x => x.Type == "PAGE"));
+        Assert.Equal(46, snapshot.Entries.Count(x => x.Type == "PAGE"));
         Assert.Equal(36, snapshot.Entries.Count(x => x.Type == "ACTION"));
         Assert.All(snapshot.Entries, x => Assert.False(x.Allowed));
         Assert.Equal(82, snapshot.Entries.Select(x => x.Key)
