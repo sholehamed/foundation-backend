@@ -83,7 +83,7 @@ public sealed class SystemEndpointRegistryIntegrityTests
         db.ApiResources.Add(new ApiResource(Guid.NewGuid(), api.ResourceId,
             "SYSTEM.ROLES.OLD", "Obsolete but active endpoint", null,
             IdentityHttpMethod.POST, "/api/System/Roles/old")
-        { Source = ApiSource.Auto, IsActive = true, IsDeprecated = false });
+        { RowVersion = [1], Source = ApiSource.Auto, IsActive = true, IsDeprecated = false });
         await db.SaveChangesAsync();
         var extra = await SystemEndpointRegistryIntegrity.ReadAsync(db, endpoints);
         Assert.Contains("SYSTEM.ROLES.OLD", extra.UnreviewedActiveSystemApiKeys);
