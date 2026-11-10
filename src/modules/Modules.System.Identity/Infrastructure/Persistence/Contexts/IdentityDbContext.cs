@@ -17,6 +17,14 @@ namespace Modules.System.Identity.Infrastructure.Persistence.Contexts
         public DbSet<Permission> Permissions => Set<Permission>();
         public DbSet<Resource> Resources => Set<Resource>();
         public DbSet<TenantModule> TenantModules => Set<TenantModule>();
+        public DbSet<CatalogPlan> CatalogPlans => Set<CatalogPlan>();
+        public DbSet<CatalogPlanVersion> CatalogPlanVersions => Set<CatalogPlanVersion>();
+        public DbSet<CatalogPlanVersionModule> CatalogPlanVersionModules => Set<CatalogPlanVersionModule>();
+        public DbSet<CatalogCapabilityDefinition> CatalogCapabilityDefinitions => Set<CatalogCapabilityDefinition>();
+        public DbSet<CatalogPlanVersionCapabilityValue> CatalogPlanVersionCapabilityValues => Set<CatalogPlanVersionCapabilityValue>();
+        public DbSet<CatalogPlanPriceOffer> CatalogPlanPriceOffers => Set<CatalogPlanPriceOffer>();
+        public DbSet<CatalogPlanDisplayItem> CatalogPlanDisplayItems => Set<CatalogPlanDisplayItem>();
+
         public DbSet<Role> Roles => Set<Role>();
         public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
         public DbSet<Tenant> Tenants => Set<Tenant>();
