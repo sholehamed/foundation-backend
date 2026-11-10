@@ -25,7 +25,12 @@ public static class SystemEndpointRegistryIntegrity
         IReadOnlyList<EndpointStatus> Endpoints,
         IReadOnlyList<string> UncatalogedSystemAdminRoutes,
         IReadOnlyList<string> UnreviewedActiveSystemApiKeys,
-        int ReviewedInternalSystemRoutes, int OutOfScopeRouteCount);
+        int ReviewedInternalSystemRoutes, int OutOfScopeRouteCount)
+    {
+        // FR-17A-2: source definitions are typed, centrally code-owned and
+        // checked without database writes. This is diagnostic only.
+        public IReadOnlyList<ResourceContractIssue> ResourceContractIssues { get; init; } = [];
+    }
 
     private sealed record RuntimeFeature(
         RouteEndpoint Route, FeatureEndpointMetadata Metadata,
@@ -35,6 +40,8 @@ public static class SystemEndpointRegistryIntegrity
         IIdentityDbContext db, EndpointDataSource dataSource,
         CancellationToken ct = default)
     {
+        var contracts = ModuleResourceContracts.Current();
+        var contractIssues = ModuleResourceContracts.Validate(contracts);
         var modules = await db.Modules.AsNoTracking().ToListAsync(ct);
         var resources = await db.Resources.AsNoTracking().ToListAsync(ct);
         var permissions = await db.Permissions.AsNoTracking().ToListAsync(ct);
@@ -84,7 +91,12 @@ public static class SystemEndpointRegistryIntegrity
             }
         }
 
-        var features = FeatureRegistryDefinitions.Features;
+        // Use the typed Resource/Permission owner catalog, instead of
+        // inferring owner from controller name or URL. All current System
+        // definitions remain sourced from FeatureRegistryDefinitions.
+        var features = contracts
+            .Where(x => x.ProductClass == ModuleProductClass.PlatformCore)
+            .ToArray();
         var routeKeys = found.GroupBy(x => x.Key,
             StringComparer.OrdinalIgnoreCase).ToDictionary(
                 g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
@@ -188,9 +200,13 @@ public static class SystemEndpointRegistryIntegrity
             .OrderBy(x => x, StringComparer.Ordinal).ToArray();
         var ready = output.Count(x => x.Status == "ready");
         return new Report(output.Count > 0 && ready == output.Count &&
-                uncataloged.Length == 0 && unknownActive.Length == 0,
+                uncataloged.Length == 0 && unknownActive.Length == 0 &&
+                contractIssues.Count == 0,
             output.Count, ready, output, uncataloged,
-            unknownActive, reviewedInternal, outOfScope);
+            unknownActive, reviewedInternal, outOfScope)
+        {
+            ResourceContractIssues = contractIssues
+        };
     }
 
     // Internal exception list is intentionally exact and GET-only. Adding
