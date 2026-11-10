@@ -211,7 +211,7 @@ public static partial class PublicSignup
         string.IsNullOrWhiteSpace(input) ? null : input.Trim();
 
     private static bool IsLegacyPlan(string? code) =>
-        code is "solo" or "solo-pro" or "salon" or "salon-pro";
+        code is "solo" or "solo-pro" or "salon" or "salon-pro" or "unselected";
 
     private static Dictionary<string, string[]> Validate(SignupRequest r)
     {
