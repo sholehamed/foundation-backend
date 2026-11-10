@@ -94,15 +94,18 @@ public sealed class Fr14aSystemEndpointAuthorizationTests
         };
         var role = new Role(masterId, "superadmin", null)
         { Scope = RoleScope.System, IsActive = true };
-        var permission = new Permission(Guid.NewGuid(),
-            "ROLES.READ", null, "Read roles", null);
         db.Tenants.Add(new Tenant(masterId)
         { Name = "Master", Slug = "master", IsActive = true });
         db.Users.Add(user);
         db.Roles.Add(role);
-        db.Permissions.Add(permission);
         db.UserRoles.Add(new UserRole(masterId, user.Id, role.Id));
         await SaveFixtureAsync(db);
+        // The central code-owned definition must exist before a grant can
+        // authorize an endpoint with granular enforcement enabled.
+        var catalog = new FeatureRegistrySyncService(db,
+            new Microsoft.AspNetCore.Routing.DefaultEndpointDataSource([]));
+        Assert.True((await catalog.ApplyAsync()).CanApply);
+        var permission = await db.Permissions.SingleAsync(x => x.Code == "ROLES.READ");
 
         var principal = Principal(user.Id);
         var requirement = new SystemFeatureEndpointPermissionRequirement(
@@ -131,6 +134,27 @@ public sealed class Fr14aSystemEndpointAuthorizationTests
             p => p.UserId == user.Id && p.PermissionId == permission.Id));
         await SaveFixtureAsync(db);
         Assert.True(await Allowed(db, principal, requirement, true));
+
+        // A grant must not revive a moved, orphaned, or disabled definition.
+        var validResource = await db.Resources.SingleAsync(x => x.Code == "roles");
+        permission.ResourceId = null;
+        await SaveFixtureAsync(db);
+        Assert.False(await Allowed(db, principal, requirement, true));
+
+        var wrongResource = await db.Resources.SingleAsync(x => x.Code == "users");
+        permission.ResourceId = wrongResource.Id;
+        await SaveFixtureAsync(db);
+        Assert.False(await Allowed(db, principal, requirement, true));
+
+        permission.ResourceId = validResource.Id;
+        await SaveFixtureAsync(db);
+        Assert.True(await Allowed(db, principal, requirement, true));
+
+        validResource.IsActive = false;
+        await SaveFixtureAsync(db);
+        Assert.False(await Allowed(db, principal, requirement, true));
+        validResource.IsActive = true;
+        await SaveFixtureAsync(db);
 
         role.IsActive = false;
         await SaveFixtureAsync(db);

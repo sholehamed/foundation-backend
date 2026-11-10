@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Domain.Entities;
@@ -59,6 +60,38 @@ public sealed class SystemFeatureEndpointPermissionHandler(
 
         var cancellationToken = context.Resource is HttpContext http
             ? http.RequestAborted : CancellationToken.None;
+
+        // FR-14C: a code match alone is NOT sufficient. A historical/global
+        // Permission with ResourceId=NULL, or one moved to a foreign Resource,
+        // would otherwise pass a role grant despite not being owned by the
+        // registered System feature. Verify the live Module/Resource/Permission
+        // graph before evaluating any user grant. Duplicate codes fail closed.
+        var feature = FeatureRegistryDefinitions.Features.SingleOrDefault(f =>
+            f.ResourceCode == requirement.ResourceCode &&
+            f.PermissionCodes.Contains(requirement.PermissionCode, StringComparer.Ordinal));
+        if (feature is null)
+            return;
+        var owners = await db.Permissions.AsNoTracking()
+            .Where(p => p.Code == requirement.PermissionCode)
+            .Select(p => new
+            {
+                p.IsActive,
+                p.ResourceId,
+                ResourceActive = p.Resource != null && p.Resource.IsActive,
+                ResourceCode = p.Resource == null ? null : p.Resource.Code,
+                ModuleActive = p.Resource != null && p.Resource.Module != null &&
+                    p.Resource.Module.IsActive,
+                ModuleCode = p.Resource == null || p.Resource.Module == null ?
+                    null : p.Resource.Module.Code
+            }).ToListAsync(cancellationToken);
+        // Exactly one row, owned by exactly the reviewed System feature.
+        // No null/foreign owner fallback and no arbitrary duplicate winner.
+        if (owners.Count != 1 || !owners[0].IsActive ||
+            owners[0].ResourceId is null || !owners[0].ResourceActive ||
+            !owners[0].ModuleActive ||
+            owners[0].ResourceCode != feature.ResourceCode ||
+            owners[0].ModuleCode != feature.ModuleCode)
+            return;
 
         if (await new EffectivePermissionEvaluator(db).HasPermissionAsync(
                 userId, DefaultSeedData.MasterTenant.Id, UserType.System,

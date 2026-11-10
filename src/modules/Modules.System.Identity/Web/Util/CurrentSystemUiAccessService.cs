@@ -161,7 +161,7 @@ public sealed class CurrentSystemUiAccessService(IIdentityDbContext db)
             var matchedPermission = permissions.Where(x =>
                 string.Equals(x.Code, d.PermissionCode, StringComparison.Ordinal) &&
                 x.IsActive &&
-                (x.ResourceId == null || x.ResourceId == item.ResourceId)).ToArray();
+                x.ResourceId == item.ResourceId).ToArray();
             var itemLinks = links.Where(x => x.UiResourceId == item.Id).ToArray();
 
             structurallyValid[d.Key] =
@@ -170,6 +170,8 @@ public sealed class CurrentSystemUiAccessService(IIdentityDbContext db)
                 string.Equals(item.Description, d.Route, StringComparison.Ordinal) &&
                 owners.Length == 1 &&
                 matchedPermission.Length == 1 &&
+                permissions.Count(x => string.Equals(x.Code, d.PermissionCode,
+                    StringComparison.Ordinal)) == 1 &&
                 itemLinks.Length == 1 &&
                 itemLinks[0].PermissionId == matchedPermission[0].Id &&
                 allowed.Contains(matchedPermission[0].Id);

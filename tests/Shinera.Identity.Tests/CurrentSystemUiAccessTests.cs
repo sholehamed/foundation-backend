@@ -117,6 +117,55 @@ public sealed class CurrentSystemUiAccessTests
     }
 
     [Fact]
+    public async Task Legacy_unowned_or_foreign_owned_System_permission_must_not_activate_any_UI_page()
+    {
+        await using var db = await DbAsync();
+        await RegisterAsync(db);
+        var user = NewUser();
+        db.Users.Add(user);
+        var root = await db.Permissions.SingleAsync(x => x.Code == "ROLES.READ");
+        db.UserPermissions.Add(new UserPermission(Guid.NewGuid()) {
+            TenantId = Master, UserId = user.Id,
+            PermissionId = root.Id, IsGranted = true, RowVersion = [1]
+        });
+        await db.SaveChangesAsync();
+        var access = new CurrentSystemUiAccessService(db);
+        var principal = Principal(user);
+        Assert.True(await access.IsAllowedAsync(principal, "system.roles"));
+
+        // This is a valid historic SQL shape but never an authorized central
+        // System page owner. The previous nullable ResourceId fallback allowed it.
+        root.ResourceId = null;
+        await db.SaveChangesAsync();
+        Assert.False(await access.IsAllowedAsync(principal, "system.roles"));
+
+        var foreign = await db.Resources.SingleAsync(x => x.Code == "users");
+        root.ResourceId = foreign.Id;
+        await db.SaveChangesAsync();
+        Assert.False(await access.IsAllowedAsync(principal, "system.roles"));
+
+        var correct = await db.Resources.SingleAsync(x => x.Code == "roles");
+        root.ResourceId = correct.Id;
+        await db.SaveChangesAsync();
+        Assert.True(await access.IsAllowedAsync(principal, "system.roles"));
+
+        // A second identical code under another Resource must not let the
+        // evaluator pick whichever definition happens to match the UI row.
+        var shadow = new Permission(Guid.NewGuid(), "ROLES.READ", foreign.Id,
+            "Foreign duplicate", null) { IsActive = true, RowVersion = [1] };
+        db.Permissions.Add(shadow);
+        await db.SaveChangesAsync();
+        Assert.False(await access.IsAllowedAsync(principal, "system.roles"));
+        db.Permissions.Remove(shadow);
+        await db.SaveChangesAsync();
+        Assert.True(await access.IsAllowedAsync(principal, "system.roles"));
+
+        correct.IsActive = false;
+        await db.SaveChangesAsync();
+        Assert.False(await access.IsAllowedAsync(principal, "system.roles"));
+    }
+
+    [Fact]
     public async Task Principal_revocation_and_inactive_master_tenant_never_leave_snapshot_access()
     {
         await using var db = await DbAsync();
