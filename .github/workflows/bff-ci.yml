@@ -71,4 +71,4 @@ jobs:
       - name: Restore Identity Feature Registry SQL tests
         run: dotnet restore tests/Shinera.Identity.SqlServerTests/Shinera.Identity.SqlServerTests.csproj
       - name: Run disposable SQL Server Feature Registry and Tenant grant tests
-        run: dotnet test tests/Shinera.Identity.SqlServerTests/Shinera.Identity.SqlServerTests.csproj --no-restore -c Release --filter "FullyQualifiedName~FeatureRegistrySqlServerTests|FullyQualifiedName~TenantRoleGrantSqlServerTests|FullyQualifiedName~Initial_tenant_signup_owner_can_receive_only_reviewed_catalog_grants" --logger "trx;LogFileName=feature-registry-sql-results.trx"
+        run: dotnet test tests/Shinera.Identity.SqlServerTests/Shinera.Identity.SqlServerTests.csproj --no-restore -c Release --filter "FullyQualifiedName~FeatureRegistrySqlServerTests|FullyQualifiedName~TenantRoleGrantSqlServerTests|FullyQualifiedName~Initial_tenant_signup_owner_can_receive_only_reviewed_catalog_grants|FullyQualifiedName~PlanCatalogSqlServerTests" --logger "trx;LogFileName=feature-registry-sql-results.trx"
