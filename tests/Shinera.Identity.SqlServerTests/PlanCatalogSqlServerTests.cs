@@ -273,6 +273,8 @@ public sealed class PlanCatalogSqlServerTests
         await using var db = new IdentityDbContext(options, new TenantContext());
         try
         {
+            Assert.False(db.Database.HasPendingModelChanges(),
+                "EF Core model does not match the last migration snapshot");
             await db.Database.MigrateAsync();
             await action(db);
         }
