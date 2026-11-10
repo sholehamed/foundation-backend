@@ -21,6 +21,71 @@ namespace Shinera.Identity.SqlServerTests;
 public sealed class TenantWriteIsolationSqlServerTests
 {
     [Fact]
+    public async Task Initial_tenant_signup_owner_can_receive_only_reviewed_catalog_grants()
+    {
+        await WithTestDatabaseAsync(async (setup, tenant, guarded, _) =>
+        {
+            var catalog = new TenantPermissionCatalogSync(setup);
+            var preview = await catalog.PreviewAsync();
+            Assert.True(preview.CanApply);
+            await catalog.ApplyAsync(preview.Fingerprint);
+            var codes = TenantWorkspacePermissionCatalog.Definitions
+                .Select(x => x.Key).ToArray();
+            Assert.Equal(17, codes.Length);
+
+            var id = Guid.NewGuid();
+            var owner = new User(id, "new-tenant-owner", "owner@example.test",
+                "Tenant", "Owner", UserType.Tenant)
+            {
+                NormalizedUserName = "NEW-TENANT-OWNER",
+                NormalizedEmail = "OWNER@EXAMPLE.TEST",
+                PasswordHash = "test-only",
+                SecurityStamp = "test-only"
+            };
+            var account = new Tenant(id, null, "New Tenant", "new-owner-test",
+                "example.test");
+            var ownerRole = new Role(id, "Owner", null)
+                { Scope = RoleScope.Tenant };
+            var assignment = new UserRole(id, owner.Id, ownerRole.Id);
+            tenant.InitializeTenant(owner.Id, id, [id], [id], id);
+            var permissions = await guarded.Permissions
+                .Include(x => x.Resource).ThenInclude(x => x!.Module)
+                .Where(x => codes.Contains(x.Code)).ToListAsync();
+            Assert.Equal(17, permissions.Count);
+            guarded.Tenants.Add(account);
+            guarded.Users.Add(owner);
+            guarded.Roles.Add(ownerRole);
+            guarded.UserRoles.Add(assignment);
+            foreach (var permission in permissions)
+                guarded.RolePermissions.Add(new RolePermission(
+                    id, ownerRole.Id, permission.Id)
+                { Permission = permission });
+            await guarded.SaveChangesAsync();
+
+            Assert.Equal(17, await guarded.RolePermissions
+                .IgnoreQueryFilters(["tenant"])
+                .CountAsync(x => x.TenantId == id && x.RoleId == ownerRole.Id));
+            Assert.Empty(await guarded.RolePermissions.IgnoreQueryFilters(["tenant"])
+                .Where(x => x.TenantId != id).ToListAsync());
+
+            // A regular role cannot exploit the signup exception once
+            // new Tenant/User/Owner entries are no longer Added.
+            guarded.ChangeTracker.Clear();
+            var staffRole = new Role(id, "Staff", null)
+                { Scope = RoleScope.Tenant };
+            guarded.Roles.Add(staffRole);
+            await guarded.SaveChangesAsync();
+            guarded.RolePermissions.Add(new RolePermission(
+                id, staffRole.Id, permissions[0].Id));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                guarded.SaveChangesAsync());
+            guarded.ChangeTracker.Clear();
+            Assert.False(await guarded.RolePermissions.IgnoreQueryFilters(["tenant"])
+                .AnyAsync(x => x.TenantId == id && x.RoleId == staffRole.Id));
+        });
+    }
+
+    [Fact]
     public async Task Tenant_write_scope_allows_own_rows_and_rejects_cross_tenant_insert_update_delete()
     {
         await WithTestDatabaseAsync(async (setup, tenant, guard, trusted) =>
