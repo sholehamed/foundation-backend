@@ -1,3 +1,8 @@
+## FR-14C — System-owned Tenant menu readiness gate (2026-11-10)
+
+- Read-only, privileged audit for exactly six canonical Tenant routes checks global Menu, Category, live PAGE Permission, UI link, unregistered Tenant routes and unguarded external links. This fills the gap between System Feature Registry and Tenant Permission Catalog Preview/Apply **without granting Tenant any definition capability**. [FR-14C readiness contract](development/FR-14C-CENTRAL-TENANT-NAVIGATION-READINESS.md).
+- Still pending: operator-managed central Menu registration and review, full endpoint/feature parity, two-Tenant browser pilot, grant entitlement design and FR-14C-3 branch-scoped access. All activation flags OFF; Staging deferred.
+
 ## FR-14C — System-owned Tenant permission boundary (2026-11-10)
 
 - Scoped hardening: Tenant role editor fails closed when a role contains any Permission link outside the active central `tenant-workspace/tenant-administration` allowlisted catalog. No data is repaired implicitly, and cross-Tenant assignment/Owner controls remain unchanged. [Tests and rollout gate](development/FR-14C-TENANT-ROLE-GRANT-INTEGRITY.md).
