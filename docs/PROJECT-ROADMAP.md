@@ -1,3 +1,9 @@
+## FR-17A-2 — Typed Module/Resource/Permission and future operation capability contracts (2026-11-10)
+
+- [PR #127](https://github.com/sholehamed/foundation-backend/pull/127) adds centrally code-owned **typed classification** of System PlatformCore, TenantCoreAdministration, Commercial, InternalOnly modules and Module→Resource (Controller/EndpointGroup)→Permission registry, derived from the 13 actual System and 17 Tenant administrative definitions. Duplicate Resource/Permission owners and class drift fail validation. [Detailed contract and tests](development/FR-17A2-TYPED-RESOURCE-CONTRACTS.md).
+- Introduces validated typed Capability/CountLimit/PeriodQuota/AllowedModes descriptors and **Resource-operation bindings** for future plans; reads and writes within the same Resource can require different entitlements. Adds `resourceContractIssues` to existing read-only System endpoint integrity report and readiness calculation; maintains exact live SQL/EndpointDataSource owner checks.
+- **Not implemented:** Plan/Subscription/Checkout, paid entitlement evaluation, quota counters/usage ledger, automatic grants, catalog writes, SQL migration or API enforcement cutover. Next FR-17B is additive PlanVersion/Capability typed storage, immutable parent inheritance and SHADOW entitlement tests; no commercial flag until verified.
+
 ## FR-17A-1 — Audited source Resource inventory and read-only SQL preflight (2026-11-10)
 
 - [PR #126](https://github.com/sholehamed/foundation-backend/pull/126) implements reproducible read-only inventory built on existing FR-14A route/security parser: maps System EndpointGroups to centrally owned Resources/Permissions; records Tenant administration and identity/BFF/media/dev exceptions; fails on unreviewed cross-group Resource ownership. Includes security mutation tests and CI JSON artifact.

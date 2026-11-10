@@ -73,6 +73,8 @@ Inventory the exact operation requirements alongside every EndpointGroup/Resourc
 
 Acceptance: for two actions in the same Resource, an entitled/authorized READ never spends the quota of CREATE; CREATE fails at the limit under concurrent requests; failed operations do not consume quota; expired module entitlement denies both appropriately without deleting RBAC grants.
 
+**FR-17A-2 typed code contract:** [implementation handoff and tests](FR-17A2-TYPED-RESOURCE-CONTRACTS.md). The current System 13 and Tenant administrative 17 definitions now produce a single typed, class-labelled Module/Resource/Permission projection, with prospective Capability and specific operation bindings. This is diagnostic-only, not a purchased-plan access gate.
+
 ## 5. Next phases and dependencies
 
 | Milestone | Implementation slice | Gate / output |
