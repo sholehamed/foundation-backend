@@ -36,7 +36,12 @@ public sealed class FeatureRegistry : EndpointGroupBase
                 configure: e => e.WithFeatureEndpoint(
                     "SYSTEM.FEATURE-REGISTRY.SYSTEM-ENDPOINT-INTEGRITY",
                     "feature-registry", "FEATURE-REGISTRY.READ",
-                    "Read-only runtime System endpoint Registry integrity"));
+                    "Read-only runtime System endpoint Registry integrity"))
+            .MapGet(CentralAccessReadinessReport, "central-access/readiness",
+                configure: e => e.WithFeatureEndpoint(
+                    "SYSTEM.FEATURE-REGISTRY.CENTRAL-ACCESS-READINESS",
+                    "feature-registry", "FEATURE-REGISTRY.READ",
+                    "Read-only consolidated central access integrity gate"));
     }
 
     public static IResult Manifest(HttpContext http)
@@ -151,6 +156,20 @@ public sealed class FeatureRegistry : EndpointGroupBase
             return TypedResults.Forbid();
         return TypedResults.Ok(await
             SystemEndpointRegistryIntegrity.ReadAsync(db, endpoints, ct));
+    }
+
+    // Consolidated operator-only snapshot of four existing read-only
+    // diagnostics. No writes, token issuance, grant changes or pilot toggle.
+    public static async Task<IResult> CentralAccessReadinessReport(
+        ITenantContext current, IdentityDbContext db,
+        Microsoft.AspNetCore.Routing.EndpointDataSource endpoints,
+        HttpContext http, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await IsLiveSystemAdministratorAsync(current, db, ct))
+            return TypedResults.Forbid();
+        return TypedResults.Ok(await
+            CentralAccessReadiness.ReadAsync(db, endpoints, ct));
     }
 
     public static async Task<IResult> TenantPermissionApply(
