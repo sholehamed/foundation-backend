@@ -28,6 +28,8 @@ public sealed class PlanCatalog : EndpointGroupBase
                 "Create plan revision draft"))
             .MapPut(SaveDraft, "drafts/{versionId:guid}", configure: e => e.WithFeatureEndpoint(
                 "SYSTEM.PLAN-CATALOG.SAVE-DRAFT", "plan-catalog", "PLAN-CATALOG.UPDATE", "Save plan draft"))
+            .MapGet(ReadDraft, "drafts/{versionId:guid}", configure: e => e.WithFeatureEndpoint(
+                "SYSTEM.PLAN-CATALOG.DRAFT", "plan-catalog", "PLAN-CATALOG.READ", "Read plan draft"))
             .MapGet(Preview, "drafts/{versionId:guid}/preview", configure: e => e.WithFeatureEndpoint(
                 "SYSTEM.PLAN-CATALOG.PREVIEW", "plan-catalog", "PLAN-CATALOG.READ", "Review draft"))
             .MapPost(Publish, "drafts/{versionId:guid}/publish", configure: e => e.WithFeatureEndpoint(
@@ -119,6 +121,16 @@ public sealed class PlanCatalog : EndpointGroupBase
         {
             return Results.Conflict(new { code = "catalog_changed_retry" });
         }
+    }
+
+    private static async Task<IResult> ReadDraft(
+        ITenantContext actor, IdentityDbContext db, HttpContext http,
+        Guid versionId, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await IsLiveSystemAdministratorAsync(actor, db, ct)) return Results.Forbid();
+        var draft = await new SystemPlanCatalogAdminService(db).ReadDraftAsync(versionId, ct);
+        return draft is null ? Results.NotFound() : Results.Ok(draft);
     }
 
     private static async Task<IResult> Preview(
