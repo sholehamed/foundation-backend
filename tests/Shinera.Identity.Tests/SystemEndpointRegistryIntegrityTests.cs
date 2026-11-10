@@ -49,7 +49,8 @@ public sealed class SystemEndpointRegistryIntegrityTests
         await db.SaveChangesAsync();
 
         var wrongPermission = await db.Permissions.SingleAsync(x => x.Code == "USERS.READ");
-        var unexpected = new PermissionApiResource(wrongPermission.Id, api.Id);
+        var unexpected = new PermissionApiResource(wrongPermission.Id, api.Id)
+            { RowVersion = [1] };
         db.PermissionApiResources.Add(unexpected);
         await db.SaveChangesAsync();
         var broadened = await SystemEndpointRegistryIntegrity.ReadAsync(db, endpoints);
