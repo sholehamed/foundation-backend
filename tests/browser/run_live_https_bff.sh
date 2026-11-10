@@ -25,6 +25,37 @@ printf '127.0.0.1 identity.shinera.localhost e2e-http-ci.shinera.localhost other
   sudo tee -a /etc/hosts >/dev/null
 
 cd "$GITHUB_WORKSPACE"
+
+# FR-15D: activate Tenant dynamic navigation ONLY inside the disposable
+# trusted-main Actions browser runner, and ONLY in the compiled checkout.
+# The checked-in Angular environment flags stay OFF in every repository.
+if [[ "${GITHUB_ACTIONS:-}" != "true" ||
+      "${GITHUB_REPOSITORY:-}" != "sholehamed/foundation-backend" ||
+      "${GITHUB_REF:-}" != "refs/heads/main" ||
+      "${ASPNETCORE_ENVIRONMENT:-}" != "Development" ||
+      "${DBNAME:-}" != "Shinera_E2E_RealBffBrowser" ||
+      "${SHINERA_E2E_DB_MUTATION:-}" != "stale-jwt-ci-only" ]]; then
+  echo "::error::Dynamic navigation browser pilot requires trusted-main isolated SQL CI."
+  exit 1
+fi
+export FR15D_E2E_DYNAMIC_NAVIGATION=true
+python3 - <<'PY'
+from pathlib import Path
+source = Path("frontend/src/environments/environment.bff-pilot.e2e.ts")
+value = source.read_text(encoding="utf-8")
+flag = "tenantDynamicNavigationPilotEnabled: false,"
+if value.count(flag) != 1:
+    raise SystemExit("Angular Tenant navigation flag contract changed; fail closed")
+source.write_text(value.replace(
+    flag, "tenantDynamicNavigationPilotEnabled: true,"), encoding="utf-8")
+print("FR-15D: enabling dynamic Tenant navigation ONLY for disposable Angular checkout")
+PY
+# The main workflow already compiles its default-OFF frontend. Recompile
+# the ephemeral output after swapping its test-only config; no source commit,
+# real deployment, global flag, production SQL or credential change.
+npm --prefix frontend run build -- --configuration bff-pilot-e2e
+test -f frontend/dist/ShineraApp/browser/index.html
+
 dotnet run --project backend/tests/Shinera.Identity.E2E.SqlMutator \
   --no-build -c Release -- ensure-e2e-database
 
@@ -73,6 +104,10 @@ fi
 dotnet run --project backend/tests/Shinera.Identity.E2E.SqlMutator \
   --no-build -c Release -- seed-tenant-iam
 python3 backend/tests/http/tenant_iam_chain_e2e.py
+# SQL fixture is populated only after the real HTTP suite registered the
+# 17 reviewed Tenant permissions. Never silently edit any real catalog.
+dotnet run --project backend/tests/Shinera.Identity.E2E.SqlMutator \
+  --no-build -c Release -- seed-central-tenant-navigation
 cp backend/tests/browser/tenant-bff-real.spec.ts frontend/e2e/tenant-bff-real.spec.ts
 cp backend/tests/browser/tenant-first-login-real.spec.ts frontend/e2e/tenant-first-login-real.spec.ts
 cp backend/tests/browser/playwright.bff-real.config.ts frontend/playwright.bff-real.config.ts
