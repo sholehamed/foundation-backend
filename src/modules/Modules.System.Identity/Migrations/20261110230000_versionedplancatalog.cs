@@ -587,10 +587,6 @@ public sealed class VersionedPlanCatalogMigration : Migration
             name: "IX_CatalogPlanDisplayItems_CapabilityDefinitionId",
             table: "CatalogPlanDisplayItems",
             column: "CapabilityDefinitionId");
-
-        migrationBuilder.AddCheckConstraint(
-            name: "CK_CatalogPlans_Code", table: "CatalogPlans",
-            sql: "LEN([Code]) > 0");
         migrationBuilder.AddCheckConstraint(
             name: "CK_CatalogPlans_Parent", table: "CatalogPlans",
             sql: "[ParentPlanId] IS NULL OR [ParentPlanId] <> [Id]");
