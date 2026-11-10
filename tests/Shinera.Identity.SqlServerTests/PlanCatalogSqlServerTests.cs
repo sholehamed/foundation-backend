@@ -138,7 +138,7 @@ public sealed class PlanCatalogSqlServerTests
 
             var reader = new PublishedPlanCatalogReader(db);
             var result = await reader.ReadAsync(proV1.Id, source, caps, DateTime.UtcNow);
-            Assert.Equal(["appointments", "staff"], result.ModuleCodes);
+            Assert.Equal(new[] { "appointments", "staff" }, result.ModuleCodes);
             Assert.Equal(125, Assert.Single(result.Capabilities,
                 x => x.Code == "appointments.monthly").IntegerValue);
             Assert.Equal(10, Assert.Single(result.Capabilities,
