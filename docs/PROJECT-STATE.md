@@ -1,3 +1,8 @@
+## FR-14C — System Registry Preview/Apply signed HTTP denial gate (2026-11-10)
+
+- Real disposable System Admin JWT HTTP E2E now requires the Registry Preview fingerprint (64 chars) and explicitly checks 401 anonymous, 403 Tenant principals, 409 for a live System SuperAdmin while System Apply remains default-OFF, followed by an identical read-only fingerprint. No actual central write, flag or deployment. [Contract](development/FR-14C-REVIEWED-SYSTEM-REGISTRY-APPLY.md).
+- Next: latest-head main CI, then operator-approved central menu/permissions readiness on a real target before dynamic navigation pilot.
+
 ## FR-14C — reviewed System Registry Apply transaction (2026-11-10)
 
 - System Feature Registry Preview now carries a SHA-256 fingerprint of live endpoint and database catalog state. The HTTP Apply requires explicit 64-hex fingerprint, persisted System SuperAdmin, independently default-OFF write gate and a SERIALIZABLE SQL recheck before committing additive definitions. Stale/foreign/invalid approval fails closed; no role grants or automatic flag changes.
