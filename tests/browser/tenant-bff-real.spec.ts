@@ -162,8 +162,11 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
       const result = await api(owner, 'GET', '/api/tenant/workspace/navigation/me');
       expect(result.status).toBe(200);
       const routes = flattenMenuRoutes(result.data);
-      // After FR-16 first-install seed there must be exactly one System-
-      // owned canonical menu item per route, not a duplicate CI fixture.
+      // The disposable Owner must mirror FR-16 real signup: 17 scoped
+      // RolePermissions, so ALL six globally owned Tenant menus are visible.
+      // Never water down this assertion to the 3 ungated legacy fallback
+      // links; the fixture must be fixed instead of hiding missing grants.
+      // There must also be no duplicate CI-created navigation rows.
       expect(new Set(routes).size, 'First-install menu roots are unique').toBe(routes.length);
       expect(new Set(routes), 'First-install catalog must be exact, not an incomplete seeded menu')
         .toEqual(new Set([
