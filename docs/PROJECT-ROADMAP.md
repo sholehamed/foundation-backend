@@ -1,3 +1,9 @@
+## FR-17B-1 — Persisted parent-versioned Plan Catalog and dynamic card data contract (2026-11-10)
+
+- [PR #128](https://github.com/sholehamed/foundation-backend/pull/128) contains seven new additive SQL tables with FKs/unique/check constraints; a read-only pinned PlanVersion inheritance resolver with Module union, typed quota/feature/limit merge, source-owned Commercial eligibility, price filters and DB-driven card items. [Full handoff](development/FR-17B1-VERSIONED-PLAN-CATALOG.md).
+- Tests on disposable SQL verify Parent v2 cannot silently mutate child v1 rights/price; SQL rejects negative plan price and foreign capability owners; no Seed, grants, TenantModules, subscriptions or paid runtime enforcement. Never assume CI ephemeral success is a real Staging deployment.
+- FR-17B-2 next: implement System Admin-controlled draft/publish transaction, content fingerprint/immutable published versions and rate-limited public plan-card projection. FR-17C next: scoped subscription state + typed shadow entitlement evaluator. FR-17D+: quotas, permission conjunction and Billing workflow.
+
 ## FR-17A-2 — Typed Module/Resource/Permission and future operation capability contracts (2026-11-10)
 
 - [PR #127](https://github.com/sholehamed/foundation-backend/pull/127) adds centrally code-owned **typed classification** of System PlatformCore, TenantCoreAdministration, Commercial, InternalOnly modules and Module→Resource (Controller/EndpointGroup)→Permission registry, derived from the 13 actual System and 17 Tenant administrative definitions. Duplicate Resource/Permission owners and class drift fail validation. [Detailed contract and tests](development/FR-17A2-TYPED-RESOURCE-CONTRACTS.md).
