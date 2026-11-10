@@ -112,6 +112,7 @@ def verify_central_registry_reads(admin: str, owner: str, staff: str):
         base + "/tenant-permissions/preview",
         base + "/tenant-navigation/readiness",
         base + "/system-endpoints/integrity",
+        base + "/central-access/readiness",
     ]
     for path in diagnostic_paths:
         check("GET", path, 401)
@@ -160,6 +161,27 @@ def verify_central_registry_reads(admin: str, owner: str, staff: str):
     assert isinstance(registry["canApply"], bool)
     assert isinstance(registry["hasPending"], bool)
     assert len(registry["fingerprint"]) == 64
+    # Aggregate all four System-owned read-only diagnostics. A disposable
+    # fixture intentionally has no centrally authored Tenant Menu rows;
+    # therefore it must NOT claim that the dynamic pilot is ready.
+    consolidated = check("GET", base + "/central-access/readiness", 200,
+                         token=admin)
+    assert consolidated["centralCatalogConsistent"] is False
+    assert len(consolidated["blockingChecks"]) >= 1
+    assert "tenant_navigation_not_ready" in consolidated["blockingChecks"]
+    assert consolidated["systemRegistry"]["ready"] == (
+        registry["canApply"] and not registry["hasPending"] and
+        bool(registry["changes"]))
+    assert consolidated["tenantPermissionCatalog"]["ready"] == (
+        tenant["canApply"] and not tenant["hasPending"] and
+        bool(tenant["changes"]))
+    assert consolidated["tenantNavigation"]["ready"] == nav["readyForDynamicPilot"]
+    assert consolidated["systemEndpoints"]["ready"] == system["readyForGranularEnforcement"]
+    assert consolidated["systemRegistry"]["fingerprint"] == registry["fingerprint"]
+    assert consolidated["tenantPermissionCatalog"]["fingerprint"] == tenant["fingerprint"]
+    assert consolidated["tenantNavigation"]["observed"] == 6
+    assert consolidated["systemEndpoints"]["observed"] > 0
+
     # The System Apply deployment flag stays OFF in this isolated fixture.
     # An approved preview token alone does not authorize a catalog mutation.
     check("POST", base + "/apply", 401,
