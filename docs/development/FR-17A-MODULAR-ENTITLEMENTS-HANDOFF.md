@@ -65,6 +65,12 @@ public sealed record CapabilityDefinition(
 - Plan/capability definitions are **not** user grants. Never introduce implicit `RolePermission` writes in registry sync.
 - CI fails closed on duplicate keys, missing required metadata, unknown Permission owner, cross-System/Tenant references, duplicate route registration and catalog drift; don't let default grants mask integrity gaps.
 
+### Resource-operation limit mappings must be inventoried
+
+Inventory the exact operation requirements alongside every EndpointGroup/Resource/Permission mapping: a code-owned contract `(ModuleCode, ResourceCode, PermissionCode, EndpointKey?) -> RequiredFeatures + CountLimit/PeriodQuota + AllowedModes`. A capability can be Module-wide or Resource/operation-specific. The shared engine coordinates an authoritative domain count adapter or consumption ledger; System Admin can edit approved typed values in Plans but cannot author arbitrary executable policies.
+
+Acceptance: for two actions in the same Resource, an entitled/authorized READ never spends the quota of CREATE; CREATE fails at the limit under concurrent requests; failed operations do not consume quota; expired module entitlement denies both appropriately without deleting RBAC grants.
+
 ## 5. Next phases and dependencies
 
 | Milestone | Implementation slice | Gate / output |
