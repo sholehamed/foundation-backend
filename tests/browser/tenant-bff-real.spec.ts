@@ -4,6 +4,19 @@ const tenantHost = 'https://e2e-http-ci.shinera.localhost:8443';
 const identityHost = 'https://identity.shinera.localhost:8443';
 const secondTenantHost = 'https://other.shinera.localhost:8443';
 const password = process.env.SHINERA_DEVELOPMENT_ADMIN_PASSWORD;
+const dynamicNavigationPilot = process.env.FR15D_E2E_DYNAMIC_NAVIGATION === 'true';
+
+function flattenMenuRoutes(categories: any[]): string[] {
+  const result: string[] = [];
+  const scan = (items: any[]) => {
+    for (const item of items) {
+      if (item.route) result.push(item.route);
+      if (Array.isArray(item.childs)) scan(item.childs);
+    }
+  };
+  for (const category of categories) scan(category.items ?? []);
+  return result;
+}
 
 interface ApiResult {
   status: number;
@@ -143,6 +156,22 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
     expect(live.data.context.tenantSlug).toBe('e2e-http-ci');
     expect(ownerRequests).toEqual([]);
 
+    if (dynamicNavigationPilot) {
+      // Full compiled Angular + real BFF + SQL, not mocked navigation JSON.
+      // Only the trusted disposable CI test may enable this pilot.
+      const result = await api(owner, 'GET', '/api/tenant/workspace/navigation/me');
+      expect(result.status).toBe(200);
+      const routes = flattenMenuRoutes(result.data);
+      for (const route of ['/dashboard', '/dashboard/business', '/dashboard/branches'])
+        expect(routes, 'System-owned canonical Tenant root').toContain(route);
+      expect(routes.every(route => route.startsWith('/dashboard'))).toBe(true);
+      expect(routes).not.toContain('/system/roles');
+      const nav = owner.locator('nav[aria-label="ناوبری فضای کاری"]');
+      for (const route of ['/dashboard', '/dashboard/business', '/dashboard/branches'])
+        await expect(nav.locator('a[href="' + route + '"]')).toHaveCount(1);
+      console.log('FR15D: Angular uses real centrally authored Tenant Menus, no static duplicate');
+    }
+
     const storage = await owner.evaluate(() => ({
       access: localStorage.getItem('access_token'),
       refresh: localStorage.getItem('refresh_token'),
@@ -162,6 +191,7 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
       '/api/system/FeatureRegistry/tenant-permissions/preview',
       '/api/system/FeatureRegistry/tenant-navigation/readiness',
       '/api/system/FeatureRegistry/system-endpoints/integrity',
+      '/api/system/FeatureRegistry/central-access/readiness',
     ]) {
       const forbiddenSystemCatalog = await api(owner, 'GET', route);
       // BFF may reject a Tenant-context cookie with 401 before reaching
@@ -226,6 +256,20 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
     const staffBffSession = await api(staff, 'GET', '/bff/session');
     expect(staffBffSession.status).toBe(200);
 
+    if (dynamicNavigationPilot) {
+      const staffNav = await api(staff, 'GET', '/api/tenant/workspace/navigation/me');
+      expect(staffNav.status).toBe(200);
+      const routes = flattenMenuRoutes(staffNav.data);
+      expect(routes).toContain('/dashboard/members');
+      expect(routes).not.toContain('/dashboard/roles');
+      expect(routes).not.toContain('/dashboard/groups');
+      const nav = staff.locator('nav[aria-label="ناوبری فضای کاری"]');
+      await expect(nav.locator('a[href="/dashboard/members"]')).toHaveCount(1);
+      await expect(nav.locator('a[href="/dashboard/roles"]')).toHaveCount(0);
+      await expect(nav.locator('a[href="/dashboard/groups"]')).toHaveCount(0);
+      console.log('FR15D: staff sees Members link only after real role grant');
+    }
+
     const current = await api(owner, 'GET',
       '/api/tenant/workspace/roles/' + roleId + '/permissions');
     const revoked = await api(owner, 'PUT',
@@ -255,6 +299,15 @@ test('real Chromium: OIDC PKCE -> host-only BFF cookie -> live Tenant permission
     expect((await api(staff, 'GET', '/bff/session')).status).toBe(200);
     const forbidden = await api(staff, 'GET', '/api/tenant/workspace/members');
     expect(forbidden.status).toBe(403);
+    if (dynamicNavigationPilot) {
+      const updated = await api(staff, 'GET', '/api/tenant/workspace/navigation/me');
+      expect(updated.status).toBe(200);
+      expect(flattenMenuRoutes(updated.data)).not.toContain('/dashboard/members');
+      const nav = staff.locator('nav[aria-label="ناوبری فضای کاری"]');
+      await expect(nav.locator('a[href="/dashboard/members"]')).toHaveCount(0);
+      await expect(nav.locator('a[href="/dashboard"]')).toHaveCount(1);
+      console.log('FR15D: fresh staff session has NO revoked Member link, API remains 403');
+    }
 
     console.log('FR12G-C stage: revoking Owner BFF Cookie ticket');
     const ownerLogout = await api(owner, 'POST', '/bff/auth/logout', {}, true);
