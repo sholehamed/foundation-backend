@@ -53,6 +53,27 @@ public sealed class FeatureRegistrySyncTests
     }
 
     [Fact]
+    public void Tenant_navigation_routes_are_exact_system_defined_page_contracts()
+    {
+        var routePolicy = TenantWorkspaceNavigationService.RoutePermissions;
+        Assert.Equal(6, routePolicy.Count);
+        Assert.Equal(new[] {
+            "/dashboard", "/dashboard/branches", "/dashboard/business",
+            "/dashboard/groups", "/dashboard/members", "/dashboard/roles"
+        }, routePolicy.Keys.OrderBy(x => x, StringComparer.Ordinal));
+        Assert.Equal(3, routePolicy.Count(x => x.Value is null));
+        foreach (var entry in routePolicy.Where(x => x.Value is not null))
+        {
+            var definition = Assert.Single(
+                TenantWorkspacePermissionCatalog.Definitions.Where(x =>
+                    x.Key == entry.Value && x.Kind == "PAGE"));
+            Assert.Equal(entry.Key, definition.Route);
+        }
+        Assert.DoesNotContain(routePolicy.Keys, x =>
+            x.StartsWith("/system", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Preview_has_no_writes_then_apply_is_idempotent_and_never_grants()
     {
         await using var db = await CreateDbAsync();
