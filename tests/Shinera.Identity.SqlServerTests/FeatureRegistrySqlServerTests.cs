@@ -163,6 +163,49 @@ public sealed class FeatureRegistrySqlServerTests
 
 
     [Fact]
+    public async Task Consolidated_central_access_readiness_is_SQL_read_only_and_never_approves_missing_menus()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            var source = new DefaultEndpointDataSource([]);
+            var ctx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+            // Direct handler invocation still demands a live persisted
+            // System SuperAdmin, not merely an endpoint policy attribute.
+            var denied = await FeatureRegistry.CentralAccessReadinessReport(
+                new TenantContext(), db, source, ctx, CancellationToken.None);
+            Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>(denied);
+            Assert.Equal("no-store", ctx.Response.Headers.CacheControl.ToString());
+
+            var missing = await CentralAccessReadiness.ReadAsync(db, source);
+            Assert.False(missing.CentralCatalogConsistent);
+            Assert.Equal(4, missing.BlockingChecks.Count);
+            Assert.Empty(await db.Modules.AsNoTracking().ToListAsync());
+            Assert.Empty(await db.Menus.AsNoTracking().ToListAsync());
+
+            // Real isolated SQL catalog Applies are fixture setup only.
+            // The aggregate must not perform any reconciliation itself.
+            var systemRegistry = new FeatureRegistrySyncService(db, source);
+            await systemRegistry.ApplyReviewedAsync(
+                (await systemRegistry.PreviewAsync()).Fingerprint);
+            var tenantCatalog = new TenantPermissionCatalogSync(db);
+            await tenantCatalog.ApplyAsync((await tenantCatalog.PreviewAsync()).Fingerprint);
+            var assessed = await CentralAccessReadiness.ReadAsync(db, source);
+            Assert.True(assessed.SystemRegistry.Ready);
+            Assert.True(assessed.TenantPermissionCatalog.Ready);
+            Assert.False(assessed.TenantNavigation.Ready);
+            Assert.False(assessed.SystemEndpoints.Ready);
+            Assert.Contains("tenant_navigation_not_ready", assessed.BlockingChecks);
+            Assert.Contains("system_endpoints_not_ready", assessed.BlockingChecks);
+            Assert.False(assessed.CentralCatalogConsistent);
+            Assert.Equal(13, await db.Menus.CountAsync()); // System-only menus
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
+            var again = await CentralAccessReadiness.ReadAsync(db, source);
+            Assert.Equal(assessed, again);
+        });
+    }
+
+    [Fact]
     public async Task Tenant_catalog_preview_apply_is_additive_idempotent_and_uses_real_SQL_migrations()
     {
         await WithIsolatedDatabaseAsync(async db =>
