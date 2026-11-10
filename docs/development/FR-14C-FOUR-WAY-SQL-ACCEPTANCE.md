@@ -11,7 +11,7 @@ In `FeatureRegistrySqlServerTests.Central_access_four_way_gate_goes_green_only_f
 3. Insert an unregistered `/dashboard/unreviewed` route → navigation block.
 4. Insert an unexpected Roles-read Permission link to the Members PAGE → Tenant Catalog **and** Tenant Navigation blocks.
 5. Disable the single code-owned runtime `SYSTEM.ROLES.CREATE` API row → runtime Endpoint Integrity block.
-6. Explicit fixture cleanup restores all four gates to green; System and Tenant fingerprints are unchanged. There are **no UserPermission/RolePermission grants** in the fixture.
+6. Explicit fixture cleanup restores all four gates to green; **newly sampled** System and Tenant fingerprints must each remain stable over repeated unchanged reads. A pre-drift fingerprint is never assumed reusable after a modification/rollback of visible values. There are **no UserPermission/RolePermission grants** in the fixture.
 
 All SQL fixture changes are restricted to an ephemeral per-test database. The test invokes read-only `CentralAccessReadiness.ReadAsync`; it **never** calls an HTTP Apply in a deployed environment, never seeds any real Tenant, and does not switch feature flags.
 
