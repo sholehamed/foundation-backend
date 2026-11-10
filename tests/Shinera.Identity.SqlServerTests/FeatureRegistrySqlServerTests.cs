@@ -177,6 +177,12 @@ public sealed class FeatureRegistrySqlServerTests
     {
         await WithIsolatedDatabaseAsync(async db =>
         {
+            // Only a live System SuperAdmin can open the read-only report.
+            var deniedHttp = await FeatureRegistry.TenantNavigationReadiness(
+                new TenantContext(), db, new Microsoft.AspNetCore.Http.DefaultHttpContext(),
+                CancellationToken.None);
+            Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.ForbidHttpResult>(deniedHttp);
+
             var missing = await CentralTenantNavigationReadiness.ReadAsync(db);
             Assert.False(missing.ReadyForDynamicPilot);
             Assert.Equal(6, missing.RequiredRoutes);
