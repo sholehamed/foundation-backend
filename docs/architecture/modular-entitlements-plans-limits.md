@@ -73,6 +73,18 @@ Recommended data contract (proposed): `CapabilityDefinition(Code, ModuleCode, Ki
 - Hard cap vs soft warning must be **typed** and server-enforced; warning-only limits must never be mislabeled as enforced product entitlements.
 - Read endpoints may show current usage and availability but cannot grant it. Responses can include `currentUsage`, `limit`, `remaining`, `periodEndUtc`, `source` without exposing other Tenants.
 
+### 4.1 Resource/operation-level entitlement bindings
+
+A limit may apply to a whole Module, a Resource (Controller/EndpointGroup) or a specific operation. Add optional `ResourceCode` and `ScopeKind` to the proposed CapabilityDefinition and validate the Resource belongs to its Module. A code-owned `OperationRequirement` binds `(ModuleCode, ResourceCode, PermissionCode, EndpointKey?)` to required feature(s), specific CountLimit/PeriodQuota, and allowed workflow modes. System Admin edits published typed allowance values, not executable enforcement logic.
+
+Example: `appointments/bookings/APPOINTMENTS.CREATE` requires the purchased Appointments module, an explicitly granted CREATE permission, and any `appointments.bookings.max-active` and `appointments.bookings.monthly` limits. `APPOINTMENTS.READ` on the very same Resource needs entitlement + READ grant but does not consume the CREATE quota. `staff/members/STAFF.ACTIVATE` may check an active-staff capacity predicate; it is not related to how many times the page was opened.
+
+- Requirement bindings are declared in code and checked at command execution; missing or unknown bindings cannot be constructed from arbitrary DB scripts.
+- A shared policy context records tenant, actor, module/resource/permission, operation id and time, with an explicit trusted background-operation alternative. No tenant id comes from an unverified request body.
+- A domain-specific CountLimit adapter defines the authoritative active-record predicate and SQL concurrency boundary; the shared quota engine handles usage reservations and ledger idempotency, not arbitrary SQL query expressions.
+- Read operations and UI visibility do not consume quota. A failed transactional operation must not leave a committed meter charge.
+- Record denial reasons `module-not-entitled`, `permission-not-granted`, `quota-exceeded` and `mode-unavailable` without leaking cross-Tenant data.
+
 ## 5. Workflow composition: avoid double/triple implementation
 
 Choose extension mechanism by the business consistency boundary, **not** by which Module is enabled:
