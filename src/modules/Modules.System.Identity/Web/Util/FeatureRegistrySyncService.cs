@@ -3,6 +3,11 @@ using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Modules.System.Identity.Application.Abstractions;
+using Modules.System.Identity.Infrastructure.Persistence.Contexts;
+using System.Data;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Modules.System.Identity.Domain.Entities;
 using System.Linq;
 
@@ -15,6 +20,9 @@ public sealed record FeatureRegistryChange(string Type, string Key, string State
 public sealed record FeatureRegistryPreview(bool CanApply, IReadOnlyList<FeatureRegistryChange> Changes)
 {
     public bool HasPending => Changes.Any(x => x.State is "Create" or "UpdateRoute");
+    // Binds an operator approval to the exact read-only SQL + live route
+    // snapshot. Never a grant, credential or deployment approval.
+    public string Fingerprint { get; init; } = "";
 }
 
 /// <summary>
@@ -50,10 +58,44 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
     }
 
     /// <summary>
-    /// Apply must be called only from an authenticated SystemAdministrator
-    /// endpoint with the explicit deployment write flag enabled.
+    /// The ONLY HTTP-facing System registry write path. Recheck the exact
+    /// operator-preview fingerprint and perform the additive Apply within
+    /// one SERIALIZABLE SQL transaction, so stale approvals cannot create
+    /// new definitions while rows/links change concurrently.
+    /// </summary>
+    public async Task<FeatureRegistryPreview> ApplyReviewedAsync(
+        string expectedFingerprint, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(expectedFingerprint) ||
+            expectedFingerprint.Length != 64 ||
+            expectedFingerprint.Any(c => !Uri.IsHexDigit(c)))
+            throw new ArgumentException("A reviewed 64-character System preview fingerprint is required.");
+
+        if (db is not IdentityDbContext relational || !relational.Database.IsSqlServer())
+            throw new InvalidOperationException("Reviewed System catalog Apply requires SQL Server.");
+
+        var strategy = relational.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await relational.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable, ct);
+            var approved = await PreviewAsync(ct);
+            if (!approved.CanApply ||
+                !string.Equals(approved.Fingerprint, expectedFingerprint,
+                    StringComparison.Ordinal))
+                return approved; // rollback, never apply a changed preview
+
+            if (approved.HasPending)
+                await ApplyAsync(ct); // same transaction + DbContext/SQL connection
+            await transaction.CommitAsync(ct);
+            return approved;
+        });
+    }
+
+    /// <summary>
+    /// Low-level additive Apply for isolated data fixtures and integration
+    /// setup. Production HTTP must use ApplyReviewedAsync, never this method.
     /// One SaveChanges transaction inserts definitions and links.
-    /// Unique SQL constraints still protect concurrent reconciliations.
     /// </summary>
     public async Task<FeatureRegistryPreview> ApplyAsync(CancellationToken ct = default)
     {
@@ -462,6 +504,50 @@ public sealed class FeatureRegistrySyncService(IIdentityDbContext db, EndpointDa
         }
 
         var canApply = !changes.Any(x => x.State == "Conflict");
-        return new FeatureRegistryPreview(canApply, changes);
+        return new FeatureRegistryPreview(canApply, changes)
+        {
+            Fingerprint = Fingerprint(db, discovered, changes)
+        };
+    }
+
+    private static string Fingerprint(
+        State snapshot, IReadOnlyList<DiscoveredApi> discovered,
+        IReadOnlyList<FeatureRegistryChange> changes)
+    {
+        // Explicitly include all central DB rows + their reviewed live
+        // endpoint descriptors, not just the Plan's Create/Present labels.
+        // Moving a link, toggling IsActive or changing routes without altering
+        // a change-state must still invalidate a previously approved token.
+        // No User/Role grants, credential material or Tenant data is emitted.
+        var input = new
+        {
+            version = 1,
+            changes = changes.OrderBy(x => x.Type).ThenBy(x => x.Key)
+                .Select(x => new { x.Type, x.Key, x.State, x.Detail }),
+            discovered = discovered.OrderBy(x => x.Key).ThenBy(x => x.Route)
+                .Select(x => new { x.Key, x.ResourceCode, x.PermissionCode, x.Route, x.Method, x.AllowAnonymous }),
+            modules = snapshot.Modules.OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.Code, x.IsActive, x.RowVersion }),
+            resources = snapshot.Resources.OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.ModuleId, x.Code, x.IsActive, x.RowVersion }),
+            permissions = snapshot.Permissions.OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.Code, x.ResourceId, x.IsActive, x.RowVersion }),
+            ui = snapshot.Ui.OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.ResourceId, x.Key, x.Type, x.Description, x.IsActive, x.RowVersion }),
+            apis = snapshot.Api.OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.ResourceId, x.Key, x.HttpMethod, x.RouteTemplate, x.Source,
+                    x.IsActive, x.IsDeprecated, x.AllowAnonymous, x.RowVersion }),
+            categories = snapshot.Categories.OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.Title, x.IsActive, x.RowVersion }),
+            menus = snapshot.Menus.OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.CategoryId, x.ParentId, x.PermissionId, x.Route,
+                    x.ExternalUrl, x.IsActive, x.IsHidden, x.RowVersion }),
+            uiLinks = snapshot.UiLinks.OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.PermissionId, x.UiResourceId, x.RowVersion }),
+            apiLinks = snapshot.ApiLinks.OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.PermissionId, x.ApiResourceId, x.RowVersion })
+        };
+        return Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes(JsonSerializer.Serialize(input))));
     }
 }
