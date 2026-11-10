@@ -1,3 +1,9 @@
+## FR-14C — Tenant catalog Permission/UI link drift guard (2026-11-10)
+
+- Central Tenant Permission Catalog Preview now rejects foreign and extra `PermissionUiResource` links on either end of its 17 PAGE/ACTION definitions; fingerprints include all adjacent links, so a stale approved Apply cannot hide a new foreign mapping. Central Tenant Navigation Readiness rejects PAGE UI links other than the exact intended single Permission.
+- Added disposable SQL Server adversarial regression: live cross-linked Roles/Members PAGE, stale fingerprint refusal, mismatched link with missing intended link, no automatic grant/repair, and restored readiness only after test-fixture cleanup. [Design and operator gate](development/FR-14C-TENANT-UI-LINK-INTEGRITY.md).
+- No changes to Tenant Menu authorship (System Admin only), flags, staging/production, SQL migrations or grants. **Next**: green PR-head + main CI, cross-checked full Registry/Navigation/Endpoint reports and operator-approved catalog/Menu reconciliation before dynamic navigation pilot.
+
 ## FR-14C — System Registry Preview/Apply signed HTTP denial gate (2026-11-10)
 
 - Real disposable System Admin JWT HTTP E2E now requires the Registry Preview fingerprint (64 chars) and explicitly checks 401 anonymous, 403 Tenant principals, 409 for a live System SuperAdmin while System Apply remains default-OFF, followed by an identical read-only fingerprint. No actual central write, flag or deployment. [Contract](development/FR-14C-REVIEWED-SYSTEM-REGISTRY-APPLY.md).
