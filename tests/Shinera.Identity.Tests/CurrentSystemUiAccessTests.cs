@@ -193,7 +193,7 @@ public sealed class CurrentSystemUiAccessTests
     }
 
     [Fact]
-    public async Task Snapshot_contains_all_13_roots_32_pages_9_actions_and_fails_closed_without_grants()
+    public async Task Snapshot_contains_all_14_roots_32_pages_9_actions_and_fails_closed_without_grants()
     {
         await using var db = await DbAsync();
         await RegisterAsync(db);
@@ -205,11 +205,11 @@ public sealed class CurrentSystemUiAccessTests
         var snapshot = await service.GetSnapshotAsync(Principal(user));
         Assert.NotNull(snapshot);
         Assert.Equal(2, snapshot.SchemaVersion);
-        Assert.Equal(81, snapshot.Entries.Count);
-        Assert.Equal(45, snapshot.Entries.Count(x => x.Type == "PAGE"));
+        Assert.Equal(82, snapshot.Entries.Count);
+        Assert.Equal(46, snapshot.Entries.Count(x => x.Type == "PAGE"));
         Assert.Equal(36, snapshot.Entries.Count(x => x.Type == "ACTION"));
         Assert.All(snapshot.Entries, x => Assert.False(x.Allowed));
-        Assert.Equal(81, snapshot.Entries.Select(x => x.Key)
+        Assert.Equal(82, snapshot.Entries.Select(x => x.Key)
             .Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Contains(snapshot.Entries, x => x.Key == "system.roles.permissions" &&
             x.Route == "/system/roles/:roleId/permissions" && !x.Allowed);

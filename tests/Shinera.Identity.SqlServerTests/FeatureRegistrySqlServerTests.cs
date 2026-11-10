@@ -58,7 +58,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Single(await db.UserRoles.IgnoreQueryFilters(["tenant"])
                 .Where(x => x.TenantId == master && x.UserId == admin.Id &&
                     x.RoleId == role.Id).ToListAsync());
-            Assert.Equal(13, await db.Menus.CountAsync(x =>
+            Assert.Equal(14, await db.Menus.CountAsync(x =>
                 x.IsActive && x.Route != null &&
                 x.Route.StartsWith("/system/")));
 
@@ -158,8 +158,8 @@ public sealed class FeatureRegistrySqlServerTests
             var accepted = await registry.ApplyReviewedAsync(preview.Fingerprint);
             Assert.True(accepted.CanApply);
             Assert.Equal(preview.Fingerprint, accepted.Fingerprint);
-            Assert.Equal(13, await db.Resources.CountAsync());
-            Assert.Equal(13, await db.Menus.CountAsync());
+            Assert.Equal(14, await db.Resources.CountAsync());
+            Assert.Equal(14, await db.Menus.CountAsync());
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
 
@@ -169,7 +169,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.NotEqual(preview.Fingerprint, stable.Fingerprint);
             var stale = await registry.ApplyReviewedAsync(preview.Fingerprint);
             Assert.NotEqual(preview.Fingerprint, stale.Fingerprint);
-            Assert.Equal(13, await db.Menus.CountAsync());
+            Assert.Equal(14, await db.Menus.CountAsync());
 
             // A change to an already Present row must invalidate the token,
             // even if the change-state remains Present (no new records).
@@ -181,13 +181,13 @@ public sealed class FeatureRegistrySqlServerTests
             var rejected = await registry.ApplyReviewedAsync(stable.Fingerprint);
             Assert.NotEqual(stable.Fingerprint, rejected.Fingerprint);
             Assert.False((await db.UiResources.SingleAsync(x => x.Id == page.Id)).IsActive);
-            Assert.Equal(13, await db.Menus.CountAsync());
+            Assert.Equal(14, await db.Menus.CountAsync());
 
             // Repeating the approved no-pending snapshot is idempotent.
             var repeat = await registry.ApplyReviewedAsync(changed.Fingerprint);
             Assert.False(repeat.HasPending);
             Assert.True(repeat.CanApply);
-            Assert.Equal(13, await db.Menus.CountAsync());
+            Assert.Equal(14, await db.Menus.CountAsync());
         });
     }
 
@@ -204,10 +204,10 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Empty(await db.UiResources.AsNoTracking().ToListAsync());
 
             await registry.ApplyAsync();
-            Assert.Equal(13, await db.Resources.CountAsync());
-            Assert.Equal(13, await db.Menus.CountAsync());
-            Assert.Equal(81, await db.UiResources.CountAsync());
-            Assert.Equal(81, await db.PermissionUiResources.CountAsync());
+            Assert.Equal(14, await db.Resources.CountAsync());
+            Assert.Equal(14, await db.Menus.CountAsync());
+            Assert.Equal(82, await db.UiResources.CountAsync());
+            Assert.Equal(82, await db.PermissionUiResources.CountAsync());
             Assert.Equal(68, FeatureRegistryDefinitions.UiElements.Count);
             foreach (var descriptor in FeatureRegistryDefinitions.UiElements)
             {
@@ -237,8 +237,8 @@ public sealed class FeatureRegistrySqlServerTests
                 x.Id == preservedId);
             Assert.Equal("Operator-owned title", result.Title);
             Assert.False(result.IsActive);
-            Assert.Equal(81, await db.UiResources.CountAsync());
-            Assert.Equal(13, await db.Menus.CountAsync());
+            Assert.Equal(82, await db.UiResources.CountAsync());
+            Assert.Equal(14, await db.Menus.CountAsync());
         });
     }
 
@@ -253,8 +253,8 @@ public sealed class FeatureRegistrySqlServerTests
                     new DefaultEndpointDataSource([]));
                 Assert.True((await registry.PreviewAsync()).CanApply);
                 await registry.ApplyAsync();
-                Assert.Equal(81, await db.UiResources.CountAsync());
-                Assert.Equal(13, await db.Menus.CountAsync());
+                Assert.Equal(82, await db.UiResources.CountAsync());
+                Assert.Equal(14, await db.Menus.CountAsync());
                 await transaction.RollbackAsync();
             }
 
@@ -298,7 +298,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Equal(systemCodes.Count, assigned.Count);
             Assert.True(assigned.ToHashSet(StringComparer.Ordinal).SetEquals(systemCodes));
             Assert.DoesNotContain(assigned, x => x.StartsWith("TENANT."));
-            Assert.Equal(13, await db.Menus.CountAsync(x =>
+            Assert.Equal(14, await db.Menus.CountAsync(x =>
                 x.Route != null && x.Route.StartsWith("/system/")));
             Assert.Equal(6, await db.Menus.CountAsync(x =>
                 x.Route != null && x.Route.StartsWith("/dashboard")));
@@ -374,7 +374,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Contains("tenant_navigation_not_ready", assessed.BlockingChecks);
             Assert.Contains("system_endpoints_not_ready", assessed.BlockingChecks);
             Assert.False(assessed.CentralCatalogConsistent);
-            Assert.Equal(13, await db.Menus.CountAsync()); // System-only menus
+            Assert.Equal(14, await db.Menus.CountAsync()); // 14 System-only menus
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             var again = await CentralAccessReadiness.ReadAsync(db, source);
@@ -458,7 +458,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.True(green.SystemEndpoints.Ready);
             Assert.Equal(6, green.TenantNavigation.Observed);
             Assert.Equal(1, green.SystemEndpoints.Observed);
-            Assert.Equal(19, await db.Menus.CountAsync()); // 13 System + 6 Tenant
+            Assert.Equal(20, await db.Menus.CountAsync()); // 14 System + 6 Tenant
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
 
@@ -894,7 +894,7 @@ public sealed class FeatureRegistrySqlServerTests
             var wrongVerb = await SystemEndpointRegistryIntegrity.ReadAsync(db, source);
             Assert.Contains("api_route_or_verb_mismatch",
                 Assert.Single(wrongVerb.Endpoints).Issues);
-            Assert.Equal(13, await db.Menus.CountAsync());
+            Assert.Equal(14, await db.Menus.CountAsync());
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
 
             var http = new Microsoft.AspNetCore.Http.DefaultHttpContext();

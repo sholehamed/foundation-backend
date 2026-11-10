@@ -25,10 +25,10 @@ def source_manifest(sources=None, feature=None, tenant=None):
 class ProductResourceInventoryTests(unittest.TestCase):
     def test_all_13_real_system_resources_and_registered_endpoints_present(self):
         result = generate()
-        self.assertEqual(result["counts"]["systemResources"], 13)
+        self.assertEqual(result["counts"]["systemResources"], 14)
         self.assertGreaterEqual(result["counts"]["systemEndpointRegistrations"], 75)
         self.assertEqual(
-            len({x["resourceCode"] for x in result["systemResources"]}), 13)
+            len({x["resourceCode"] for x in result["systemResources"]}), 14)
         self.assertFalse(result["commercialEntitlementEnforced"])
         self.assertTrue(all(x["moduleCode"] == "system"
                             for x in result["systemResources"]))

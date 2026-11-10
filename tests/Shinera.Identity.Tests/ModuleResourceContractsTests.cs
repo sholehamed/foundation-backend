@@ -6,13 +6,13 @@ namespace Shinera.Identity.Tests;
 public sealed class ModuleResourceContractsTests
 {
     [Fact]
-    public void Current_sources_define_13_System_resources_and_separate_Tenant_core()
+    public void Current_sources_define_14_System_resources_and_separate_Tenant_core()
     {
         var registry = ModuleResourceContracts.Current();
         Assert.Empty(ModuleResourceContracts.Validate(registry));
 
         var system = registry.Where(x => x.ModuleCode == "system").ToArray();
-        Assert.Equal(13, system.Length);
+        Assert.Equal(14, system.Length);
         Assert.All(system, x =>
             Assert.Equal(ModuleProductClass.PlatformCore, x.ProductClass));
 

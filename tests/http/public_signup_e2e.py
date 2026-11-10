@@ -58,7 +58,7 @@ SYSTEM_ROOTS = {
     "/system/roles", "/system/groups", "/system/permissions",
     "/system/tenants", "/system/modules", "/system/resources",
     "/system/api-resources", "/system/ui-resources",
-    "/system/menu-management", "/system/feature-registry",
+    "/system/menu-management", "/system/feature-registry", "/system/plan-catalog",
 }
 TENANT_ROOTS = {
     "/dashboard", "/dashboard/business", "/dashboard/branches",
@@ -79,7 +79,7 @@ def main():
     ), "Requires disposable local Development SQL, not remote Staging"
 
     # First login: System Admin must see the COMPLETE code-owned System
-    # sidebar and the 13 root PAGE decisions, no self-assignment action.
+    # sidebar and the 14 root PAGE decisions, no self-assignment action.
     status, proof = request("GET", "/api/system/Auth/captcha/new")
     assert status == 200 and proof.get("token")
     status, system_login = request("POST", "/api/system/Auth/login", {
@@ -94,8 +94,8 @@ def main():
     status, system_menu = request("GET", "/api/system/Menus/me", token=system_token)
     assert status == 200 and isinstance(system_menu, list), status
     system_routes = menu_routes(system_menu)
-    assert set(system_routes) == SYSTEM_ROOTS and len(system_routes) == 13, (
-        "Initial System admin MUST see all 13 code-owned roots, without duplicates")
+    assert set(system_routes) == SYSTEM_ROOTS and len(system_routes) == 14, (
+        "Initial System admin MUST see all 14 code-owned roots, without duplicates")
     status, system_access = request("GET", "/api/system/UiAccess/me", token=system_token)
     assert status == 200 and system_access.get("entries"), status
     actual_allowed_roots = {
@@ -197,7 +197,7 @@ def main():
     payload["captchaToken"] = captcha()
     status, duplicated = request("POST", "/api/public/signup/checkout", payload)
     assert status == 409, (status, duplicated)
-    print("PASS: FIRST System Admin login has all 13 System menus/PAGE rights; FIRST newly signed-up Tenant Owner has six menus, 17 PAGE/ACTION rights, full management APIs. No self-grant, no System/Tenant crossover or duplicate signup.")
+    print("PASS: FIRST System Admin login has all 14 System menus/PAGE rights; FIRST newly signed-up Tenant Owner has six menus, 17 PAGE/ACTION rights, full management APIs. No self-grant, no System/Tenant crossover or duplicate signup.")
 
 
 if __name__ == "__main__":
