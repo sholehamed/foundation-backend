@@ -28,3 +28,10 @@ To get a clean development environment, start with an isolated SQL Server databa
 Do not edit sample Menu or Permission arrays in `DefaultSeedData` (there are none). To add a System page, add reviewed metadata to `FeatureRegistryDefinitions` and corresponding Angular route/API policies. To add a Tenant feature, update `TenantWorkspacePermissionCatalog`, reviewed Tenant navigation definitions and tests. An existing deployed database requires operator-reviewed catalog Preview/Apply, not automatic startup re-grants.
 
 **Evidence:** PR CI and post-merge full-stack Actions runs recorded in this change's PR.
+
+## Post-merge FR-16B fixture regression and correction (2026-11-10)
+
+The initial `main` full-stack run [#42817893082](https://github.com/sholehamed/foundation-backend/actions/runs/42817893082) uncovered a mismatch in the **disposable E2E fixture**, not the production signup flow. The real `PublicSignup` already grants the new Owner 17 centrally defined Tenant permissions; however `SqlMutator seed-tenant-iam` constructed an artificial legacy Owner without RolePermissions. That Owner passed the legacy permission evaluator but its dynamic navigation correctly showed only the three baseline routes. A stricter Chromium assertion for all six exposed the difference.
+
+Resolution: the isolated SQL fixture now creates the same **17 exact active, globally owned Tenant RolePermissions** as actual new signup. It must reject partial/foreign preexisting Owner assignments, must not seed any System permissions, and must leave staff role-free. The signed HTTP suite asserts all six Owner menu roots versus the three public staff roots before any grants; Chromium continues to assert the exact six as well as grant/revocation. No application seed, production Tenant or real-world grant is altered by this test fixture correction. Never weaken the actual navigation assertion to hide a missing seeded grant.
+
