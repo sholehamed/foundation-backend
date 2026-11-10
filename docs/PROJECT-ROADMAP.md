@@ -1,3 +1,8 @@
+## FR-14C — strict System feature Permission/Resource ownership (2026-11-10)
+
+- Fixed a central authorization drift gap: neither System UI nor the default-OFF granular System endpoint guard may treat a bare/foreign/duplicate Permission.Code as centrally owned. Both now require an active code-owned Resource+Module and exact Permission.ResourceId, with duplicate codes denied. No flag activation, grants, DB migration, Staging or Production changes.
+- Unit regressions cover null, foreign, inactive and duplicate ownership; [detailed security boundary](development/FR-14C-SYSTEM-FEATURE-OWNERSHIP-AUTHORIZATION.md). Next: green CI, operator-preview Apply freshness, then review live central Registry/Navigation readiness before any dynamic sidebar pilot.
+
 ## FR-15B — live GitHub Actions HTTPS/SQL/Chromium two-Tenant acceptance (2026-11-10)
 
 - Added live Chromium negative checks: a real Tenant Owner BFF cookie cannot access three System-only central Registry diagnostics (403), and must be denied on the second Tenant host's protected Members API (401/403). Existing Code+PKCE, CSRF, cookies and live grants/revoke tests remain intact.
