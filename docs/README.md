@@ -10,6 +10,9 @@
 
 - [ADR-0001 — Full BFF for browser clients](decisions/ADR-0001-browser-bff.md)
 - [BFF implementation design](architecture/browser-bff.md)
+- [FR-17A architecture — Modules/Resources, entitlement, plans, limits and extensible workflows](architecture/modular-entitlements-plans-limits.md)
+- [FR-17A delivery handoff — inventory, slices, gates and permanent acceptance tests](development/FR-17A-MODULAR-ENTITLEMENTS-HANDOFF.md)
+- [ADR-0002 — Proposed separation of commercial entitlements and tenant RBAC](decisions/ADR-0002-commercial-entitlement-vs-authorization.md)
 - [Feature Registry & Authorization — proposed design and phased handoff](architecture/feature-registry-authorization.md)
 - [FR-04A current-user navigation API contract](architecture/current-user-navigation.md)
 - [FR-01A — Identity catalog inventory and Menu read contract](development/FR-01A-IDENTITY-CATALOG-AND-MENU-CONTRACT.md)
