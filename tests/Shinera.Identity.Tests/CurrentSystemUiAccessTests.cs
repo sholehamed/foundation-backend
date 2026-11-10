@@ -149,6 +149,17 @@ public sealed class CurrentSystemUiAccessTests
         await db.SaveChangesAsync();
         Assert.True(await access.IsAllowedAsync(principal, "system.roles"));
 
+        // A second identical code under another Resource must not let the
+        // evaluator pick whichever definition happens to match the UI row.
+        var shadow = new Permission(Guid.NewGuid(), "ROLES.READ", foreign.Id,
+            "Foreign duplicate", null) { IsActive = true, RowVersion = [1] };
+        db.Permissions.Add(shadow);
+        await db.SaveChangesAsync();
+        Assert.False(await access.IsAllowedAsync(principal, "system.roles"));
+        db.Permissions.Remove(shadow);
+        await db.SaveChangesAsync();
+        Assert.True(await access.IsAllowedAsync(principal, "system.roles"));
+
         correct.IsActive = false;
         await db.SaveChangesAsync();
         Assert.False(await access.IsAllowedAsync(principal, "system.roles"));
