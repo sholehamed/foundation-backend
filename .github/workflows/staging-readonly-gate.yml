@@ -1,0 +1,105 @@
+name: FR-15A Staging read-only two-Tenant readiness
+
+# This workflow NEVER deploys, authenticates, applies migrations/catalogs,
+# mutates data, or enables a feature flag. Operator must supply a real,
+# non-secret manifest via repository Actions variable for live checks.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'offline = example manifest; probe = approved deployed Staging'
+        type: choice
+        options:
+          - offline
+          - probe
+        default: offline
+        required: true
+      confirmation:
+        description: 'For probe, enter PROBE_ISOLATED_STAGING exactly'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fr15a-staging-readonly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  staged-anonymous-probe:
+    if: github.repository == 'sholehamed/foundation-backend' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Do NOT store secrets in this JSON. It is a set of public HTTPS origins
+      # and non-secret feature flags. If unset, live probe MUST fail closed.
+      FOUNDATION_STAGING_MANIFEST_JSON: ${{ vars.FOUNDATION_STAGING_MANIFEST_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Offline staging regression and manifest schema checks
+        run: |
+          python3 -m unittest discover -s scripts/staging -p 'test_*.py' -v
+
+      - name: Prepare approved NON-SECRET Staging manifest
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          if [[ "$MODE" == 'offline' ]]; then
+            cp scripts/staging/staging.example.json /tmp/foundation-staging-manifest.json
+          elif [[ "$MODE" == 'probe' ]]; then
+            if [[ "$CONFIRMATION" != 'PROBE_ISOLATED_STAGING' ]]; then
+              echo "::error::Explicit isolated Staging approval phrase is required"
+              exit 1
+            fi
+            if [[ -z "$FOUNDATION_STAGING_MANIFEST_JSON" ]]; then
+              echo "::error::Missing repository variable FOUNDATION_STAGING_MANIFEST_JSON"
+              exit 1
+            fi
+            python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          payload = os.environ["FOUNDATION_STAGING_MANIFEST_JSON"]
+          if len(payload) > 16384:
+              raise SystemExit("Staging manifest exceeds 16 KiB")
+          try:
+              obj = json.loads(payload)
+          except ValueError as exc:
+              raise SystemExit("Staging manifest is not valid JSON") from exc
+          Path("/tmp/foundation-staging-manifest.json").write_text(
+              json.dumps(obj, separators=(",", ":")), encoding="utf-8")
+          PY
+          else
+            echo "::error::Unsupported Staging gate mode"
+            exit 1
+          fi
+
+      - name: Validate Staging manifest without network access
+        run: |
+          python3 scripts/staging/preflight.py \
+            --config /tmp/foundation-staging-manifest.json \
+            --evidence /tmp/foundation-staging-readiness.json
+
+      - name: Execute strictly anonymous HTTPS GET probes (opt-in only)
+        if: inputs.mode == 'probe'
+        run: |
+          python3 scripts/staging/preflight.py \
+            --config /tmp/foundation-staging-manifest.json \
+            --probe \
+            --evidence /tmp/foundation-staging-readiness.json
+
+      - name: Publish sanitized readiness evidence (never manifest/credentials)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr15a-staging-readonly-evidence
+          path: /tmp/foundation-staging-readiness.json
+          if-no-files-found: error
+          retention-days: 14
