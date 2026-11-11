@@ -244,7 +244,7 @@ def main() -> None:
 
     # FR-18E1: exercise the real System-only REST facade, not just Tempo
     # directly. No browser may receive a Tempo endpoint, raw OTLP or SQL.
-    public = BASE + "/api/system/control-tower/traces/" + trace_id
+    public = BASE + "/api/System/ControlTower/traces/" + trace_id
     code, _, _ = http("GET", public)
     assert code == 401, "Anonymous trace access must be unauthorized"
     code, projected, _ = http("GET", public, headers={
@@ -258,7 +258,7 @@ def main() -> None:
     assert UNSAFE_SENTINEL not in projected.decode("utf-8")
     assert "Bearer " not in projected.decode("utf-8")
     assert "db.statement" not in projected.decode("utf-8")
-    code, _, _ = http("GET", BASE + "/api/system/control-tower/traces/not-a-trace",
+    code, _, _ = http("GET", BASE + "/api/System/ControlTower/traces/not-a-trace",
                       headers={"Authorization": "Bearer " + token})
     assert code == 400, "Malformed trace lookup should be rejected"
     print("PASS: live System trace facade is read-only, authorized and sanitized",
