@@ -1,5 +1,7 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Data.SqlClient;
 using Modules.System.Identity.Application.Abstractions;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 
@@ -18,6 +20,25 @@ public sealed record CommercialCountRequirement(
 /// never a price, client-supplied counter or caller-selected billing window.
 /// </summary>
 public sealed record CommercialQuotaRequirement(string CapabilityCode, long Units);
+
+/// <summary>
+/// Access to a single, open SQL Server transaction shared with the licensing
+/// DbContext. A module may create its own EF Core DbContext using Connection
+/// and enlist via Database.UseTransactionAsync(Transaction). Never connect
+/// separately or commit/rollback this transaction from the module.
+/// </summary>
+public sealed record CommercialModuleSqlUnitOfWork(
+    SqlConnection Connection, SqlTransaction Transaction);
+
+/// <summary>
+/// A source-owned module's active entity count. No IdentityDbContext is
+/// exposed, so a business module can count through its own DbContext/Dapper
+/// using precisely the transaction managed by the central executor.
+/// </summary>
+public sealed record CommercialModuleCountRequirement(
+    string CapabilityCode, long Delta,
+    Func<CommercialModuleSqlUnitOfWork, CancellationToken, Task<long>>
+        ReadAuthoritativeCount);
 
 public sealed record CommercialOperationResult(bool Committed, string Code,
     string? CapabilityCode = null);
@@ -43,6 +64,53 @@ public sealed class TenantCommercialOperationExecutor(
 
     private static CommercialOperationResult Denied(string code, string? capability = null) =>
         new(false, code, capability);
+
+    /// <summary>
+    /// FR-17C-3C shared-connection boundary for a module with its OWN
+    /// DbContext. No data-model dependency on IdentityDbContext leaks into
+    /// the module; both contexts must enlist in the same SqlTransaction.
+    /// The existing core ExecuteAsync remains for current callers.
+    ///
+    /// The module callback must flush its own SaveChangesAsync before
+    /// returning. Transaction commit remains exclusively Foundation-owned.
+    /// </summary>
+    public Task<CommercialOperationResult> ExecuteModuleAsync(
+        string endpointKey,
+        string idempotencyKey,
+        IReadOnlyCollection<CommercialModuleCountRequirement> counts,
+        IReadOnlyCollection<CommercialQuotaRequirement> quotas,
+        Func<CommercialModuleSqlUnitOfWork, CancellationToken, Task> applyModuleWrite,
+        string? selectedMode = null,
+        CancellationToken ct = default)
+    {
+        if (counts is null || quotas is null || applyModuleWrite is null ||
+            counts.Any(c => c.ReadAuthoritativeCount is null))
+            return Task.FromResult(Denied("invalid_module_adapter"));
+
+        var adapted = counts.Select(requirement => new CommercialCountRequirement(
+            requirement.CapabilityCode, requirement.Delta,
+            (identity, token) => requirement.ReadAuthoritativeCount(
+                GetSharedUnitOfWork(identity), token))).ToArray();
+
+        return ExecuteAsync(endpointKey, idempotencyKey, adapted, quotas,
+            (identity, token) =>
+                applyModuleWrite(GetSharedUnitOfWork(identity), token),
+            selectedMode, ct);
+    }
+
+    private static CommercialModuleSqlUnitOfWork GetSharedUnitOfWork(
+        IdentityDbContext identity)
+    {
+        if (identity.Database.CurrentTransaction?.GetDbTransaction()
+                is not SqlTransaction transaction ||
+            identity.Database.GetDbConnection() is not SqlConnection connection ||
+            transaction.Connection != connection ||
+            transaction.IsolationLevel != IsolationLevel.Serializable)
+            throw new InvalidOperationException(
+                "Commercial module must share the active serializable SQL transaction.");
+
+        return new(connection, transaction);
+    }
 
     /// <summary>
     /// The operation key must be the code-owned EndpointKey (never supplied by
