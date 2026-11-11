@@ -37,30 +37,25 @@ class SecurityInventoryTests(unittest.TestCase):
         self.assertTrue(all(r.security_boundary != "SYSTEM_ADMIN_PLUS_GRANULAR_OPT_IN"
                             for r in rows))
 
-    def test_host_tower_requires_both_privileged_auth_and_throttle(self):
+    def test_control_tower_uses_central_SystemAdministrator_group(self):
         data = sources()
-        tower = data["ControlTowerEndpoints"]
-        self.assertIn('.RequireAuthorization("SystemAdministrator")', tower)
-        self.assertIn('.RequireRateLimiting("control-tower-trace-read")', tower)
-        for missing in [
-            '.RequireAuthorization("SystemAdministrator")',
-            '.RequireRateLimiting("control-tower-trace-read")',
-        ]:
-            compromised = dict(data)
-            compromised["ControlTowerEndpoints"] = tower.replace(missing, "", 1)
-            with self.assertRaisesRegex(
-                    AuditError, "Control Tower host route lacks exact System"):
-                validate(compromised)
+        tower = data["ControlTower"]
+        self.assertIn('app.MapGroup(this).RequireAuthorization("SystemAdministrator")', tower)
+        compromised = dict(data)
+        compromised["ControlTower"] = tower.replace(
+            '.RequireAuthorization("SystemAdministrator")', '', 1)
+        with self.assertRaisesRegex(AuditError, "System group lost SystemAdministrator"):
+            validate(compromised)
 
-    def test_host_tower_metadata_cannot_be_removed(self):
+    def test_control_tower_permission_owner_mismatch_is_blocked(self):
         data = sources()
-        original = data["ControlTowerEndpoints"]
-        altered = original.replace(
-            '.WithFeatureEndpoint(\n                "SYSTEM.CONTROL-TOWER.TRACE-DETAIL", "control-tower",',
-            '.WithTags(\n                "SYSTEM.CONTROL-TOWER.TRACE-DETAIL", "control-tower",', 1)
-        self.assertNotEqual(altered, original)
-        data["ControlTowerEndpoints"] = altered
-        with self.assertRaisesRegex(AuditError, "missing registered System feature metadata"):
+        tower = data["ControlTower"]
+        altered = tower.replace(
+            '"SYSTEM.CONTROL-TOWER.TRACE-DETAIL", "control-tower",',
+            '"SYSTEM.CONTROL-TOWER.TRACE-DETAIL", "roles",', 1)
+        self.assertNotEqual(altered, tower)
+        data["ControlTower"] = altered
+        with self.assertRaisesRegex(AuditError, "Unregistered/wrong-resource"):
             validate(data)
 
     def test_new_system_endpoint_without_metadata_is_blocked(self):
