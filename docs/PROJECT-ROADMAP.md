@@ -1,3 +1,9 @@
+## FR-17B-2C — Published PlanVersion immutability hardening (2026-11-11)
+
+- [Backend PR #132](https://github.com/sholehamed/foundation-backend/pull/132): SQL Server DML triggers for Plan/PlanVersion plus all four version-owned detail tables; draft-only editing and Draft→Published publication preserved; multi-row atomic rejection and direct SQL modification regressions; EF model and snapshot carry matching trigger metadata. [Handoff](development/FR-17B2C-IMMUTABLE-PLAN-SNAPSHOTS.md).
+- [Angular PR #62](https://github.com/sholehamed/foundation-frontend/pull/62): Published Plan shows locked/revision-only UX and tests. No new permission or endpoint.
+- Next before sale: trusted/restricted SQL publication + separate audited sale-availability/retirement model; code-owned real Commercial Module EndpointGroups, typed capability enforcement and first active Plan example; existing Master Registry Apply/RolePermission rollout. Then FR-17C Subscriber source of truth + effective entitlements, FR-17D Limit/Quota, FR-17E discount/zero-total/payment. No paywall/Grant during Plan catalog work.
+
 ## FR-17B-2B — System Plan Catalog draft/publish + Angular System Admin (2026-11-10)
 
 - [PR #131](https://github.com/sholehamed/foundation-backend/pull/131) adds central `plan-catalog` Resource with four fine-grained System permissions and initial System Admin navigation/grants on **fresh install only**. Adds typed draft read/edit/version creation and reviewed hash-bound SQL Server publication endpoints, no tenant purchase or user grants. [Detailed implementation and security caveats](development/FR-17B2B-SYSTEM-PLAN-CATALOG-ADMIN.md).
