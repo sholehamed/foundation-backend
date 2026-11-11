@@ -1,3 +1,8 @@
+## FR-17D-2B — Read-only authoritative tenant usage and subscription cadence (2026-11-11)
+
+- Source-owned optional `QuotaPeriodCadence` (subscription term/monthly/yearly anniversary), UTC immutable start anchor and clipped subscription end. Read-only SQL projection of `TenantUsageBalances` scoped to signed current HomeTenant, current settled Subscription, owner-only GET route; uses explicit null for unmeasured CountLimits and missing cadence, 0 for no committed balance, SQL period mismatch denial. No new SQL schema/grants or fake commercial Modules. [Acceptance and API contract](development/FR-17D2B-SUBSCRIPTION-USAGE-PROJECTION.md).
+- Next: consume API in Angular for owner-only live meters, but no write authorization from UI; code-owned transactional operation executor binding verified Subscription window + grant + atomic CountLimit/Quota to business writes and two-Tenant signed HTTP tests; renewal/proration and async Reservations later.
+
 ## FR-17C-3A — Subscription AND delegated permission and typed capability preflight (2026-11-11)
 
 - Source-owned `TenantCommercialOperationPreflight` combines live persisted Resource/Permission, scoped Tenant-user grants, actual settled Subscription, and typed Features/Modes. It never maps an inactive commercial module or expired subscription to a permission; explicitly returns `MeteringRequired` for CountLimit/PeriodQuota with no invented usage. Added disposable SQL two-Tenant negative/positive tests. [Handoff](development/FR-17C3A-COMMERCIAL-OPERATION-PREFLIGHT.md).
