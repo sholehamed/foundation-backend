@@ -161,8 +161,8 @@ public sealed class TenantUsageProjectionSqlTests
             var initial = Assert.Single(emptyA.Items,
                 x => x.Code == "appointments.monthly");
             Assert.Equal("Measured", initial.State);
-            Assert.Equal(0, initial.CurrentUsage);
-            Assert.Equal(5, initial.Remaining);
+            Assert.Equal("0", initial.CurrentUsage);
+            Assert.Equal("5", initial.Remaining);
             Assert.Equal(currentWindow.StartUtc, initial.PeriodStartUtc);
             Assert.Equal(currentWindow.EndUtc, initial.PeriodEndUtc);
 
@@ -198,17 +198,17 @@ public sealed class TenantUsageProjectionSqlTests
 
             var aResult = await Read(actorA.Id, a.Id);
             var am = Assert.Single(aResult.Items, x => x.Code == "appointments.monthly");
-            Assert.Equal(3, am.CurrentUsage);
-            Assert.Equal(2, am.Remaining);
+            Assert.Equal("3", am.CurrentUsage);
+            Assert.Equal("2", am.Remaining);
             Assert.False(am.IsUnlimited);
             var au = Assert.Single(aResult.Items, x => x.Code == "appointments.unlimited");
-            Assert.Equal(7, au.CurrentUsage);
+            Assert.Equal("7", au.CurrentUsage);
             Assert.True(au.IsUnlimited);
             Assert.Null(au.Limit);
             Assert.Null(au.Remaining);
             var count = Assert.Single(aResult.Items, x => x.Code == "appointments.max-active");
             Assert.Equal("DomainCountUnavailable", count.State);
-            Assert.Equal(2, count.Limit);
+            Assert.Equal("2", count.Limit);
             Assert.Null(count.CurrentUsage);
             Assert.Null(count.Remaining);
             var noCadence = Assert.Single(aResult.Items, x => x.Code == "appointments.no-cadence");
@@ -217,7 +217,7 @@ public sealed class TenantUsageProjectionSqlTests
             Assert.Null(noCadence.PeriodStartUtc);
 
             var bResult = await Read(actorB.Id, b.Id);
-            Assert.Equal(1, Assert.Single(bResult.Items,
+            Assert.Equal("1", Assert.Single(bResult.Items,
                 x => x.Code == "appointments.monthly").CurrentUsage);
             var cContext = Context(Guid.NewGuid(), notSubscribed.Id);
             await using (var scoped = new IdentityDbContext(options, cContext))
