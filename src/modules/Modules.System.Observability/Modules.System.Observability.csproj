@@ -9,4 +9,7 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../shared/Infrastructure.Sharedkernel/Infrastructure.Sharedkernel.csproj" />
+  </ItemGroup>
 </Project>
