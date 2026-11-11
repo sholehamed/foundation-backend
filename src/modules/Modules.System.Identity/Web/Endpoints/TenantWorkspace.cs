@@ -39,6 +39,8 @@ public static class TenantWorkspace
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/subscription/me", GetSubscriptionShadow)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/subscription/usage", GetCurrentSubscriptionUsage)
+            .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/branches", GetBranches)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
@@ -175,6 +177,25 @@ public static class TenantWorkspace
                 u.Id == userId && u.TenantId == tenantId &&
                 u.UserType == UserType.Tenant && u.IsActive, ct) &&
             await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(current, db, ct);
+    }
+
+    /// <summary>
+    /// FR-17D-2B: Tenant OWNER only, no TenantId query parameter, no writes,
+    /// and never an authorization substitute for business commands.
+    /// </summary>
+    private static async Task<IResult> GetCurrentSubscriptionUsage(
+        ITenantContext current,
+        IdentityDbContext db,
+        HttpContext http,
+        CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await CanCheckoutAsync(current, db, ct))
+            return DeniedAfterAuthentication();
+
+        var projection = await new TenantUsageProjectionReader(db, current)
+            .ReadCurrentAsync(DateTime.UtcNow, ct);
+        return Results.Ok(projection);
     }
 
     private static async Task<IResult> GetSubscriptionShadow(
