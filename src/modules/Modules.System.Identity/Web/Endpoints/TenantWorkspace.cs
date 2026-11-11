@@ -31,6 +31,9 @@ public static class TenantWorkspace
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace", Get)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/subscription/me", GetSubscriptionShadow)
+            .RequireAuthorization()
+            .WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/branches", GetBranches)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
@@ -118,6 +121,26 @@ public static class TenantWorkspace
             .RequireAuthorization().WithTags("Tenant Workspace");
         app.MapPut($"/{backendPrefix.Trim('/')}/tenant/workspace/groups/{{id:guid}}/roles/{{roleId:guid}}", ChangeGroupRole)
             .RequireAuthorization().WithTags("Tenant Workspace");
+    }
+
+    /// <summary>
+    /// FR-17C-1 tenant-local shadow entitlement status. This is read-only
+    /// visibility, never permission enforcement or commercial activation.
+    /// </summary>
+    private static async Task<IResult> GetSubscriptionShadow(
+        ITenantContext current,
+        IdentityDbContext db,
+        HttpContext http,
+        CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (current.IsSystemContext || current.ActiveTenantId is not Guid tenantId ||
+            !current.ReadableTenantIds.Contains(tenantId))
+            return DeniedAfterAuthentication();
+
+        var snapshot = await new TenantCommercialEntitlementReader(db, current)
+            .ReadCurrentAsync(DateTime.UtcNow, ct: ct);
+        return Results.Ok(snapshot);
     }
 
     private static async Task<IResult> Get(

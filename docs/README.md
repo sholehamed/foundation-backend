@@ -1,3 +1,4 @@
+- [FR-17C-1 — Tenant Subscription/Order schema, verified-order Shadow Entitlement](development/FR-17C1-SUBSCRIPTION-SHADOW.md)
 - [FR-17B-2C — SQL Server Published Plan snapshot immutability and EF trigger-safe mapping](development/FR-17B2C-IMMUTABLE-PLAN-SNAPSHOTS.md)
 - [FR-17B-2B — System Admin Plan Catalog draft/review/publish endpoints and Angular companion](development/FR-17B2B-SYSTEM-PLAN-CATALOG-ADMIN.md)
 - [FR-17B-2A — Published Plan Cards public read API, signup intent compatibility and Angular contract](development/FR-17B2A-PUBLIC-PLAN-CARDS.md)

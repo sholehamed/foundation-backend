@@ -1,3 +1,9 @@
+## FR-17C-1 — Subscription order/source-of-truth storage and read-only shadow (2026-11-11)
+
+- [PR #134](https://github.com/sholehamed/foundation-backend/pull/134) adds tenant-isolated Order and Subscription SQL schema, one-active-per-Tenant and order-source uniqueness, IRR quote/discount arithmetic, settlement proof fields and a fail-closed shadow entitlement reader. Source-authenticated `/tenant/workspace/subscription/me` reports NoSubscription/Pending/Active/Inactive/Invalid/Unavailable but **does not enforce or grant paid permissions**. [Technical handoff](development/FR-17C1-SUBSCRIPTION-SHADOW.md).
+- [Angular #63](https://github.com/sholehamed/foundation-frontend/pull/63) shows true license status on Tenant dashboard, with no client-crafted TenantId.
+- Next: FR-17C-2 trusted scoped subscription/settlement lifecycle, SQL owner-version composite integrity and audited Orders; real code-owned commercial Module + verified Plan Catalog publication, runtime Permission AND Entitlement in shadow/flagged rollout, FR-17D atomic quotas, FR-17E fixed/100% coupon and verified zero-total checkout. No active paid Subscription is seeded or offered by current signup flow.
+
 ## FR-17B-2C — Published PlanVersion immutability hardening (2026-11-11)
 
 - [Backend PR #132](https://github.com/sholehamed/foundation-backend/pull/132): SQL Server DML triggers for Plan/PlanVersion plus all four version-owned detail tables; draft-only editing and Draft→Published publication preserved; multi-row atomic rejection and direct SQL modification regressions; EF model and snapshot carry matching trigger metadata. [Handoff](development/FR-17B2C-IMMUTABLE-PLAN-SNAPSHOTS.md).
