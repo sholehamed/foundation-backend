@@ -1,3 +1,9 @@
+## FR-18E-1 CI and test reinforcement (2026-11-12; backend PR #150)
+
+- Added SQL regression for first-login System Admin's live PAGE+TRACE effective permissions, deny precedence, revoked Trace grant remaining revoked after startup and inactive users denied.
+- Added reader regressions for 256-span truncation and private-attribute/name redaction; FR-14A audit rejects removal of Control Tower trace-read throttling.
+- Heavy PR CI now cancels superseded future runs per PR and watches the first-login test script. Check Status is only valid after GitHub actually runs jobs; no production readiness or CI-green claim until latest-head success.
+
 ## FR-18E-1 — System Control Tower first live TraceId read (2026-11-11; PR and CI pending)
 
 - Added source-owned central `system/control-tower` PlatformCore Resource, `/system/control-tower` PAGE and `CONTROL-TOWER.TRACES.READ`. Fresh first-install automatically seeds the original System SuperAdmin role's code-owned grants; **existing roles are never auto-regranted**. Tests track new System resource/menu/UI counts and ownership.

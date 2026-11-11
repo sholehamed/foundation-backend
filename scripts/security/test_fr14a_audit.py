@@ -58,6 +58,15 @@ class SecurityInventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(AuditError, "Unregistered/wrong-resource"):
             validate(data)
 
+    def test_control_tower_removing_rate_limit_fails_security_audit(self):
+        data = sources()
+        original = data["ControlTower"]
+        required = '.RequireRateLimiting("control-tower-trace-read")'
+        self.assertIn(required, original)
+        data["ControlTower"] = original.replace(required, "", 1)
+        with self.assertRaisesRegex(AuditError, "mandatory rate limiting"):
+            validate(data)
+
     def test_new_system_endpoint_without_metadata_is_blocked(self):
         data = sources()
         data["Modules"] = data["Modules"].replace(

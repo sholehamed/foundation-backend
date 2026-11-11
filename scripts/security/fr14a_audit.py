@@ -160,6 +160,11 @@ def audit_sources(endpoint_sources: dict[str, str], feature_source: str,
 
         for method, handler, body, tail in registrations:
             meta = metadata_from(body, source)
+            # Trace read remains throttled even when SystemAdministrator is live.
+            if name == "ControlTower" and (
+                    '.RequireRateLimiting("control-tower-trace-read")'
+                    not in body + tail):
+                raise AuditError("Control Tower trace endpoint lost mandatory rate limiting")
             if name in TENANT_ENDPOINT_GROUPS:
                 if name == "TenantWorkspace" and handler in PUBLIC_TENANT_HANDLERS:
                     if ".AllowAnonymous()" not in tail or ".RequireRateLimiting(" not in tail:

@@ -124,6 +124,95 @@ public sealed class ControlTowerTempoReaderTests
     }
 
     [Fact]
+    public async Task Over_256_stored_spans_explicitly_signal_partial_capture()
+    {
+        var id = new string('a', 32);
+        var spans = Enumerable.Range(1, 257).Select(i => new
+        {
+            traceId = id,
+            spanId = i.ToString("x16"),
+            parentSpanId = i == 1 ? "" : (i - 1).ToString("x16"),
+            name = "db.ef.command",
+            startTimeUnixNano = (1_810_010_000_000_000_000L +
+                                 i * 1_000_000L).ToString(),
+            endTimeUnixNano = (1_810_010_000_002_000_000L +
+                               i * 1_000_000L).ToString()
+        }).ToArray();
+        var json = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            trace = new { resourceSpans = new[]
+            {
+                new { scopeSpans = new[] { new { spans } } }
+            }}
+        });
+        var handler = new FakeHandler(_ => Json(json));
+        var result = await Create(handler).ReadAsync(id, default);
+        Assert.Equal(FoundationTempoTraceReader.ReadState.Captured, result.State);
+        Assert.NotNull(result.Data);
+        Assert.Equal("PartiallyCaptured", result.Data.State);
+        Assert.True(result.Data.Truncated);
+        Assert.Equal(256, result.Data.Spans.Count);
+        Assert.Equal("0000000000000001", result.Data.Spans[0].SpanId);
+        Assert.Equal("0000000000000100", result.Data.Spans[^1].SpanId);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task Malicious_span_labels_and_private_attributes_are_not_projected()
+    {
+        var id = new string('b', 32);
+        const string secret = "Token=FR18E_PRIVATE_SENTINEL";
+        var payload = new
+        {
+            trace = new
+            {
+                resourceSpans = new[]
+                {
+                    new
+                    {
+                        resource = new { attributes = new[]
+                        {
+                            new { key = "service.name", value = new { stringValue = secret } }
+                        }},
+                        scopeSpans = new[] { new
+                        {
+                            spans = new[] { new
+                            {
+                                traceId = id,
+                                spanId = "1111111111111111",
+                                name = "GET /secret?authorization=abcdef",
+                                startTimeUnixNano = "1810010000000000000",
+                                endTimeUnixNano = "1810010000001000000",
+                                attributes = new object[]
+                                {
+                                    new { key = "db.statement", value = new { stringValue = secret } },
+                                    new { key = "foundation.db.fingerprint", value = new { stringValue = "invalid" } },
+                                    new { key = "http.route", value = new { stringValue = "/private?token=secret" } },
+                                    new { key = "foundation.db.client", value = new { stringValue = "ef-core" } }
+                                },
+                                status = new { code = 2 }
+                            }}
+                        }}
+                    }
+                }
+            }
+        };
+        var result = await Create(new FakeHandler(_ => Json(
+            System.Text.Json.JsonSerializer.Serialize(payload))))
+            .ReadAsync(id, default);
+        Assert.Equal(FoundationTempoTraceReader.ReadState.Captured, result.State);
+        Assert.NotNull(result.Data);
+        Assert.Equal("unattributed", result.Data.Service);
+        var span = Assert.Single(result.Data.Spans);
+        Assert.Equal("http.server", span.Name);
+        Assert.True(span.Error);
+        Assert.Equal("ef-core", span.Attributes["foundation.db.client"]);
+        Assert.Single(span.Attributes);
+        Assert.DoesNotContain(secret,
+            System.Text.Json.JsonSerializer.Serialize(result.Data));
+    }
+
+    [Fact]
     public async Task Missing_and_failed_upstream_are_distinct_and_fail_closed()
     {
         var id = new string('b', 32);

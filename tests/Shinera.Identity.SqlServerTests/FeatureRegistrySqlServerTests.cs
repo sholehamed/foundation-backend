@@ -372,6 +372,77 @@ public sealed class FeatureRegistrySqlServerTests
     }
 
     [Fact]
+    public async Task Control_tower_live_grants_honor_direct_denies_and_no_restart_regrant()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            var master = DefaultSeedData.MasterTenantId;
+            db.Tenants.Add(DefaultSeedData.CreateMasterTenant());
+            await db.SaveChangesAsync();
+            Assert.True(await InitialAccessBootstrap.SeedFreshInstallAsync(db));
+            var config = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Identity:Bootstrap:InitialSystemAdmin:Enabled"] = "true",
+                    ["Identity:Bootstrap:InitialSystemAdmin:UserName"] = "tower-admin",
+                    ["Identity:Bootstrap:InitialSystemAdmin:Email"] = "tower-admin@example.test",
+                    ["Identity:Bootstrap:InitialSystemAdmin:Password"] = "StrongTowerBootstrap2026!"
+                }).Build();
+            Assert.True(await InitialSystemAdministratorBootstrap.CreateOnceAsync(
+                db, new PasswordHasher<User>(), config));
+
+            var admin = await db.Users.SingleAsync(x =>
+                x.NormalizedUserName == "TOWER-ADMIN" &&
+                x.UserType == UserType.System && x.TenantId == null);
+            var role = await db.Roles.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.TenantId == master &&
+                    x.NormalizedName == "SUPERADMIN");
+            var page = await db.Permissions.SingleAsync(x =>
+                x.Code == "CONTROL-TOWER.READ");
+            var trace = await db.Permissions.SingleAsync(x =>
+                x.Code == "CONTROL-TOWER.TRACES.READ");
+            var evaluator = new EffectivePermissionEvaluator(db);
+            Task<bool> Can(string code) => evaluator.HasPermissionAsync(
+                admin.Id, master, UserType.System, code);
+
+            Assert.True(await Can(page.Code));
+            Assert.True(await Can(trace.Code));
+            var deny = new UserPermission
+            {
+                TenantId = master,
+                UserId = admin.Id,
+                PermissionId = trace.Id,
+                IsGranted = false
+            };
+            db.UserPermissions.Add(deny);
+            await db.SaveChangesAsync();
+            Assert.False(await Can(trace.Code)); // Direct deny overrides role.
+            Assert.True(await Can(page.Code));
+
+            db.UserPermissions.Remove(deny);
+            await db.SaveChangesAsync();
+            Assert.True(await Can(trace.Code));
+
+            // Remove only TRACE read, not the Control Tower PAGE permission.
+            var grant = await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.TenantId == master &&
+                    x.RoleId == role.Id && x.PermissionId == trace.Id);
+            db.RolePermissions.Remove(grant);
+            await db.SaveChangesAsync();
+            Assert.False(await Can(trace.Code));
+            Assert.True(await Can(page.Code));
+            Assert.False(await InitialAccessBootstrap.SeedFreshInstallAsync(db));
+            Assert.False(await InitialSystemAdministratorBootstrap.CreateOnceAsync(
+                db, new PasswordHasher<User>(), config));
+            Assert.False(await Can(trace.Code)); // Restart never regrants.
+
+            admin.IsActive = false;
+            await db.SaveChangesAsync();
+            Assert.False(await Can(page.Code)); // Disabled user has no PAGE.
+        });
+    }
+
+    [Fact]
     public async Task Consolidated_central_access_readiness_is_SQL_read_only_and_never_approves_missing_menus()
     {
         await WithIsolatedDatabaseAsync(async db =>

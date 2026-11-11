@@ -46,3 +46,11 @@ The first-install SuperAdmin receives permission via existing `InitialAccessBoot
 Next **FR-18E-2:** privileged trace search by bounded timeframe/source, durable view-audit store, explicit capture/permission detail tiers, cross-repo browser testing, and safe Overview/readiness metrics. Follow FR-18F/18G for controlled rich diagnostics, SQL analytics and alerting, FR-18H for production-ready storage and private authenticated access.
 
 See [FR-18D3 real Tempo proof](FR-18D3-REAL-HTTP-SQL-TEMPO-E2E.md), [FR-18A architecture](../architecture/control-tower-observability.md), [central registry bootstrap](FR-16-FIRST-INSTALL-ADMIN-ACCESS-BOOTSTRAP.md).
+
+## CI and privilege regression hardening — 2026-11-12
+
+- Existing SQL clean-install test asserts both `CONTROL-TOWER.READ` (PAGE/menu) and `CONTROL-TOWER.TRACES.READ` (API) are seeded for the first Master `superadmin`, with no later auto-regrant. New real SQL test additionally exercises `EffectivePermissionEvaluator` as an actual first-login System account: direct deny overrides inherited role allow, revoking TRACE leaves PAGE, repeated bootstrap cannot restore rights, disabled account cannot read.
+- Tempo reader tests also cover a 257-Span payload returning at most 256 with explicit `PartiallyCaptured`, plus unsafe producer names, SQL content, query-style route labels, invalid fingerprints and forbidden attributes being dropped.
+- FR-14A static audit now requires the reviewed `control-tower-trace-read` limiter on the source-owned EndpointGroup, with a mutation-style negative test.
+- Both expensive PR workflows use `concurrency.cancel-in-progress` keyed by workflow and PR, so future superseded executions can be canceled; the HTTP workflow watches first-login acceptance script changes. These changes **cannot** guarantee GitHub hosted runners or restore a blocked queue/billing limit.
+- Latest-head acceptance still requires green BFF build + unit tests, SQL Server integration tests and real signed HTTP/Tempo tests. Queued workflows, absent Check Runs and local source inspections are **not** test passes. No local .NET/SQL test runtime was available for this change.
