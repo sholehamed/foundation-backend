@@ -28,6 +28,9 @@ namespace Infrastructure.SharedKernel
             services.AddDbContext<TDbContext>((sp, options) =>
             {
                 options.AddInterceptors(sp.GetServices<ISaveChangesInterceptor>());
+                // FR-18D1: source-owned optional EF query telemetry. Registered
+                // by the Host module; no dependency on the Observability project.
+                options.AddInterceptors(sp.GetServices<IDbCommandInterceptor>());
 
 
 

@@ -17,5 +17,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/modules/Modules.System.Identity/Modules.System.Identity.csproj" />
+    <ProjectReference Include="../../src/modules/Modules.System.Observability/Modules.System.Observability.csproj" />
   </ItemGroup>
 </Project>

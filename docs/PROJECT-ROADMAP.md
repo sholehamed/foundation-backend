@@ -1,3 +1,8 @@
+## FR-18D-1 — CQRS and EF relational command traces (2026-11-11; PR pending CI)
+
+- Implemented shared Dispatcher Command/Query/Notification source Activities and opt-in shared Infrastructure EF DbCommandInterceptor using OTel Host, with real EF SQL execution start/end times, safe metadata and HMAC-only short-lived SQL fingerprint; secrets/raw SQL and DTO bodies excluded. Unit and disposable SQL Server acceptance added to CI filter; [source/security handoff](development/FR-18D1-CQRS-EF-SQL-SPANS.md). Require head + main green before marking shipped.
+- **Next FR-18D-2:** raw SqlClient/Dapper instrumentation and transaction/rollback reporting with de-duplication of EF spans; end-to-end real Host -> Collector -> Tempo. **FR-18E:** System source-owned read API and Angular Waterfall once real trace lookup exists. No new Tenant role/menu/plan grant or SQL schema in this stage.
+
 ## FR-18C-1 — Real isolated telemetry stores (2026-11-11; PR/CI pending)
 
 - Disposable dev/CI Docker stack for Collector->Tempo (traces) and Collector->Prometheus scrape (metrics), fixed image tags, localhost-bound ports, separate volumes, bounded memory/queue/retries and redaction. New PR+main GitHub Actions workflow sends synthetic OTLP and **verifies actual persisted trace + metric**, not only container startup. [Runbook/CI acceptance](development/FR-18C1-ISOLATED-COLLECTOR-STORES.md).
