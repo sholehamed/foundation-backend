@@ -1,3 +1,8 @@
+## FR-18B-1 — Initial host tracing / safe OTLP export (2026-11-11; validation pending)
+
+- Added isolated `Modules.System.Observability` package with ASP.NET Core request trace, W3C `traceparent`, safe `X-Trace-Id`, source `ActivitySource`, normalized route/status/duration logging, runtime/HTTP metrics and guarded opt-in OTLP gRPC trace/metrics exporter (bounded async queue, HTTPS production). No Identity/Tenant SQL writes or credentials/body/query capture. [Detailed implementation guide](development/FR-18B1-HOST-OTEL-TRACING.md). Auth/OIDC URLs are deliberately excluded, logs are not automatically exported. Tests cover untrusted baggage/redaction, disconnected Collector and HTTP 200/403/500; require PR-head and post-merge green before marking shipped.
+- **Next:** FR-18C Collector with fully independent storage and retention; FR-18D CQRS/DbCommand/transaction instrumentation + safe Query fingerprints; FR-18E authenticated Angular viewer. FR-18A UX/ADR remain the architecture authority.
+
 ## FR-18 — Foundation Control Tower (new stream, 2026-11-11)
 
 **FR-18A architecture/docs done once merged; NO observability code deployed yet.** [ADR-0003](decisions/ADR-0003-control-tower-observability-isolation.md) · [Architecture](architecture/control-tower-observability.md) · [Contracts/security/test matrix](reference/control-tower-telemetry-contracts.md) · [Full delivery plan](development/FR-18-CONTROL-TOWER-ROADMAP.md) · [Frontend UX](https://github.com/sholehamed/foundation-frontend/blob/main/docs/development/FR-18-CONTROL-TOWER-UX.md).
