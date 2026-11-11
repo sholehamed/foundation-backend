@@ -14,6 +14,7 @@ public sealed class TenantPlanOrder : AuditableEntity, IMustHaveTenant
 
     public Guid TenantId { get; set; }
     public Guid PlanVersionId { get; set; }
+    public Guid? CouponId { get; set; }
     public string Status { get; set; } = "Pending";
     public string BillingCycle { get; set; } = "monthly";
     public string Currency { get; set; } = "IRR";
