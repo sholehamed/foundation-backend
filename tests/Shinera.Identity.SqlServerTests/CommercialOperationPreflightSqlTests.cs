@@ -296,6 +296,22 @@ public sealed class CommercialOperationPreflightSqlTests
                 tenantB.Id, "APPOINTMENTS.BOOKINGS.CREATE",
                 "exec-unlicensed-0001", [], [new("appointments.monthly", 1)])).Code);
 
+            // Unmetered commercial commands are still licensed and
+            // permission/Feature/Mode checked. The missing Count/Quota ceiling
+            // does NOT mean authorization bypass.
+            Assert.Equal("mode_unavailable", (await Execute(userA.Id,
+                tenantA.Id, "APPOINTMENTS.BOOKINGS.CONFIRM",
+                "exec-invalid-mode-001", [], [], chosenMode: "unknown")).Code);
+            var simple = await Execute(userA.Id, tenantA.Id,
+                "APPOINTMENTS.BOOKINGS.CONFIRM",
+                "exec-mode-allowed-001", [], [], chosenMode: "manual");
+            Assert.True(simple.Committed, simple.Code);
+
+            Assert.Equal("unexpected_meter_requirement", (await Execute(
+                userA.Id, tenantA.Id, "APPOINTMENTS.BOOKINGS.CONFIRM",
+                "exec-feature-meter-1", [],
+                [new("appointments.confirm-mode", 1)], chosenMode: "manual")).Code);
+
             // Two requests contend for only one allowed active entity. The
             // losing command MUST NOT charge quota or insert a domain row.
             var countRequirements = new[]
@@ -325,7 +341,7 @@ public sealed class CommercialOperationPreflightSqlTests
                 var totalWrites = await checkDb.Database.SqlQueryRaw<long>(
                     "SELECT COUNT_BIG(*) AS [Value] FROM dbo.FR17C3B_TestWrites " +
                     "WHERE TenantId={0}", tenantA.Id).SingleAsync();
-                Assert.Equal(2L, totalWrites);
+                Assert.Equal(3L, totalWrites); // CREATE, CONFIRM, one ACTIVATE.
                 var balance = await checkDb.Database.SqlQueryRaw<long>(
                     "SELECT ConsumedUnits AS [Value] FROM dbo.TenantUsageBalances " +
                     "WHERE TenantId={0} AND CapabilityCode={1}",
