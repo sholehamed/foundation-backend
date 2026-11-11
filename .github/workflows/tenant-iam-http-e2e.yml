@@ -8,6 +8,7 @@ on:
       - 'src/**'
       - 'tests/http/tenant_iam_chain_e2e.py'
       - 'tests/http/fr18d3_real_trace_to_tempo_e2e.py'
+      - 'tests/http/tenant_iam_chain_e2e.py'
       - 'observability/**'
       - 'tests/http/public_signup_e2e.py'
       - 'tests/Shinera.Identity.E2E.SqlMutator/**'
