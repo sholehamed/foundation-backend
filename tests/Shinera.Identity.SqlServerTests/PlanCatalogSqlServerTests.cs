@@ -40,18 +40,15 @@ public sealed class PlanCatalogSqlServerTests
             var baseV1 = new CatalogPlanVersion
             {
                 PlanId = basePlan.Id, VersionNumber = 1,
-                Status = "Published", DisplayTitle = "Starter",
-                PublishedAtUtc = DateTime.UtcNow.AddDays(-10),
-                ContentFingerprint = new string('a', 64)
+                Status = "Draft", DisplayTitle = "Starter"
             };
             var proV1 = new CatalogPlanVersion
             {
                 PlanId = pro.Id, VersionNumber = 1,
                 ParentPlanVersionId = baseV1.Id,
-                Status = "Published", DisplayTitle = "Pro",
+                Status = "Draft", DisplayTitle = "Pro",
                 DisplaySubtitle = "For growing teams", BadgeText = "Popular",
-                IsRecommended = true, PublishedAtUtc = DateTime.UtcNow.AddDays(-5),
-                ContentFingerprint = new string('b', 64)
+                IsRecommended = true
             };
             db.CatalogPlanVersions.AddRange(baseV1, proV1);
             db.CatalogPlanVersionModules.AddRange(
@@ -125,6 +122,15 @@ public sealed class PlanCatalogSqlServerTests
                     PlanVersionId = proV1.Id, Kind = "Benefit",
                     Title = "Priority support", SortOrder = 2 });
             await db.SaveChangesAsync();
+            // FR-17B-2C: SQL publishes a populated Draft. It never accepts
+            // children inserted directly into an already Published revision.
+            baseV1.Status = "Published";
+            baseV1.PublishedAtUtc = DateTime.UtcNow.AddDays(-10);
+            baseV1.ContentFingerprint = new string('a', 64);
+            proV1.Status = "Published";
+            proV1.PublishedAtUtc = DateTime.UtcNow.AddDays(-5);
+            proV1.ContentFingerprint = new string('b', 64);
+            await db.SaveChangesAsync();
 
             var source = new[]
             {
@@ -176,9 +182,7 @@ public sealed class PlanCatalogSqlServerTests
             var baseV2 = new CatalogPlanVersion
             {
                 PlanId = basePlan.Id, VersionNumber = 2,
-                Status = "Published", DisplayTitle = "Starter v2",
-                PublishedAtUtc = DateTime.UtcNow,
-                ContentFingerprint = new string('c', 64)
+                Status = "Draft", DisplayTitle = "Starter v2"
             };
             db.CatalogPlanVersions.Add(baseV2);
             db.CatalogPlanVersionModules.Add(new CatalogPlanVersionModule {
@@ -188,6 +192,10 @@ public sealed class PlanCatalogSqlServerTests
                     PlanVersionId = baseV2.Id, CapabilityDefinitionId = monthly.Id,
                     IntegerValue = 10000
                 });
+            await db.SaveChangesAsync();
+            baseV2.Status = "Published";
+            baseV2.PublishedAtUtc = DateTime.UtcNow;
+            baseV2.ContentFingerprint = new string('c', 64);
             await db.SaveChangesAsync();
             var afterParentUpdated = await reader.ReadAsync(
                 proV1.Id, source, caps, DateTime.UtcNow);
@@ -285,16 +293,13 @@ public sealed class PlanCatalogSqlServerTests
 
             var published = new CatalogPlanVersion
             {
-                PlanId = plan.Id, VersionNumber = 1, Status = "Published",
-                DisplayTitle = "پلن پایه", PublishedAtUtc = DateTime.UtcNow.AddDays(-2),
-                ContentFingerprint = new string('a', 64)
+                PlanId = plan.Id, VersionNumber = 1, Status = "Draft",
+                DisplayTitle = "پلن پایه"
             };
             var newer = new CatalogPlanVersion
             {
-                PlanId = plan.Id, VersionNumber = 2, Status = "Published",
-                DisplayTitle = "پلن جدید", PublishedAtUtc = DateTime.UtcNow.AddDays(-1),
-                ContentFingerprint = new string('b', 64),
-                IsRecommended = true
+                PlanId = plan.Id, VersionNumber = 2, Status = "Draft",
+                DisplayTitle = "پلن جدید", IsRecommended = true
             };
             var draft = new CatalogPlanVersion
             {
@@ -321,6 +326,13 @@ public sealed class PlanCatalogSqlServerTests
                     Kind = "Module", ModuleId = module.Id, Title = "نوبت‌دهی" },
                 new CatalogPlanDisplayItem { PlanVersionId = newer.Id,
                     Kind = "Benefit", Title = "پشتیبانی ویژه", SortOrder = 1 });
+            await db.SaveChangesAsync();
+            published.Status = "Published";
+            published.PublishedAtUtc = DateTime.UtcNow.AddDays(-2);
+            published.ContentFingerprint = new string('a', 64);
+            newer.Status = "Published";
+            newer.PublishedAtUtc = DateTime.UtcNow.AddDays(-1);
+            newer.ContentFingerprint = new string('b', 64);
             await db.SaveChangesAsync();
 
             var definitions = new[] { new ResourceContract(
