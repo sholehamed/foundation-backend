@@ -1,3 +1,4 @@
+- [FR-17E-1 — Centrally issued coupons, settled redemption and zero-net subscription checkout](development/FR-17E1-CATALOG-COUPONS-ATOMIC-REDEMPTION.md)
 - [FR-17C-2A — Tenant Orders, admin reviewed external manual settlement and atomic Subscription activation](development/FR-17C2A-TENANT-ORDERS-MANUAL-SETTLEMENT.md)
 - [FR-17C-1 — Tenant Subscription/Order schema, verified-order Shadow Entitlement](development/FR-17C1-SUBSCRIPTION-SHADOW.md)
 - [FR-17B-2C — SQL Server Published Plan snapshot immutability and EF trigger-safe mapping](development/FR-17B2C-IMMUTABLE-PLAN-SNAPSHOTS.md)
