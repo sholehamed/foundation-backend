@@ -1,3 +1,4 @@
+using Infrastructure.SharedKernel.Observability;
 using System.Data;
 using Microsoft.Data.SqlClient;
 
@@ -40,6 +41,6 @@ public sealed class SqlServerBffSessionCleanup(string connectionString)
             """, connection);
         command.Parameters.Add("@batchSize", SqlDbType.Int).Value = batchSize;
         command.CommandTimeout = 30;
-        return await command.ExecuteNonQueryAsync(cancellationToken);
+        return await SourceOwnedSqlTrace.ExecuteNonQueryAsync(command, cancellationToken);
     }
 }
