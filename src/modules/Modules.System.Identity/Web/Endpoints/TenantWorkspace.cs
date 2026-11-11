@@ -31,6 +31,11 @@ public static class TenantWorkspace
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace", Get)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
+        app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/subscription/orders", GetMyPlanOrders)
+            .RequireAuthorization().WithTags("Tenant Workspace");
+        app.MapPost($"/{backendPrefix.Trim('/')}/tenant/workspace/subscription/orders", CreateMyPlanOrder)
+            .RequireAuthorization().RequireRateLimiting("tenant-plan-order")
+            .WithTags("Tenant Workspace");
         app.MapGet($"/{backendPrefix.Trim('/')}/tenant/workspace/subscription/me", GetSubscriptionShadow)
             .RequireAuthorization()
             .WithTags("Tenant Workspace");
@@ -127,6 +132,51 @@ public static class TenantWorkspace
     /// FR-17C-1 tenant-local shadow entitlement status. This is read-only
     /// visibility, never permission enforcement or commercial activation.
     /// </summary>
+    private static async Task<IResult> GetMyPlanOrders(
+        ITenantContext current, IdentityDbContext db, HttpContext http, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await CanCheckoutAsync(current, db, ct)) return DeniedAfterAuthentication();
+        var tenantId = current.ActiveTenantId!.Value;
+        return Results.Ok(await new TenantPlanCheckoutService(db)
+            .ListForTenantAsync(tenantId, ct));
+    }
+
+    private static async Task<IResult> CreateMyPlanOrder(
+        ITenantContext current, IdentityDbContext db, HttpContext http,
+        TenantPlanCheckoutService.CreateOrder request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await CanCheckoutAsync(current, db, ct)) return DeniedAfterAuthentication();
+        try
+        {
+            var result = await new TenantPlanCheckoutService(db)
+                .CreatePendingAsync(current.ActiveTenantId!.Value, request, DateTime.UtcNow, ct);
+            return result.Ok ? Results.Ok(result) : Results.Conflict(result);
+        }
+        catch (DbUpdateException)
+        {
+            return Results.Conflict(new { code = "order_concurrent_retry" });
+        }
+    }
+
+    private static async Task<bool> CanCheckoutAsync(
+        ITenantContext current, IdentityDbContext db, CancellationToken ct)
+    {
+        if (current.IsSystemContext || current.UserId is not Guid userId ||
+            current.ActiveTenantId is not Guid tenantId || current.HomeTenantId != tenantId ||
+            !current.WritableTenantIds.Contains(tenantId) ||
+            !current.ReadableTenantIds.Contains(tenantId))
+            return false;
+
+        return await db.Tenants.AsNoTracking()
+                .AnyAsync(t => t.Id == tenantId && t.IsActive, ct) &&
+            await db.Users.AsNoTracking().AnyAsync(u =>
+                u.Id == userId && u.TenantId == tenantId &&
+                u.UserType == UserType.Tenant && u.IsActive, ct) &&
+            await TenantWorkspacePermissionEvaluator.IsLocalOwnerAsync(current, db, ct);
+    }
+
     private static async Task<IResult> GetSubscriptionShadow(
         ITenantContext current,
         IdentityDbContext db,
