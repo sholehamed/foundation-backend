@@ -1107,6 +1107,7 @@ public sealed class PlanCatalogSqlServerTests
                 Assert.Equal(300000m, purchased.Order.DiscountAmount);
                 Assert.Equal(0m, purchased.Order.NetAmount);
                 Assert.Equal("ZeroTotalCoupon", purchased.Order.SettlementKind);
+                Assert.NotNull(purchased.SubscriptionId);
                 orderId = purchased.Order.Id;
                 var repeated = await service.CreatePendingAsync(
                     a.Id, request, now, CancellationToken.None);
