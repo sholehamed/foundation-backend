@@ -1,3 +1,8 @@
+## FR-18E-1 — Privileged exact TraceId lookup and Angular Waterfall (2026-11-11; PR pending)
+
+- Registered Control Tower as Resource in existing `system`, never an independent PlatformCore Module, and a mandatory live `CONTROL-TOWER.TRACES.READ` permission. New first-install SuperAdmin receives it only on genuinely fresh catalog; historical grant revocations remain respected. Bounded safe Tempo backend read facade + Flutter-free Angular RTL Trace Explorer/W3C ID filter/Waterfall, no raw SQL, input/output, or direct Tempo browser access. [FR-18E-1 detailed handoff](development/FR-18E1-CONTROL-TOWER-TRACE-READ.md).
+- **Scope boundary:** single TraceId read and legitimate not-retained/unavailable states. No persistent operator view audit or browser Cookie E2E yet; only real signed JWT and SQL+Collector/Tempo acceptance. Next **FR-18E-2** dedicated durable auditing, safe bounded search/overview and cross-repo browser acceptance, FR-18F approved diagnostic capture. Require both repos PR-head/main green.
+
 ## FR-18D-3 — Real HTTP→CQRS→EF SQL→Collector→Tempo persisted trace (2026-11-11; PR CI pending)
 
 - Added required **real application** test to existing disposable signed Tenant IAM workflow, with CI-only OTLP enabled; retrieves emitted TraceId from a guarded System dashboard request and verifies actual Tempo parent/child spans, CQRS handler, SQL executions/timings and absence of secrets. Existing Tenant HTTP auth, real SQL and audit remain in same gate. [Source/test/runbook](development/FR-18D3-REAL-HTTP-SQL-TEMPO-E2E.md).
