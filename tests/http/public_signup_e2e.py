@@ -106,6 +106,9 @@ def main():
         "System admin root PAGE permissions must be live on FIRST login")
     status, _ = request("GET", "/api/tenant/workspace", token=system_token)
     assert status == 403, "System Admin is not a Tenant Owner"
+    status, _ = request("GET", "/api/tenant/workspace/subscription/me",
+                        token=system_token)
+    assert status == 403, "System Admin must not read arbitrary Tenant license"
 
     slug = "ci-signup-onboarding"
     mobile = "09123456789"
@@ -140,6 +143,8 @@ def main():
 
     status, _ = request("GET", "/api/tenant/workspace")
     assert status == 401, status
+    status, _ = request("GET", "/api/tenant/workspace/subscription/me")
+    assert status == 401, status
 
     status, tokens = request("POST", "/api/system/Auth/login", {
         "grant_type": "password", "client_id": "postman", "username": mobile,
@@ -160,6 +165,17 @@ def main():
     assert workspace["mainBranch"]["id"] == created["mainBranchId"], workspace
     assert workspace["profile"]["requestedPlanKey"] == "salon-pro", workspace
     assert workspace["subscriptionStatus"] == "pending_activation", workspace
+
+    # A requested plan (even salon-pro) is still NOT a purchased commercial
+    # entitlement, and old TenantModules cannot fabricate active licensing.
+    status, shadow = request("GET", "/api/tenant/workspace/subscription/me",
+                             token=access_token)
+    assert status == 200, (status, shadow)
+    assert shadow["status"] == "NotSubscribed", shadow
+    assert shadow["reason"] == "no_active_subscription", shadow
+    assert shadow["hasCommercialEntitlement"] is False, shadow
+    assert shadow["moduleCodes"] == [] and shadow["capabilities"] == [], shadow
+    assert shadow["subscriptionId"] is None and shadow["planVersionId"] is None, shadow
 
     # First Tenant Owner login: real signup's Role+RolePermissions must
     # render every permitted menu immediately, never through Owner fallback
