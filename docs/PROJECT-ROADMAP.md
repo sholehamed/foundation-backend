@@ -1,3 +1,8 @@
+## FR-17C-3A — Subscription AND delegated permission and typed capability preflight (2026-11-11)
+
+- Source-owned `TenantCommercialOperationPreflight` combines live persisted Resource/Permission, scoped Tenant-user grants, actual settled Subscription, and typed Features/Modes. It never maps an inactive commercial module or expired subscription to a permission; explicitly returns `MeteringRequired` for CountLimit/PeriodQuota with no invented usage. Added disposable SQL two-Tenant negative/positive tests. [Handoff](development/FR-17C3A-COMMERCIAL-OPERATION-PREFLIGHT.md).
+- This is **not** live business HTTP authorization or a metered operation commit hook; no commercial business Module exists in deployed source. Next FR-17C-3B transactional trusted business operation integration and HTTP E2E, FR-17D-2B per-subscription period policy + read-only usage API and Angular component.
+
 ## FR-17E-1 — Percentage/fixed coupons and atomic zero-total checkout (2026-11-11)
 
 - [Backend PR #138](https://github.com/sholehamed/foundation-backend/pull/138): System-generated one-time 96-bit codes, hashed catalog, UTC eligibility, one-use/global and per-Tenant settled caps, coupon-to-order pin and redemption ledger. Existing Tenant checkout supports optional code; zero-net completes Order+Redemption+Subscription atomically; partial discounts consume once at System external receipt settlement. [Detailed contract and release risks](development/FR-17E1-CATALOG-COUPONS-ATOMIC-REDEMPTION.md).
