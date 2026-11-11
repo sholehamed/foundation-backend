@@ -25,7 +25,7 @@ internal sealed class TenantPlanOrderConfiguration : AuditEntityConfiguration<Te
             t.HasCheckConstraint("CK_TenantPlanOrders_Currency",
                 "[Currency] = 'IRR'");
             t.HasCheckConstraint("CK_TenantPlanOrders_Settlement",
-                "([Status] <> 'Settled') OR ([SettledAtUtc] IS NOT NULL AND [SettlementKind] IS NOT NULL AND [SettlementReference] IS NOT NULL AND LEN([SettlementReference]) > 0 AND (([NetAmount] = 0 AND [SettlementKind] = 'ZeroTotalCoupon') OR ([NetAmount] > 0 AND [SettlementKind] IN ('GatewayVerified','ExternalManual'))))");
+                "([Status] <> 'Settled') OR ([SettledAtUtc] IS NOT NULL AND [SettlementKind] IS NOT NULL AND [SettlementReference] IS NOT NULL AND [SettlementReference] <> '' AND (([NetAmount] = 0 AND [SettlementKind] = 'ZeroTotalCoupon') OR ([NetAmount] > 0 AND [SettlementKind] IN ('GatewayVerified','ExternalManual'))))");
         });
         b.Property(x => x.Status).HasMaxLength(16).IsRequired();
         b.Property(x => x.BillingCycle).HasMaxLength(24).IsRequired();
