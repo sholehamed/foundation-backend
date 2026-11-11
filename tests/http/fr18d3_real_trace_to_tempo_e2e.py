@@ -148,13 +148,21 @@ def verify_persisted_lineage(trace_id: str) -> None:
                            "SuperDashboardQuery" for s in handlers), (
                     "Wrong CQRS handler: the real SuperDashboardQuery was not observed"
                 )
+                cqrs_sql = []
                 for span in sql:
                     parent_id = decode_span_id(span.get("parentSpanId"))
                     parent = by_id.get(parent_id)
                     assert parent is not None, "Orphaned SQL command without recorded parent"
-                    assert parent.get("name") == "cqrs.query", (
-                        "SQL span not a real child of the CQRS execution"
-                    )
+                    # Authentication and permission evaluation can run genuine
+                    # SQL *before* the CQRS handler is invoked. These database
+                    # commands rightly belong under the HTTP pipeline rather
+                    # than falsely being called business Handler children.
+                    if parent.get("name") == "cqrs.query":
+                        cqrs_sql.append(span)
+                    else:
+                        assert parent.get("name") == "foundation.http.pipeline", (
+                            "SQL span was neither under CQRS nor under the request pipeline"
+                        )
                     tags = attributes(span)
                     digest = tags.get("foundation.db.fingerprint")
                     assert isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest), (
@@ -164,6 +172,10 @@ def verify_persisted_lineage(trace_id: str) -> None:
                     assert "db.statement" not in tags and "db.query.text" not in tags
                     assert int(span.get("endTimeUnixNano", 0)) >= int(
                         span.get("startTimeUnixNano", 0)), "Invalid observed EF SQL timing"
+                assert len(cqrs_sql) >= 3, (
+                    "Real SQL commands for SuperDashboardQuery did not appear "
+                    "as CQRS descendants; authorization SQL alone is insufficient"
+                )
                 for handler in handlers:
                     assert by_id.get(decode_span_id(handler.get("parentSpanId")), {}).get(
                         "name") == "foundation.http.pipeline", (
@@ -175,7 +187,8 @@ def verify_persisted_lineage(trace_id: str) -> None:
                     "Missing actual ASP.NET Core inbound server Activity"
                 )
                 print(f"PASS: Tempo returned {len(spans)} real spans on TraceId {trace_id}; "
-                      f"CQRS={len(handlers)} EF-SQL={len(sql)} under HTTP parent",
+                      f"CQRS={len(handlers)} CQRS-EF-SQL={len(cqrs_sql)} "
+                      f"auth/pipeline-SQL={len(sql) - len(cqrs_sql)}",
                       flush=True)
                 return
             last = f"trace_incomplete: spans={len(spans)}, names={sorted(str(x) for x in names)}"
