@@ -1,3 +1,8 @@
+## FR-17C-3C — Shared SQL transaction bridge for independent commercial modules (2026-11-11)
+
+- `ExecuteModuleAsync` exposes a carefully scoped `SqlConnection/SqlTransaction` to a trusted module-owned DbContext/Count adapter, never Identity entities; required license/RBAC/typed capability/quota checks and domain writes stay in one Serializable SQL commit/rollback. Disposable SQL suite tests module-owned EF persistence and rollback; test-assembly-only signed JWT TestServer verifies authenticated 401/403/200/409 with two Tenants and no production test endpoint. [Handoff](development/FR-17C3C-MODULE-UOW-SIGNED-HTTP.md).
+- Next: real Commercial module source/Domain/EndpointGroup and full deployed Web API/BFF E2E, domain CountLimit live projections, Outbox for external effects and subscription lifecycle semantics. No real paid runtime module or catalog grant is seeded automatically.
+
 ## FR-17C-3B — Trusted Commercial write execution within one SQL transaction (2026-11-11)
 
 - New opt-in `TenantCommercialOperationExecutor` composes scoped resource Permission+verified settled Subscription+Features/Modes+all exact source-bound CountLimits/PeriodQuotas using one serializable SQL transaction and guarded domain callback. Quota replay does not rerun business writes; read-only usage API remains distinct. SQL tests add count+quota parallel contention, two-Tenant denied license, callback rollback, duplicate requests and no-limit modes. [Detailed handoff](development/FR-17C3B-TRANSACTIONAL-COMMERCIAL-EXECUTOR.md).
