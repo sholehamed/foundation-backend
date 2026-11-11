@@ -1,5 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Data.SqlClient;
 using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using Modules.System.Identity.Web.Util;
@@ -349,6 +351,72 @@ public sealed class CommercialOperationPreflightSqlTests
                 Assert.Equal(3L, balance);
             }
 
+            // FR-17C-3C: module has its OWN independent EF Core DbContext,
+            // enlisted on the SAME SQL connection/transaction as Foundation.
+            // No business entity is added to IdentityDbContext or migrations.
+            async Task<CommercialOperationResult> RunModule(
+                string operationKey, bool failAfterModuleSave = false,
+                bool activate = false)
+            {
+                var current = Context(userA.Id, tenantA.Id);
+                await using var identity = new IdentityDbContext(options, current);
+                var executor = new TenantCommercialOperationExecutor(
+                    identity, current, Resources, Capabilities, Operations);
+                var countAdapters = activate
+                    ? new CommercialModuleCountRequirement[]
+                    {
+                        new("appointments.max-active", 1,
+                            async (unit, token) =>
+                            {
+                                await using var module = ModuleContext(unit);
+                                return await module.Rows.LongCountAsync(x =>
+                                    x.TenantId == tenantA.Id && x.IsActive, token);
+                            })
+                    }
+                    : [];
+                return await executor.ExecuteModuleAsync(
+                    activate ? "APPOINTMENTS.BOOKINGS.ACTIVATE" :
+                        "APPOINTMENTS.BOOKINGS.CREATE",
+                    operationKey, countAdapters,
+                    [new("appointments.monthly", 1)],
+                    async (unit, token) =>
+                    {
+                        await using var module = ModuleContext(unit);
+                        module.Rows.Add(new TestCommercialRow {
+                            Id = Guid.NewGuid(), TenantId = tenantA.Id,
+                            IsActive = activate
+                        });
+                        await module.SaveChangesAsync(token);
+                        if (failAfterModuleSave)
+                            throw new InvalidOperationException(
+                                "module failure after EF SaveChanges");
+                    });
+            }
+
+            Assert.True((await RunModule("external-ctx-ok-001")).Committed);
+            Assert.Equal("duplicate_operation",
+                (await RunModule("external-ctx-ok-001")).Code);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                RunModule("external-ctx-fail-001", failAfterModuleSave: true));
+
+            // One active slot was consumed by the previous operation; an
+            // independent module DbContext must measure and reject growth.
+            Assert.Equal("limit_exceeded",
+                (await RunModule("external-ctx-count-01", activate: true)).Code);
+            await using (var verify = new IdentityDbContext(
+                options, Context(userA.Id, tenantA.Id)))
+            {
+                var rowCount = await verify.Database.SqlQueryRaw<long>(
+                    "SELECT COUNT_BIG(*) AS [Value] FROM dbo.FR17C3B_TestWrites " +
+                    "WHERE TenantId={0}", tenantA.Id).SingleAsync();
+                Assert.Equal(4L, rowCount);
+                var consumed = await verify.Database.SqlQueryRaw<long>(
+                    "SELECT ConsumedUnits AS [Value] FROM dbo.TenantUsageBalances " +
+                    "WHERE TenantId={0} AND CapabilityCode={1}",
+                    tenantA.Id, "appointments.monthly").SingleAsync();
+                Assert.Equal(4L, consumed);
+            }
+
             Assert.Equal("mode_required", (await Check(userA.Id, tenantA.Id,
                 "APPOINTMENTS.BOOKINGS.CONFIRM")).Code);
             Assert.Equal("mode_unavailable", (await Check(userA.Id, tenantA.Id,
@@ -401,6 +469,44 @@ public sealed class CommercialOperationPreflightSqlTests
             Assert.Equal("invalid_source_catalog",
                 (await unsafeSvc.CheckWriteAsync("APPOINTMENTS.BAD")).Code);
         });
+    }
+
+    private sealed class TestCommercialRow
+    {
+        public Guid Id { get; set; }
+        public Guid TenantId { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    // Test-only separate module DbContext: no FK or entity dependency on
+    // IdentityDbContext; EF writes enlist in the Foundation-owned SQL tx.
+    private sealed class TestCommercialModuleDb(
+        DbContextOptions<TestCommercialModuleDb> options) : DbContext(options)
+    {
+        public DbSet<TestCommercialRow> Rows => Set<TestCommercialRow>();
+
+        protected override void OnModelCreating(ModelBuilder model)
+        {
+            model.Entity<TestCommercialRow>(e =>
+            {
+                e.ToTable("FR17C3B_TestWrites", "dbo");
+                e.HasKey(x => x.Id);
+                e.Property(x => x.TenantId).IsRequired();
+                e.Property(x => x.IsActive).IsRequired();
+            });
+        }
+    }
+
+    private static TestCommercialModuleDb ModuleContext(
+        CommercialModuleSqlUnitOfWork unit)
+    {
+        var options = new DbContextOptionsBuilder<TestCommercialModuleDb>()
+            .UseSqlServer(unit.Connection).Options;
+        var module = new TestCommercialModuleDb(options);
+        // UseTransaction must enlist before ANY query/mutation; this test
+        // uses the synchronous form to keep context factory self-contained.
+        module.Database.UseTransaction(unit.Transaction);
+        return module;
     }
 
     private static async Task Database(
