@@ -24,6 +24,10 @@ public static class FoundationObservabilityRegistration
     {
         var settings = FoundationObservabilitySettings.Read(configuration, environment);
 
+        // EF interceptors are resolved from the existing shared DbContext
+        // registration. No coupling from Infrastructure to Identity/OTel.
+        services.AddScoped<IDbCommandInterceptor, FoundationEfCommandInterceptor>();
+
         // Existing ILogger sinks remain unchanged. Activity tracking enables
         // TraceId/SpanId in providers that support scopes. Raw application logs
         // are NOT exported to OTLP until source redaction is separately audited.
@@ -43,6 +47,7 @@ public static class FoundationObservabilityRegistration
                 tracing
                     .SetSampler(new TraceIdRatioBasedSampler(settings.TraceSampleRatio))
                     .AddSource(FoundationTelemetry.ActivitySourceName)
+                    .AddSource("Foundation.Cqrs")
                     .AddAspNetCoreInstrumentation(options =>
                     {
                         options.Filter = context =>
