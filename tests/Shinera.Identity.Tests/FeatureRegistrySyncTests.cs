@@ -37,6 +37,11 @@ public sealed class FeatureRegistrySyncTests
         Assert.Equal(keys.Length, keys.Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.All(keys, x => Assert.Equal(x.ToUpperInvariant(), x));
         Assert.All(features, x => Assert.Contains(x.ReadPermission, x.PermissionCodes));
+        var tower = Assert.Single(features, x => x.PageKey == "system.control-tower");
+        Assert.Equal("/system/control-tower", tower.Route);
+        Assert.Equal("CONTROL-TOWER.READ", tower.ReadPermission);
+        Assert.Equal(new[] { "CONTROL-TOWER.READ", "CONTROL-TOWER.TRACES.READ" },
+            tower.PermissionCodes);
         var contract = FeatureRegistryDefinitions.ExportManifest();
         Assert.Equal(2, contract.SchemaVersion);
         Assert.Equal(68, contract.UiElements.Count);
