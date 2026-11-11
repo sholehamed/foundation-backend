@@ -634,6 +634,202 @@ public sealed class PlanCatalogSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Shadow_subscription_is_tenant_scoped_and_requires_settled_same_tenant_order()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var a = new Tenant { Name = "Tenant A", Slug = "tenant-a-shadow" };
+            var b = new Tenant { Name = "Tenant B", Slug = "tenant-b-shadow" };
+            var module = new Module("appointments", "Appointments", null, 0);
+            var plan = new CatalogPlan { Code = "starter-shadow", Name = "Starter", IsActive = true };
+            var version = new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 1, Status = "Draft",
+                DisplayTitle = "Starter"
+            };
+            db.Tenants.AddRange(a, b);
+            db.Modules.Add(module);
+            db.CatalogPlans.Add(plan);
+            db.CatalogPlanVersions.Add(version);
+            db.CatalogPlanVersionModules.Add(new CatalogPlanVersionModule
+                { PlanVersionId = version.Id, ModuleId = module.Id });
+            db.CatalogPlanPriceOffers.Add(new CatalogPlanPriceOffer
+            {
+                PlanVersionId = version.Id, BillingCycle = "monthly",
+                Currency = "IRR", Amount = 10000m, IsActive = true
+            });
+            await db.SaveChangesAsync();
+            version.Status = "Published";
+            version.PublishedAtUtc = DateTime.UtcNow.AddMinutes(-10);
+            version.ContentFingerprint = new string('b', 64);
+            await db.SaveChangesAsync();
+            var now = DateTime.UtcNow;
+            var orderA = new TenantPlanOrder
+            {
+                TenantId = a.Id, PlanVersionId = version.Id,
+                Status = "Settled", BillingCycle = "monthly",
+                Currency = "IRR", GrossAmount = 10000m,
+                DiscountAmount = 0m, NetAmount = 10000m,
+                QuotedAtUtc = now.AddDays(-2),
+                SettledAtUtc = now.AddDays(-1),
+                SettlementKind = "GatewayVerified",
+                SettlementReference = "test-verified-payment-a",
+                IdempotencyKey = "test-order-a"
+            };
+            var orderB = new TenantPlanOrder
+            {
+                TenantId = b.Id, PlanVersionId = version.Id,
+                Status = "Pending", BillingCycle = "monthly",
+                Currency = "IRR", GrossAmount = 10000m,
+                DiscountAmount = 10000m, NetAmount = 0m,
+                QuotedAtUtc = now.AddDays(-1),
+                IdempotencyKey = "test-order-b"
+            };
+            db.TenantPlanOrders.AddRange(orderA, orderB);
+            var subscriptionA = new TenantSubscription
+            {
+                TenantId = a.Id, PlanVersionId = version.Id,
+                SourceOrderId = orderA.Id, Status = "Active",
+                StartsAtUtc = now.AddHours(-2), EndsAtUtc = now.AddDays(30),
+                ActivatedAtUtc = now.AddHours(-1)
+            };
+            var subscriptionB = new TenantSubscription
+            {
+                TenantId = b.Id, PlanVersionId = version.Id,
+                SourceOrderId = orderB.Id, Status = "Pending",
+                StartsAtUtc = now.AddHours(-1), EndsAtUtc = now.AddDays(30)
+            };
+            db.TenantSubscriptions.AddRange(subscriptionA, subscriptionB);
+            // A legacy toggle is never evidence of a paid Module license.
+            db.TenantModules.Add(new TenantModule
+            {
+                TenantId = b.Id, ModuleId = module.Id, IsEnabled = true
+            });
+            await db.SaveChangesAsync();
+
+            var sources = new[]
+            {
+                new ResourceContract("appointments", "bookings",
+                    ModuleProductClass.Commercial, ["APPOINTMENTS.READ"])
+            };
+            var options = new DbContextOptionsBuilder<IdentityDbContext>()
+                .UseSqlServer(db.Database.GetConnectionString()).Options;
+
+            var contextA = new TenantContext();
+            contextA.InitializeTenant(Guid.NewGuid(), a.Id, [a.Id], [a.Id], a.Id);
+            await using (var dbA = new IdentityDbContext(options, contextA))
+            {
+                var eligible = await new TenantCommercialEntitlementReader(dbA, contextA)
+                    .ReadCurrentAsync(now, sources, []);
+                Assert.True(eligible.HasCommercialEntitlement);
+                Assert.Equal("Active", eligible.Status);
+                Assert.Equal(version.Id, eligible.PlanVersionId);
+                Assert.Equal(new[] { "appointments" }, eligible.ModuleCodes);
+                Assert.Empty(eligible.Capabilities);
+
+                // Real source manifest still has zero Commercial modules, so
+                // a production request NEVER advertises this test-only fixture.
+                var noCommercial = await new TenantCommercialEntitlementReader(dbA, contextA)
+                    .ReadCurrentAsync(now);
+                Assert.False(noCommercial.HasCommercialEntitlement);
+                Assert.Empty(noCommercial.ModuleCodes);
+            }
+
+            var contextB = new TenantContext();
+            contextB.InitializeTenant(Guid.NewGuid(), b.Id, [b.Id], [b.Id], b.Id);
+            await using (var dbB = new IdentityDbContext(options, contextB))
+            {
+                var pending = await new TenantCommercialEntitlementReader(dbB, contextB)
+                    .ReadCurrentAsync(now, sources, []);
+                Assert.False(pending.HasCommercialEntitlement);
+                Assert.Equal("Pending", pending.Status);
+                Assert.Empty(pending.ModuleCodes);
+                // B cannot read A's single settled order via the tenant filter.
+                Assert.Empty(await dbB.TenantPlanOrders
+                    .Where(x => x.Id == orderA.Id).ToArrayAsync());
+            }
+
+            // Even a forged Active flag cannot borrow another Tenant's order.
+            subscriptionB.Status = "Active";
+            subscriptionB.SourceOrderId = orderA.Id;
+            subscriptionB.ActivatedAtUtc = now.AddMinutes(-5);
+            await db.SaveChangesAsync();
+            await using (var dbB = new IdentityDbContext(options, contextB))
+            {
+                var borrowed = await new TenantCommercialEntitlementReader(dbB, contextB)
+                    .ReadCurrentAsync(now, sources, []);
+                Assert.False(borrowed.HasCommercialEntitlement);
+                Assert.Equal("Invalid", borrowed.Status);
+                Assert.Empty(borrowed.ModuleCodes);
+            }
+            subscriptionB.SourceOrderId = orderB.Id;
+            await db.SaveChangesAsync();
+            await using (var dbB = new IdentityDbContext(options, contextB))
+            {
+                var unsettled = await new TenantCommercialEntitlementReader(dbB, contextB)
+                    .ReadCurrentAsync(now, sources, []);
+                Assert.False(unsettled.HasCommercialEntitlement);
+                Assert.Equal("Invalid", unsettled.Status);
+            }
+
+            // Also prevent an authenticated System principal from masquerading
+            // as a Tenant just by supplying an arbitrary TenantId.
+            var system = new TenantContext();
+            system.InitializeSystem(Guid.NewGuid(), true);
+            await using (var systemDb = new IdentityDbContext(options, system))
+            {
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+                    new TenantCommercialEntitlementReader(systemDb, system)
+                        .ReadCurrentAsync(now, sources, []));
+            }
+
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Billing_schema_rejects_negative_balance_and_active_without_settlement_reference()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var tenant = new Tenant { Name = "Billing", Slug = "billing-shadow" };
+            var plan = new CatalogPlan { Code = "billing", Name = "Billing" };
+            var version = new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 1, Status = "Draft",
+                DisplayTitle = "Billing"
+            };
+            db.Tenants.Add(tenant);
+            db.CatalogPlans.Add(plan);
+            db.CatalogPlanVersions.Add(version);
+            await db.SaveChangesAsync();
+
+            db.TenantPlanOrders.Add(new TenantPlanOrder
+            {
+                TenantId = tenant.Id, PlanVersionId = version.Id,
+                Status = "Pending", Currency = "IRR",
+                GrossAmount = 100m, DiscountAmount = 150m, NetAmount = -50m,
+                BillingCycle = "monthly", QuotedAtUtc = DateTime.UtcNow
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            db.ChangeTracker.Clear();
+
+            db.TenantSubscriptions.Add(new TenantSubscription
+            {
+                TenantId = tenant.Id, PlanVersionId = version.Id,
+                Status = "Active",
+                StartsAtUtc = DateTime.UtcNow,
+                EndsAtUtc = DateTime.UtcNow.AddDays(30),
+                ActivatedAtUtc = DateTime.UtcNow
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            db.ChangeTracker.Clear();
+            Assert.Empty(await db.TenantSubscriptions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+        });
+    }
+
     private static async Task WithDisposableDatabaseAsync(Func<IdentityDbContext, Task> action)
     {
         var raw = Environment.GetEnvironmentVariable("SHINERA_SQLSERVER_TEST_CONNECTION");
