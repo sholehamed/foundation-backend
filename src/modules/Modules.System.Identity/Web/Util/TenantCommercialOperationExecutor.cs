@@ -1,3 +1,4 @@
+using Infrastructure.SharedKernel.Observability;
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -163,6 +164,10 @@ public sealed class TenantCommercialOperationExecutor(
         // Never automatically rerun an arbitrary domain callback here.
         await using var tx = await db.Database.BeginTransactionAsync(
             IsolationLevel.Serializable, ct);
+        // This activity spans the existing serializable transaction and is
+        // deliberately non-authoritative: early returns indicate no confirmed
+        // commit, not proof of database rollback.
+        using var transactionTrace = SourceOwnedTransactionTrace.Start("commercial_atomic");
         var access = await new TenantCommercialOperationPreflight(
             db, context, resources, capabilities, operations)
             .CheckWriteAsync(endpointKey, selectedMode, ct);
@@ -304,7 +309,9 @@ public sealed class TenantCommercialOperationExecutor(
             DateTime.SpecifyKind(entitlement.EndsAtUtc.Value, DateTimeKind.Utc))
             return Denied("subscription_expired_during_execution");
 
+        transactionTrace.CommitAttempted();
         await tx.CommitAsync(ct);
+        transactionTrace.CommitConfirmed();
         return new(true, "commercial_operation_committed");
     }
 }

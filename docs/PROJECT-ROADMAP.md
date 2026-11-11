@@ -1,3 +1,8 @@
+## FR-18D-2 — Explicit SqlClient/Dapper + transaction traces (2026-11-11; CI/merge pending)
+
+- Source-owned raw SqlClient command wrappers now instrument Tenant metering/app locks, BFF session SQL and denial audit. Explicit `RunDapperAsync` API is available and tested against disposable SQL Server. Existing EF core interceptor remains sole owner of EF commands; **no global SqlClient instrumentation and no EF duplication**. All events carry recorded parent's TraceId, timing and ephemeral HMAC fingerprint, not raw SQL, parameters, DTO or connection secrets. Commercial transaction lifecycle reports confirmed commit vs no confirmed commit/unknown, never falsely claims rollback. [Implementation, security and acceptance](development/FR-18D2-RAW-SQLCLIENT-DAPPER-TRANSACTIONS.md).
+- **Next FR-18D-3:** full authorized request through running Collector→Tempo with real EF/raw command spans, sampling/ingestion tests, workload and two-Tenant boundaries. **FR-18E:** central System Admin read-only API/permissions and Angular Waterfall using stored real telemetry. No direct-to-Tempo browser API.
+
 ## FR-18D-1 — CQRS and EF relational command traces (2026-11-11; PR pending CI)
 
 - Implemented shared Dispatcher Command/Query/Notification source Activities and opt-in shared Infrastructure EF DbCommandInterceptor using OTel Host, with real EF SQL execution start/end times, safe metadata and HMAC-only short-lived SQL fingerprint; secrets/raw SQL and DTO bodies excluded. Unit and disposable SQL Server acceptance added to CI filter; [source/security handoff](development/FR-18D1-CQRS-EF-SQL-SPANS.md). Require head + main green before marking shipped.

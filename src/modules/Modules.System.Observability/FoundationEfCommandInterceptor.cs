@@ -1,3 +1,4 @@
+using Infrastructure.SharedKernel.Observability;
 using System.Data.Common;
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -86,7 +87,7 @@ public sealed class FoundationEfCommandInterceptor : DbCommandInterceptor
         // No database operation is changed when telemetry is disabled.
         // Never create a new root Activity for a standalone SQL command in
         // FR-18D1: parent scope is required to avoid unscoped sensitive data.
-        if (Activity.Current is null || !Activity.Current.Recorded)
+        if (!SourceOwnedSqlTrace.CanCapture())
             return;
 
         using var activity = FoundationTelemetry.ActivitySource.StartActivity(

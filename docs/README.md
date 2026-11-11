@@ -1,3 +1,4 @@
+- [FR-18D-2 — Real raw SqlClient/Dapper spans and confirmed transaction outcome tracing](development/FR-18D2-RAW-SQLCLIENT-DAPPER-TRANSACTIONS.md)
 - [FR-18D-1 — Real Dispatcher Command/Query/Notification spans and EF SQL execution traces](development/FR-18D1-CQRS-EF-SQL-SPANS.md)
 - [FR-18C-1 — Real isolated Collector, Tempo and Prometheus stack; CI OTLP ingestion and privacy smoke](development/FR-18C1-ISOLATED-COLLECTOR-STORES.md)
 - [FR-18B-1 — First real OpenTelemetry host tracing, privacy defaults, opt-in OTLP and test guide](development/FR-18B1-HOST-OTEL-TRACING.md)
