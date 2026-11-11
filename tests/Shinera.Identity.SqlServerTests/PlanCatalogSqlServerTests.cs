@@ -529,7 +529,7 @@ public sealed class PlanCatalogSqlServerTests
             };
             var draftPrice = new CatalogPlanPriceOffer
             {
-                PlanVersionId = nextDraft.Id, BillingCycle = "monthly",
+                PlanVersionId = nextDraft.Id, BillingCycle = "yearly",
                 Currency = "IRR", Amount = 42m, IsActive = true
             };
             var capability = new CatalogPlanVersionCapabilityValue
