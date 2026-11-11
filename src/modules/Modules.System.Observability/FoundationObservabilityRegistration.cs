@@ -24,6 +24,24 @@ public static class FoundationObservabilityRegistration
     {
         var settings = FoundationObservabilitySettings.Read(configuration, environment);
 
+        // Opt-in private Tempo reader; never expose its destination to the
+        // browser and never follow untrusted redirect or proxy configuration.
+        services.AddHttpClient<FoundationTempoTraceReader>(http =>
+            {
+                http.Timeout = TimeSpan.FromSeconds(3);
+                http.DefaultRequestHeaders.UserAgent.ParseAdd("Foundation-ControlTower/1");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                UseCookies = false,
+                UseProxy = false,
+                AutomaticDecompression = System.Net.DecompressionMethods.None,
+                MaxConnectionsPerServer = 8,
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+            });
+
+
         // EF interceptors are resolved from the existing shared DbContext
         // registration. No coupling from Infrastructure to Identity/OTel.
         services.AddScoped<IDbCommandInterceptor, FoundationEfCommandInterceptor>();
