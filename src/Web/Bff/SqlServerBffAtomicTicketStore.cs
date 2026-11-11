@@ -1,3 +1,4 @@
+using Infrastructure.SharedKernel.Observability;
 using System.Data;
 using System.Globalization;
 using System.Security.Claims;
@@ -65,7 +66,7 @@ public sealed class SqlServerBffAtomicTicketStore(
         command.Parameters.Add("@created", SqlDbType.DateTime2).Value = issued.UtcDateTime;
         command.Parameters.Add("@expires", SqlDbType.DateTime2).Value = expiry.UtcDateTime;
         command.Parameters.Add("@absolute", SqlDbType.DateTime2).Value = absolute.UtcDateTime;
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await SourceOwnedSqlTrace.ExecuteNonQueryAsync(command, cancellationToken);
         return key;
     }
 
@@ -107,7 +108,7 @@ public sealed class SqlServerBffAtomicTicketStore(
         command.Parameters.Add("@absolute", SqlDbType.DateTime2).Value = absolute.UtcDateTime;
         command.Parameters.Add("@subject", SqlDbType.UniqueIdentifier).Value = subject;
         // No matching row is a normal stale renewal: NEVER insert it again.
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await SourceOwnedSqlTrace.ExecuteNonQueryAsync(command, cancellationToken);
     }
 
     public Task<AuthenticationTicket?> RetrieveAsync(string key)
@@ -130,8 +131,8 @@ public sealed class SqlServerBffAtomicTicketStore(
                 AND AbsoluteExpiresUtc > SYSUTCDATETIME();
             """, connection);
         command.Parameters.Add("@key", SqlDbType.VarChar, 80).Value = key;
-        await using var reader = await command.ExecuteReaderAsync(
-            CommandBehavior.SingleRow, cancellationToken);
+        await using var reader = await SourceOwnedSqlTrace.ExecuteReaderAsync(
+            command, CommandBehavior.SingleRow, cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
             return null;
 
@@ -184,7 +185,7 @@ public sealed class SqlServerBffAtomicTicketStore(
         command.Parameters.Add("@key", SqlDbType.VarChar, 80).Value = key;
         // Successful ExecuteNonQuery is a committed revocation. On DB outage
         // this throws and cannot falsely report successful logout.
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await SourceOwnedSqlTrace.ExecuteNonQueryAsync(command, cancellationToken);
     }
 
     /// <summary>
@@ -210,7 +211,7 @@ public sealed class SqlServerBffAtomicTicketStore(
             WHERE SubjectId = @subject AND RevokedUtc IS NULL;
             """, connection);
         command.Parameters.Add("@subject", SqlDbType.UniqueIdentifier).Value = subjectId;
-        return await command.ExecuteNonQueryAsync(cancellationToken);
+        return await SourceOwnedSqlTrace.ExecuteNonQueryAsync(command, cancellationToken);
     }
 
     private static Guid ReadSubject(AuthenticationTicket ticket)
@@ -337,7 +338,7 @@ public sealed class SqlServerBffSchemaStartupGuard(string connectionString) : IH
                         AND is_disabled = 0)
                 THEN 1 ELSE 0 END;
             """, connection);
-        var result = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        var result = Convert.ToInt32(await SourceOwnedSqlTrace.ExecuteScalarAsync(command, cancellationToken));
         if (result != 1)
             throw new InvalidOperationException(
                 "BFF SQL Server session schema/constraints are absent, disabled or untrusted. " +
