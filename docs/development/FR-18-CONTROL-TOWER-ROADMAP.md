@@ -75,7 +75,7 @@ Keep FR-17 real Commercial Module integration independent, but use its actual Co
 ## FR-18E — Privileged query facade and Angular vertical slice
 
 **Backend**:
-- Source-owned System feature registry `control-tower` module/resource/menu with reviewed granular permissions (proposed `CONTROL-TOWER.OVERVIEW.READ`, `TRACES.READ`, `SQL.READ` etc; final keys registered code-owned). First-install System Admin bootstrap grants explicitly reviewed, production existing grants never silently re-enabled.
+- Source-owned `control-tower` Resource under the existing `system` Module (`PlatformCore`) and System Feature Registry/menu with reviewed granular permissions (proposed `CONTROL-TOWER.OVERVIEW.READ`, `TRACES.READ`, `SQL.READ` etc; final keys registered code-owned). First-install System Admin bootstrap grants explicitly reviewed, production existing grants never silently re-enabled.
 - `IControlTowerQueryService` with vendor-neutral DTO and strict actor/scope/time-range/rate limit/pagination checks. Backend proxies bounded queries to telemetry datastores via least-privilege credentials. No raw query string passthrough or direct Tempo/Loki credentials in browser.
 - Endpoints for Overview, Trace search/detail/span events, SQL span details, service health. Responses report `Captured/Partial/SampledOut/Unavailable`, no-store, 401/403/404/429/503.
 - Every access to sensitive trace/SQL detail writes audited metadata, separate from lossy telemetry.
