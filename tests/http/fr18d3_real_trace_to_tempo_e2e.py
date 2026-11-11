@@ -242,6 +242,28 @@ def main() -> None:
     )
     verify_persisted_lineage(trace_id)
 
+    # FR-18E1: exercise the real System-only REST facade, not just Tempo
+    # directly. No browser may receive a Tempo endpoint, raw OTLP or SQL.
+    public = BASE + "/api/system/control-tower/traces/" + trace_id
+    code, _, _ = http("GET", public)
+    assert code == 401, "Anonymous trace access must be unauthorized"
+    code, projected, _ = http("GET", public, headers={
+        "Authorization": "Bearer " + token})
+    assert code == 200, f"Authorized trace facade returned HTTP {code}"
+    sanitized = json.loads(projected)
+    assert sanitized.get("state") in ("Captured", "PartiallyCaptured")
+    assert sanitized.get("traceId") == trace_id
+    assert len(sanitized.get("spans", [])) >= 10
+    assert "resourceSpans" not in sanitized, "Raw OTLP leaked through facade"
+    assert UNSAFE_SENTINEL not in projected.decode("utf-8")
+    assert "Bearer " not in projected.decode("utf-8")
+    assert "db.statement" not in projected.decode("utf-8")
+    code, _, _ = http("GET", BASE + "/api/system/control-tower/traces/not-a-trace",
+                      headers={"Authorization": "Bearer " + token})
+    assert code == 400, "Malformed trace lookup should be rejected"
+    print("PASS: live System trace facade is read-only, authorized and sanitized",
+          flush=True)
+
     # The trace for a sensitive auth route should not be retained, even after
     # the authorized trace has reached the same Collector/Tempo storage.
     code, doc, _ = read_trace(AUTH_TRACE_ID)
