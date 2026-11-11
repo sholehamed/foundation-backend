@@ -1,0 +1,37 @@
+name: FR-18C isolated Collector, Tempo and Prometheus E2E
+
+on:
+  pull_request:
+    paths:
+      - observability/**
+      - .github/workflows/fr18c-observability-smoke.yml
+  push:
+    branches: [main]
+    paths:
+      - observability/**
+      - .github/workflows/fr18c-observability-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collector-tempo-prometheus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate pinned Compose manifest
+        run: docker compose -f observability/docker-compose.yml config -q
+      - name: Start isolated telemetry containers
+        run: docker compose -f observability/docker-compose.yml up -d
+      - name: Verify real OTLP traces, redaction, and metrics ingestion
+        run: python3 observability/smoke.py
+      - name: Report bounded diagnostic logs on failure
+        if: failure()
+        run: |
+          docker compose -f observability/docker-compose.yml ps
+          docker compose -f observability/docker-compose.yml logs --no-color --tail 70
+      - name: Remove disposable telemetry storage
+        if: always()
+        run: docker compose -f observability/docker-compose.yml down -v --remove-orphans

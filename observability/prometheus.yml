@@ -1,0 +1,10 @@
+# Docker private-network targets only. No TenantId, TraceId, UserId or
+# SQL text should be exported as metric labels.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: foundation-otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]

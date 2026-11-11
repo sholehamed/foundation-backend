@@ -1,0 +1,30 @@
+# Local filesystem is disposable / developer-only. Production needs durable
+# object storage and private authenticated query access.
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+# Tempo 3.x removed the top-level compactor. In monolithic mode the
+# in-process backend worker performs scheduled retention and compaction.
+backend_worker:
+  compaction:
+    block_retention: 168h
+
+usage_report:
+  reporting_enabled: false
