@@ -5,8 +5,12 @@ from pathlib import Path
 from fr14a_audit import AuditError, ENDPOINTS, FEATURES, TENANT_CATALOG, audit_sources, audit_protocol_and_media, ROOT
 
 def sources():
-    return {p.stem: p.read_text(encoding="utf-8-sig")
-            for p in ENDPOINTS.glob("*.cs")}
+    result = {p.stem: p.read_text(encoding="utf-8-sig")
+              for p in ENDPOINTS.glob("*.cs")}
+    host_tower = ROOT / "src/Web/ControlTowerEndpoints.cs"
+    if host_tower.exists():
+        result[host_tower.stem] = host_tower.read_text(encoding="utf-8-sig")
+    return result
 
 def validate(data):
     return audit_sources(
@@ -32,6 +36,32 @@ class SecurityInventoryTests(unittest.TestCase):
         self.assertEqual(len([r for r in rows if r.surface == "dev_tooling"]), 3)
         self.assertTrue(all(r.security_boundary != "SYSTEM_ADMIN_PLUS_GRANULAR_OPT_IN"
                             for r in rows))
+
+    def test_host_tower_requires_both_privileged_auth_and_throttle(self):
+        data = sources()
+        tower = data["ControlTowerEndpoints"]
+        self.assertIn('.RequireAuthorization("SystemAdministrator")', tower)
+        self.assertIn('.RequireRateLimiting("control-tower-trace-read")', tower)
+        for missing in [
+            '.RequireAuthorization("SystemAdministrator")',
+            '.RequireRateLimiting("control-tower-trace-read")',
+        ]:
+            compromised = dict(data)
+            compromised["ControlTowerEndpoints"] = tower.replace(missing, "", 1)
+            with self.assertRaisesRegex(
+                    AuditError, "Control Tower host route lacks exact System"):
+                validate(compromised)
+
+    def test_host_tower_metadata_cannot_be_removed(self):
+        data = sources()
+        original = data["ControlTowerEndpoints"]
+        altered = original.replace(
+            '.WithFeatureEndpoint(\n                "SYSTEM.CONTROL-TOWER.TRACE-DETAIL", "control-tower",',
+            '.WithTags(\n                "SYSTEM.CONTROL-TOWER.TRACE-DETAIL", "control-tower",', 1)
+        self.assertNotEqual(altered, original)
+        data["ControlTowerEndpoints"] = altered
+        with self.assertRaisesRegex(AuditError, "missing registered System feature metadata"):
+            validate(data)
 
     def test_new_system_endpoint_without_metadata_is_blocked(self):
         data = sources()
