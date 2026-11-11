@@ -14,6 +14,7 @@ internal sealed class CatalogPlanConfiguration : AuditEntityConfiguration<Catalo
         base.Configure(b);
         b.ToTable("CatalogPlans", t =>
         {
+            t.HasTrigger("TR_CatalogPlans_ImmutablePublishedIdentity");
             t.HasCheckConstraint("CK_CatalogPlans_Parent", "[ParentPlanId] IS NULL OR [ParentPlanId] <> [Id]");
         });
         b.Property(x => x.Code).HasMaxLength(80).IsRequired();
@@ -33,6 +34,7 @@ internal sealed class CatalogPlanVersionConfiguration : AuditEntityConfiguration
         base.Configure(b);
         b.ToTable("CatalogPlanVersions", t =>
         {
+            t.HasTrigger("TR_CatalogPlanVersions_Immutable");
             t.HasCheckConstraint("CK_CatalogPlanVersions_Version", "[VersionNumber] > 0");
             t.HasCheckConstraint("CK_CatalogPlanVersions_Status",
                 "[Status] IN ('Draft','Published','Retired')");
@@ -59,7 +61,8 @@ internal sealed class CatalogPlanVersionModuleConfiguration
     public override void Configure(EntityTypeBuilder<CatalogPlanVersionModule> b)
     {
         base.Configure(b);
-        b.ToTable("CatalogPlanVersionModules");
+        b.ToTable("CatalogPlanVersionModules", t =>
+            t.HasTrigger("TR_CatalogPlanVersionModules_Immutable"));
         b.HasIndex(x => new { x.PlanVersionId, x.ModuleId }).IsUnique();
         b.HasOne<CatalogPlanVersion>().WithMany()
             .HasForeignKey(x => x.PlanVersionId).OnDelete(DeleteBehavior.Restrict);
@@ -105,6 +108,7 @@ internal sealed class CatalogPlanVersionCapabilityValueConfiguration
         base.Configure(b);
         b.ToTable("CatalogPlanVersionCapabilityValues", t =>
         {
+            t.HasTrigger("TR_CatalogPlanVersionCapabilityValues_Immutable");
             t.HasCheckConstraint("CK_CatalogPlanVersionCapabilityValues_ExactlyOne",
                 "(CASE WHEN [BooleanValue] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [IntegerValue] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [ModeSetJson] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [IsUnlimited] = 1 THEN 1 ELSE 0 END) = 1");
             t.HasCheckConstraint("CK_CatalogPlanVersionCapabilityValues_NonNegative",
@@ -127,6 +131,7 @@ internal sealed class CatalogPlanPriceOfferConfiguration
         base.Configure(b);
         b.ToTable("CatalogPlanPriceOffers", t =>
         {
+            t.HasTrigger("TR_CatalogPlanPriceOffers_Immutable");
             t.HasCheckConstraint("CK_CatalogPlanPriceOffers_Amount", "[Amount] >= 0");
             t.HasCheckConstraint("CK_CatalogPlanPriceOffers_Dates",
                 "[SaleEndsAtUtc] IS NULL OR [SaleStartsAtUtc] IS NULL OR [SaleEndsAtUtc] > [SaleStartsAtUtc]");
@@ -148,6 +153,7 @@ internal sealed class CatalogPlanDisplayItemConfiguration
         base.Configure(b);
         b.ToTable("CatalogPlanDisplayItems", t =>
         {
+            t.HasTrigger("TR_CatalogPlanDisplayItems_Immutable");
             t.HasCheckConstraint("CK_CatalogPlanDisplayItems_Kind",
                 "[Kind] IN ('Module','Capability','Benefit')");
             t.HasCheckConstraint("CK_CatalogPlanDisplayItems_Owner",
