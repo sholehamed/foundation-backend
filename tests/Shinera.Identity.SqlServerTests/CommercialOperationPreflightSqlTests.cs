@@ -417,6 +417,16 @@ public sealed class CommercialOperationPreflightSqlTests
                 Assert.Equal(4L, consumed);
             }
 
+            // Isolated signed-JWT TestServer exercises the real HTTP
+            // Authentication/Authorization middleware against the same
+            // disposable SQL fixture; never registered in production Web.
+            var withoutGrant = MakeUser(tenantA);
+            db.Users.Add(withoutGrant);
+            await db.SaveChangesAsync();
+            await CommercialSignedHttpHarness.VerifyAsync(
+                options, Resources, Capabilities, Operations,
+                userA.Id, tenantA.Id, userB.Id, tenantB.Id, withoutGrant.Id);
+
             Assert.Equal("mode_required", (await Check(userA.Id, tenantA.Id,
                 "APPOINTMENTS.BOOKINGS.CONFIRM")).Code);
             Assert.Equal("mode_unavailable", (await Check(userA.Id, tenantA.Id,
