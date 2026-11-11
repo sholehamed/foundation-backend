@@ -1,3 +1,8 @@
+## FR-17D-1 — Optional Resource/operation limit decision engine (2026-11-11)
+
+- Pure code-owned `OperationLimitPolicy` and xUnit matrix added for absent binding (no usage ceiling only), finite/zero/explicit Unlimited limits, required capability absent from plan (deny), invalid/missing authoritative usage (deny), signed CountLimit cleanup, positive PeriodQuota consumption and allowed modes. No commercial source Module, runtime authorization changes or plan grants. [Handoff and next SQL acceptance](development/FR-17D1-OPERATION-LIMIT-POLICY.md).
+- Next **FR-17D-2**: atomic SQL Server authoritative CountLimit + idempotent period usage ledger, two-Tenant simultaneous-request tests and rollback; **FR-17C-3** composition with Subscription/Permission/Branch under rollout, then frontend usage API/UI. No live activation or production-validated cap yet.
+
 ## FR-17C-2A — Owner quote and operator-attested external payment (2026-11-11)
 
 - [Backend PR #135](https://github.com/sholehamed/foundation-backend/pull/135) implements safe Pending order creation from immutable published Plan price, tenant-scoped idempotency, System Admin-only reviewed out-of-band positive-amount settlement and atomic Order→Active Subscription issuance. [Technical handoff and test cases](development/FR-17C2A-TENANT-ORDERS-MANUAL-SETTLEMENT.md). [Angular #64](https://github.com/sholehamed/foundation-frontend/pull/64) implements the Tenant and SuperAdmin workflow.
