@@ -1,3 +1,13 @@
+## FR-18 — Control Tower (architecture baseline, documentation-only)
+
+- [ADR-0003 — Isolation of observability from primary business SQL and transactions](decisions/ADR-0003-control-tower-observability-isolation.md)
+- [FR-18A — Complete distributed tracing, SQL, method instrumentation, storage topology and security architecture](architecture/control-tower-observability.md)
+- [FR-18 — Telemetry DTOs, trace/SQL read facade, diagnostic capture policies and acceptance](reference/control-tower-telemetry-contracts.md)
+- [FR-18 — Implementation phases and checklists, FR-18B first executable slice](development/FR-18-CONTROL-TOWER-ROADMAP.md)
+- [Angular companion UX blueprint](https://github.com/sholehamed/foundation-frontend/blob/main/docs/development/FR-18-CONTROL-TOWER-UX.md)
+
+**Status:** documentation/decisions only as of 2026-11-11. No Collector, tracing SDK, request inspector API, capture policy storage or Control Tower UI is deployed by FR-18A. Existing System admin/BFF/SQL behavior is unchanged.
+
 - [FR-17E-1 — Centrally issued coupons, settled redemption and zero-net subscription checkout](development/FR-17E1-CATALOG-COUPONS-ATOMIC-REDEMPTION.md)
 - [FR-17C-2A — Tenant Orders, admin reviewed external manual settlement and atomic Subscription activation](development/FR-17C2A-TENANT-ORDERS-MANUAL-SETTLEMENT.md)
 - [FR-17C-1 — Tenant Subscription/Order schema, verified-order Shadow Entitlement](development/FR-17C1-SUBSCRIPTION-SHADOW.md)

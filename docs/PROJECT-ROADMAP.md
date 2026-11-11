@@ -1,3 +1,15 @@
+## FR-18 — Foundation Control Tower (new stream, 2026-11-11)
+
+**FR-18A architecture/docs done once merged; NO observability code deployed yet.** [ADR-0003](decisions/ADR-0003-control-tower-observability-isolation.md) · [Architecture](architecture/control-tower-observability.md) · [Contracts/security/test matrix](reference/control-tower-telemetry-contracts.md) · [Full delivery plan](development/FR-18-CONTROL-TOWER-ROADMAP.md) · [Frontend UX](https://github.com/sholehamed/foundation-frontend/blob/main/docs/development/FR-18-CONTROL-TOWER-UX.md).
+
+- **FR-18B next:** source-owned host module, OTel Activity/Meter/ILogger + W3C trace across inbound HTTP/BFF/Identity; no bodies/credentials, fail-open bounded exporter and no SQL migration, signed two-Tenant HTTP regression.
+- **FR-18C:** independently deployed OTel Collector and trace/log/metrics stores, resilience/retention/security POC.
+- **FR-18D:** CQRS/Domain/EF+SqlClient+Dapper SQL spans, transaction/rollback/retry, one command/one span and no raw params; apply at real module boundaries.
+- **FR-18E:** approved System-only read facade, central Feature Registry/seed, Angular Control Tower Overview/Trace Explorer/Waterfall and SQL detail with genuine null/Unavailable states.
+- **FR-18F:** source-reviewed safe DTO fields, strict Diagnostic Session/capture policy TTL/size/cost and durable audit.
+- **FR-18G:** SQL fingerprint/N+1/Query Store aggregate trends, runtime, alert rules; Notification Center integration later.
+- **FR-18H:** load/chaos/redaction/two-Tenant browser tests, real hosted Staging and Production release gate. Business SQL instance stays isolated from high-volume telemetry.
+
 ## FR-17F-1 — Real-data administrative dashboard metrics (2026-11-11)
 
 - Existing System dashboard extended with explicit persisted PlanVersion / Pending Order / Settled Order / Active-in-period Subscription **counts**, not fake GMV or billing analytics. SQL two-Tenant tests, no schema/grant/route changes. [Handoff](development/FR-17F1-SYSTEM-COMMERCIAL-DASHBOARD.md). Companion Angular System/Tenant executive dashboard uses genuine API state and responsive presentation. Next product-level real Commercial Module choice/EndpointGroup registration and full OpenIddict/BFF acceptance, actual CountLimit domain providers and subscription lifecycle hardening.
