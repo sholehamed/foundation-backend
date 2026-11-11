@@ -3,6 +3,7 @@ Run while the SQL Server-backed ASP.NET Core API is live with Identity:E2E:Enabl
 Identity:E2E:CaptchaCode=ABCDE and AllowInsecureHttpForE2E=true.
 """
 import json
+from datetime import datetime, timedelta, timezone
 import os
 import urllib.error
 import urllib.parse
@@ -109,6 +110,32 @@ def main():
     status, _ = request("GET", "/api/tenant/workspace/subscription/me",
                         token=system_token)
     assert status == 403, "System Admin must not read arbitrary Tenant license"
+    # FR-17E-1: System Admin can centrally issue a random coupon code.
+    # The secret is returned once, while later listing must omit it.
+    status, old_coupons = request("GET", "/api/system/PlanCatalog/coupons",
+                                  token=system_token)
+    assert status == 200 and isinstance(old_coupons, list), (status, old_coupons)
+    now = datetime.now(timezone.utc)
+    status, issued = request("POST", "/api/system/PlanCatalog/coupons", {
+        "title": "CI test coupon", "kind": "Percentage", "value": 100,
+        "planVersionId": None,
+        "startsAtUtc": (now - timedelta(minutes=5)).isoformat(),
+        "endsAtUtc": (now + timedelta(days=2)).isoformat(),
+        "maxUses": 2, "maxUsesPerTenant": 1,
+    }, token=system_token)
+    assert status == 200 and issued["ok"], (status, issued)
+    secret = issued["secretCode"]
+    assert isinstance(secret, str) and len(secret) == 24, issued
+    status, coupons = request("GET", "/api/system/PlanCatalog/coupons",
+                              token=system_token)
+    assert status == 200 and isinstance(coupons, list), (status, coupons)
+    assert any(row["id"] == issued["coupon"]["id"] for row in coupons), coupons
+    assert secret not in json.dumps(coupons), "Coupon listing leaked plaintext"
+    status, disabled = request(
+        "POST", "/api/system/PlanCatalog/coupons/" + issued["coupon"]["id"] + "/disable",
+        {}, token=system_token)
+    assert status == 200 and disabled["code"] == "coupon_disabled", (status, disabled)
+
     status, pending_order_queue = request(
         "GET", "/api/system/PlanCatalog/orders/pending", token=system_token)
     assert status == 200 and isinstance(pending_order_queue, list), (
@@ -153,6 +180,8 @@ def main():
     status, _ = request("GET", "/api/tenant/workspace/subscription/me")
     assert status == 401, status
     status, _ = request("GET", "/api/system/PlanCatalog/orders/pending")
+    assert status == 401, status
+    status, _ = request("GET", "/api/system/PlanCatalog/coupons")
     assert status == 401, status
     status, _ = request("POST", "/api/tenant/workspace/subscription/orders", {
         "planVersionId": "00000000-0000-0000-0000-000000000001",
@@ -206,6 +235,8 @@ def main():
     assert status == 200 and after_rejection["hasCommercialEntitlement"] is False
     status, _ = request("GET", "/api/system/PlanCatalog/orders/pending", token=access_token)
     assert status == 403, "Tenant Owner cannot access System payment settlement"
+    status, _ = request("GET", "/api/system/PlanCatalog/coupons", token=access_token)
+    assert status == 403, "Tenant Owner must not list centrally generated coupon codes"
 
     # First Tenant Owner login: real signup's Role+RolePermissions must
     # render every permitted menu immediately, never through Owner fallback
