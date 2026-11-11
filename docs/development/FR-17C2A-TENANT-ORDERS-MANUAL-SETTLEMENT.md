@@ -41,6 +41,8 @@ Server validates idempotency key length 16–100 and allowed characters; uses un
 
 The order amount is recalculated by `PublishedPlanCatalogReader` using the pinned immutable version, deployed code-owned Commercial Module/Capability manifest and currently valid **IRR** offer of the requested cycle. It rejects unknown/draft/missing/empty/commercial-source-drift/expired/no-price offers. No price, coupon or amount is accepted from the request. Positive price is mandatory at this stage; zero-price offers return `zero_total_requires_coupon_checkout` instead of creating an incorrectly 'paid' order.
 
+Creating one pending order for a Tenant blocks duplicate unpaid orders: if a **different** idempotency key repeats the same pending PlanVersion/cycle, the server returns the existing order (`existing_pending`); a different PlanVersion/cycle returns `pending_order_exists`. This prevents duplicate quotes even after browser refresh/lost responses, pending a future explicit cancel/expire flow.
+
 Result contains `{ok,code,order,subscriptionId}`; newly created order is **Pending**, discount=0, net=gross, no receipt, no subscription. The old `BusinessProfile.RequestedPlanKey` remains signup intent only.
 
 ## System Admin external manual settlement
