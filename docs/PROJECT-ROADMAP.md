@@ -1,3 +1,9 @@
+## FR-17E-1 — Percentage/fixed coupons and atomic zero-total checkout (2026-11-11)
+
+- [Backend PR #138](https://github.com/sholehamed/foundation-backend/pull/138): System-generated one-time 96-bit codes, hashed catalog, UTC eligibility, one-use/global and per-Tenant settled caps, coupon-to-order pin and redemption ledger. Existing Tenant checkout supports optional code; zero-net completes Order+Redemption+Subscription atomically; partial discounts consume once at System external receipt settlement. [Detailed contract and release risks](development/FR-17E1-CATALOG-COUPONS-ATOMIC-REDEMPTION.md).
+- [Frontend PR #65](https://github.com/sholehamed/foundation-frontend/pull/65): System Admin coupon issue/list/disable; Tenant checkout optional code and accurate server-confirmed zero/pending state. Both PRs gated on current-head Build/SQL/HTTP/Angular/Chromium, then post-merge main.
+- Next: code-owned actual Commercial Module/Resources/Permissions and end-to-end Staging flow; order expiration/cancel/refunds, append-only manual settlement proof, explicit invoice and tax policy, trusted payment adapter, renewal; then Subscription AND Tenant DelegatedPermission runtime gates and Limit/Quota integration. **Do not** treat coupons or a purchased Plan as blanket user Permission.
+
 ## FR-17D-2A — SQL Server tenant quota ledger and atomic CountLimit guard (2026-11-11)
 
 - SQL-only migration, tenant-scoped balance/append-only usage events, trusted-internal `TenantAtomicUsageService` using serializable caller-owned domain transaction and `sp_getapplock` per Tenant/Capability/Period. Supports count callback under same lock, quota Consume/Reverse, idempotency/rollback/parallel writes; disposable SQL tests added. [Handoff](development/FR-17D2A-ATOMIC-USAGE-SQL.md).
