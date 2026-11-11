@@ -50,7 +50,7 @@ public static class QuotaPeriodResolver
             }
             catch (ArgumentOutOfRangeException)
             {
-                return DateTime.MaxValue.ToUniversalTime();
+                return DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc);
             }
         }
 
