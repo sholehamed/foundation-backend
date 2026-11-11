@@ -165,6 +165,16 @@ public sealed class TenantCommercialOperationExecutor(
             meterItems.Add((code, definition, allowance));
         }
 
+        // A Feature or AllowedModes requirement cannot be smuggled into the
+        // metering adapter list even if the operation also requires that key.
+        if (countByCode.Keys.Any(x => !meterItems.Any(item =>
+                item.Definition.Kind == CapabilityKind.CountLimit &&
+                string.Equals(item.Code, x, StringComparison.OrdinalIgnoreCase))) ||
+            quotaByCode.Keys.Any(x => !meterItems.Any(item =>
+                item.Definition.Kind == CapabilityKind.PeriodQuota &&
+                string.Equals(item.Code, x, StringComparison.OrdinalIgnoreCase))))
+            return Denied("unexpected_meter_requirement");
+
         // Ensure neither caller omitted a required check nor fabricated a
         // MeteringRequired state. All acquisition order is source-code-based
         // and stable across requests: prevents reverse-order app-lock deadlocks.
