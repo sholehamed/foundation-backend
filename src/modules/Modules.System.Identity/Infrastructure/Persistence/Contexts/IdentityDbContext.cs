@@ -19,6 +19,8 @@ namespace Modules.System.Identity.Infrastructure.Persistence.Contexts
         public DbSet<TenantModule> TenantModules => Set<TenantModule>();
         public DbSet<TenantPlanOrder> TenantPlanOrders => Set<TenantPlanOrder>();
         public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
+        public DbSet<CatalogDiscountCoupon> CatalogDiscountCoupons => Set<CatalogDiscountCoupon>();
+        public DbSet<CatalogCouponRedemption> CatalogCouponRedemptions => Set<CatalogCouponRedemption>();
         public DbSet<CatalogPlan> CatalogPlans => Set<CatalogPlan>();
         public DbSet<CatalogPlanVersion> CatalogPlanVersions => Set<CatalogPlanVersion>();
         public DbSet<CatalogPlanVersionModule> CatalogPlanVersionModules => Set<CatalogPlanVersionModule>();

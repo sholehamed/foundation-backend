@@ -278,6 +278,168 @@ namespace Modules.Identity.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogCouponRedemption", b =>
+                {
+                    b.Property<Guid>("CouponId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(19, 2)
+                        .HasColumnType("decimal(19,2)");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("RedeemedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("CouponId", "TenantId", "RedeemedAtUtc");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("CatalogCouponRedemptions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CatalogCouponRedemptions_Discount", "[DiscountAmount] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogDiscountCoupon", b =>
+                {
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<DateTime>("EndsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<int>("MaxUses")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxUsesPerTenant")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("PlanVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("StartsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<decimal>("Value")
+                        .HasPrecision(19, 2)
+                        .HasColumnType("decimal(19,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("CodeHash")
+                        .IsUnique();
+
+                    b.HasIndex("IsActive", "StartsAtUtc", "EndsAtUtc");
+
+                    b.HasIndex("PlanVersionId");
+
+                    b.ToTable("CatalogDiscountCoupons", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CatalogDiscountCoupons_Currency", "[Currency] = 'IRR'");
+                            t.HasCheckConstraint("CK_CatalogDiscountCoupons_Dates", "[EndsAtUtc] > [StartsAtUtc]");
+                            t.HasCheckConstraint("CK_CatalogDiscountCoupons_Kind", "[Kind] IN ('Percentage','FixedIRR')");
+                            t.HasCheckConstraint("CK_CatalogDiscountCoupons_Uses", "[MaxUses] > 0 AND [MaxUsesPerTenant] > 0 AND [MaxUsesPerTenant] <= [MaxUses]");
+                            t.HasCheckConstraint("CK_CatalogDiscountCoupons_Value", "[Value] > 0 AND ([Kind] <> 'Percentage' OR [Value] <= 100)");
+                        });
+                });
+
             modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlan", b =>
                 {
                     b.Property<string>("Code")
@@ -1714,6 +1876,9 @@ namespace Modules.Identity.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)");
 
+                    b.Property<Guid?>("CouponId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<decimal>("DiscountAmount")
                         .HasPrecision(19, 2)
                         .HasColumnType("decimal(19,2)");
@@ -1779,6 +1944,8 @@ namespace Modules.Identity.Migrations
 
                     b.HasIndex("CreatedAt")
                         .IsDescending();
+
+                    b.HasIndex("CouponId");
 
                     b.HasIndex("PlanVersionId");
 
@@ -2543,6 +2710,35 @@ namespace Modules.Identity.Migrations
 
                 });
 
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogCouponRedemption", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogDiscountCoupon", null)
+                        .WithMany()
+                        .HasForeignKey("CouponId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.TenantPlanOrder", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogDiscountCoupon", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PlanVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("Modules.System.Identity.Domain.Entities.CatalogPlan", b =>
                 {
                     b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlan", null)
@@ -2817,6 +3013,11 @@ namespace Modules.Identity.Migrations
 
             modelBuilder.Entity("Modules.System.Identity.Domain.Entities.TenantPlanOrder", b =>
                 {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogDiscountCoupon", null)
+                        .WithMany()
+                        .HasForeignKey("CouponId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", null)
                         .WithMany()
                         .HasForeignKey("PlanVersionId")

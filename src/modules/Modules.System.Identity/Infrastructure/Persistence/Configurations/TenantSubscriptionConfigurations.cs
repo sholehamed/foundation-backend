@@ -39,6 +39,8 @@ internal sealed class TenantPlanOrderConfiguration : AuditEntityConfiguration<Te
         b.HasIndex(x => new { x.TenantId, x.IdempotencyKey })
             .IsUnique().HasFilter("[IdempotencyKey] IS NOT NULL");
         b.HasIndex(x => new { x.TenantId, x.Status, x.SettledAtUtc });
+        b.HasOne<CatalogDiscountCoupon>().WithMany().HasForeignKey(x => x.CouponId)
+            .OnDelete(DeleteBehavior.Restrict);
         b.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId)
             .OnDelete(DeleteBehavior.Restrict);
         b.HasOne<CatalogPlanVersion>().WithMany().HasForeignKey(x => x.PlanVersionId)
