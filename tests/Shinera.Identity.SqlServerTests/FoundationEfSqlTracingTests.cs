@@ -108,7 +108,7 @@ public sealed class FoundationEfSqlTracingTests
             // A query that executes only once creates exactly one completion
             // span; retries would instead appear as separate actual attempts.
             Assert.Equal(1, commands.Count(span =>
-                span.GetTagItem("foundation.db.execution")?.ToString() == "nonquery" &&
+                span.GetTagItem("foundation.db.execution")?.ToString() == "failure" &&
                 span.Status == ActivityStatusCode.Error));
         }
         finally
