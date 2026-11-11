@@ -1,3 +1,7 @@
+## FR-17F-1 — Real-data administrative dashboard metrics (2026-11-11)
+
+- Existing System dashboard extended with explicit persisted PlanVersion / Pending Order / Settled Order / Active-in-period Subscription **counts**, not fake GMV or billing analytics. SQL two-Tenant tests, no schema/grant/route changes. [Handoff](development/FR-17F1-SYSTEM-COMMERCIAL-DASHBOARD.md). Companion Angular System/Tenant executive dashboard uses genuine API state and responsive presentation. Next product-level real Commercial Module choice/EndpointGroup registration and full OpenIddict/BFF acceptance, actual CountLimit domain providers and subscription lifecycle hardening.
+
 ## FR-17C-3C — Shared SQL transaction bridge for independent commercial modules (2026-11-11)
 
 - `ExecuteModuleAsync` exposes a carefully scoped `SqlConnection/SqlTransaction` to a trusted module-owned DbContext/Count adapter, never Identity entities; required license/RBAC/typed capability/quota checks and domain writes stay in one Serializable SQL commit/rollback. Disposable SQL suite tests module-owned EF persistence and rollback; test-assembly-only signed JWT TestServer verifies authenticated 401/403/200/409 with two Tenants and no production test endpoint. [Handoff](development/FR-17C3C-MODULE-UOW-SIGNED-HTTP.md).

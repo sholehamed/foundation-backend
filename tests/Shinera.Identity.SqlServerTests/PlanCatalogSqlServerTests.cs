@@ -4,6 +4,7 @@ using Modules.System.Identity.Domain.Entities;
 using Modules.System.Identity.Infrastructure.Persistence.Contexts;
 using Modules.System.Identity.Web.Util;
 using Modules.System.Identity.Web.Endpoints;
+using Modules.System.Identity.Application.Features.Dashboard;
 using Xunit;
 
 namespace Shinera.Identity.SqlServerTests;
@@ -15,6 +16,91 @@ namespace Shinera.Identity.SqlServerTests;
 /// </summary>
 public sealed class PlanCatalogSqlServerTests
 {
+    [Fact]
+    public async Task System_dashboard_reports_only_recorded_plan_and_subscription_state()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var now = DateTime.UtcNow;
+            var first = new Tenant { Name = "Lifecycle A", Slug = "lifecycle-dash-a" };
+            var second = new Tenant { Name = "Lifecycle B", Slug = "lifecycle-dash-b" };
+            var plan = new CatalogPlan {
+                Code = "dashboard-lifecycle", Name = "Dashboard lifecycle" };
+            var version = new CatalogPlanVersion {
+                PlanId = plan.Id, VersionNumber = 1,
+                Status = "Draft", DisplayTitle = "Dashboard lifecycle" };
+            db.Tenants.AddRange(first, second);
+            db.CatalogPlans.Add(plan);
+            db.CatalogPlanVersions.Add(version);
+            db.CatalogPlanPriceOffers.Add(new CatalogPlanPriceOffer {
+                PlanVersionId = version.Id, BillingCycle = "monthly",
+                Currency = "IRR", Amount = 5000
+            });
+            await db.SaveChangesAsync();
+            version.Status = "Published";
+            version.PublishedAtUtc = now.AddDays(-8);
+            version.ContentFingerprint = new string('b', 64);
+            await db.SaveChangesAsync();
+
+            TenantPlanOrder Order(Tenant tenant, string status, int ordinal)
+                => new()
+                {
+                    TenantId = tenant.Id, PlanVersionId = version.Id,
+                    Status = status, BillingCycle = "monthly",
+                    Currency = "IRR", GrossAmount = 5000m,
+                    DiscountAmount = 0m, NetAmount = 5000m,
+                    QuotedAtUtc = now.AddDays(-8),
+                    SettledAtUtc = status == "Settled" ? now.AddDays(-7) : null,
+                    SettlementKind = status == "Settled" ? "ExternalManual" : null,
+                    SettlementReference = status == "Settled"
+                        ? "system-dash-review-" + ordinal : null,
+                    IdempotencyKey = "system-dash-order-" + ordinal
+                };
+
+            var pending = Order(first, "Pending", 1);
+            var settledA = Order(first, "Settled", 2);
+            var settledB = Order(second, "Settled", 3);
+            db.TenantPlanOrders.AddRange(pending, settledA, settledB);
+            db.TenantSubscriptions.AddRange(
+                new TenantSubscription {
+                    TenantId = first.Id, PlanVersionId = version.Id,
+                    SourceOrderId = settledA.Id, Status = "Active",
+                    StartsAtUtc = now.AddDays(-1),
+                    EndsAtUtc = now.AddDays(10),
+                    ActivatedAtUtc = now.AddDays(-1)
+                },
+                new TenantSubscription {
+                    TenantId = second.Id, PlanVersionId = version.Id,
+                    SourceOrderId = settledB.Id, Status = "Expired",
+                    StartsAtUtc = now.AddDays(-30),
+                    EndsAtUtc = now.AddDays(-1),
+                    ActivatedAtUtc = now.AddDays(-30)
+                });
+            await db.SaveChangesAsync();
+
+            // Exercise the real System-wide EF query, not a simulated
+            // Controller response or a fabricated metrics fixture.
+            var result = await new SuperDashboardQueryHandler(db)
+                .Handle(new SuperDashboardQuery(), CancellationToken.None);
+            Assert.Equal(1, result.PublishedPlanVersions);
+            Assert.Equal(1, result.PendingPlanOrders);
+            Assert.Equal(2, result.SettledPlanOrders);
+            Assert.Equal(1, result.ActiveSubscriptionPeriods);
+            Assert.Equal(2, result.TotalTenants);
+
+            // A disabled period is no longer part of the current count.
+            var actual = await db.TenantSubscriptions
+                .IgnoreQueryFilters(["tenant"]).SingleAsync(x =>
+                    x.TenantId == first.Id);
+            actual.Status = "Cancelled";
+            await db.SaveChangesAsync();
+            var after = await new SuperDashboardQueryHandler(db)
+                .Handle(new SuperDashboardQuery(), CancellationToken.None);
+            Assert.Equal(0, after.ActiveSubscriptionPeriods);
+            Assert.Equal(2, after.SettledPlanOrders);
+        });
+    }
+
     [Fact]
     public async Task Published_child_inherits_pinned_parent_modules_and_overrides_typed_limits()
     {

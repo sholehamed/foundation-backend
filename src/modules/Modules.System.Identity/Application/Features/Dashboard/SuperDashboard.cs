@@ -32,6 +32,11 @@ public sealed record SuperDashboardDto
     public int TotalPermissions { get; init; }
     public int TotalGroups { get; init; }
     public int TotalModules { get; init; }
+    /// <summary>Source data counts only; NOT a paid entitlement or banking receipt.</summary>
+    public int PublishedPlanVersions { get; init; }
+    public int PendingPlanOrders { get; init; }
+    public int SettledPlanOrders { get; init; }
+    public int ActiveSubscriptionPeriods { get; init; }
     public IReadOnlyList<RecentTenantDto> RecentTenants { get; init; } = [];
 }
 
@@ -50,6 +55,16 @@ public sealed class SuperDashboardQueryHandler(IIdentityDbContext db)
 
         var totalTenants = await tenants.CountAsync(cancellationToken);
         var activeTenants = await tenants.CountAsync(x => x.IsActive, cancellationToken);
+        // The SystemAdministrator policy is the sole caller of this
+        // cross-Tenant summary. The ordinary Tenant query filters must not
+        // make an operator's commercial overview incomplete.
+        var nonMasterOrders = db.TenantPlanOrders.AsNoTracking()
+            .IgnoreQueryFilters(["tenant"])
+            .Where(x => x.TenantId != DefaultSeedData.MasterTenant.Id);
+        var nonMasterPeriods = db.TenantSubscriptions.AsNoTracking()
+            .IgnoreQueryFilters(["tenant"])
+            .Where(x => x.TenantId != DefaultSeedData.MasterTenant.Id);
+        var nowUtc = DateTime.UtcNow;
 
         return new SuperDashboardDto
         {
@@ -64,6 +79,18 @@ public sealed class SuperDashboardQueryHandler(IIdentityDbContext db)
             TotalPermissions = await db.Permissions.AsNoTracking().CountAsync(cancellationToken),
             TotalGroups = await db.Groups.AsNoTracking().CountAsync(cancellationToken),
             TotalModules = await db.Modules.AsNoTracking().CountAsync(cancellationToken),
+            PublishedPlanVersions = await db.CatalogPlanVersions.AsNoTracking()
+                .CountAsync(x => x.Status == "Published", cancellationToken),
+            PendingPlanOrders = await nonMasterOrders
+                .CountAsync(x => x.Status == "Pending", cancellationToken),
+            SettledPlanOrders = await nonMasterOrders
+                .CountAsync(x => x.Status == "Settled", cancellationToken),
+            // "Active" here describes the recorded subscription period
+            // state, not effective Permission or a commercial Module license.
+            ActiveSubscriptionPeriods = await nonMasterPeriods
+                .CountAsync(x => x.Status == "Active" &&
+                    x.StartsAtUtc <= nowUtc && x.EndsAtUtc > nowUtc,
+                    cancellationToken),
             RecentTenants = await tenants
                 .OrderByDescending(x => x.CreatedAt)
                 .ThenByDescending(x => x.Id)
