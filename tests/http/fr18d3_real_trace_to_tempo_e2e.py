@@ -31,7 +31,7 @@ if (
     or os.environ.get("ASPNETCORE_ENVIRONMENT") != "Development"
     or os.environ.get("Identity__E2E__Enabled") != "true"
     or os.environ.get("SHINERA_E2E_DB_MUTATION") != "stale-jwt-ci-only"
-    or os.environ.get("DBNAME") != "Shinera_E2E_FR18D3"
+    or os.environ.get("DBNAME") != "Shinera_E2E_TenantIAM"
     or os.environ.get("DataBaseServer") != "127.0.0.1,1433"
     or os.environ.get("Identity__Bff__Enabled") != "false"
     or os.environ.get("Observability__Otlp__Enabled") != "true"
