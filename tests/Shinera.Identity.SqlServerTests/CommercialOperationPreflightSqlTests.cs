@@ -26,6 +26,9 @@ public sealed class CommercialOperationPreflightSqlTests
             CapabilityMergePolicy.Override),
         new("appointments.monthly", "appointments", "bookings",
             CapabilityKind.PeriodQuota, CapabilityValueKind.Integer,
+            CapabilityMergePolicy.Override, QuotaPeriodCadence.MonthlyAnniversary),
+        new("appointments.max-active", "appointments", "bookings",
+            CapabilityKind.CountLimit, CapabilityValueKind.Integer,
             CapabilityMergePolicy.Override),
         new("appointments.confirm-mode", "appointments", "bookings",
             CapabilityKind.AllowedModes, CapabilityValueKind.ModeSet,
@@ -41,7 +44,10 @@ public sealed class CommercialOperationPreflightSqlTests
             ["appointments.recurring", "appointments.monthly"]),
         new("appointments", "bookings", "APPOINTMENTS.CREATE",
             "APPOINTMENTS.BOOKINGS.CONFIRM",
-            ["appointments.confirm-mode"])
+            ["appointments.confirm-mode"]),
+        new("appointments", "bookings", "APPOINTMENTS.CREATE",
+            "APPOINTMENTS.BOOKINGS.ACTIVATE",
+            ["appointments.max-active", "appointments.monthly"])
     ];
 
     [Fact]
@@ -104,7 +110,13 @@ public sealed class CommercialOperationPreflightSqlTests
                 ModuleId = module.Id, ResourceId = resource.Id,
                 Kind = "AllowedModes", ValueKind = "ModeSet", MergePolicy = "Override"
             };
-            db.CatalogCapabilityDefinitions.AddRange(recurring, quota, modes);
+            var active = new CatalogCapabilityDefinition
+            {
+                Code = "appointments.max-active", Title = "Active",
+                ModuleId = module.Id, ResourceId = resource.Id,
+                Kind = "CountLimit", ValueKind = "Integer", MergePolicy = "Override"
+            };
+            db.CatalogCapabilityDefinitions.AddRange(recurring, quota, modes, active);
             db.CatalogPlanVersionCapabilityValues.AddRange(
                 new CatalogPlanVersionCapabilityValue
                 {
@@ -123,6 +135,12 @@ public sealed class CommercialOperationPreflightSqlTests
                     PlanVersionId = version.Id,
                     CapabilityDefinitionId = modes.Id,
                     ModeSetJson = "[\"manual\",\"auto\"]"
+                },
+                new CatalogPlanVersionCapabilityValue
+                {
+                    PlanVersionId = version.Id,
+                    CapabilityDefinitionId = active.Id,
+                    IntegerValue = 1
                 });
             db.CatalogPlanPriceOffers.Add(new CatalogPlanPriceOffer
             {
@@ -209,6 +227,127 @@ public sealed class CommercialOperationPreflightSqlTests
             Assert.Equal("MeteringRequired", meter.State);
             Assert.False(meter.CanRunWithoutMeter);
             Assert.Equal(["appointments.monthly"], meter.MeteredCapabilities);
+
+            // FR-17C-3B: test-only commercial domain table and source contract.
+            // It is NOT part of a production module or migration.
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE TABLE dbo.FR17C3B_TestWrites(
+                  Id uniqueidentifier NOT NULL PRIMARY KEY,
+                  TenantId uniqueidentifier NOT NULL,
+                  IsActive bit NOT NULL);
+                """);
+
+            async Task<CommercialOperationResult> Execute(
+                Guid actor, Guid tenant, string endpoint, string idempotency,
+                CommercialCountRequirement[] countRequirements,
+                CommercialQuotaRequirement[] quotaRequirements,
+                bool throwDuringMutation = false, string? chosenMode = null)
+            {
+                var context = Context(actor, tenant);
+                await using var scoped = new IdentityDbContext(options, context);
+                return await new TenantCommercialOperationExecutor(
+                    scoped, context, Resources, Capabilities, Operations)
+                    .ExecuteAsync(endpoint, idempotency, countRequirements,
+                        quotaRequirements,
+                        async (database, token) =>
+                        {
+                            // CREATE inserts inactive, ACTIVATE adds a
+                            // qualifying active entity guarded by CountLimit.
+                            await database.Database.ExecuteSqlRawAsync(
+                                "INSERT dbo.FR17C3B_TestWrites(Id,TenantId,IsActive) " +
+                                "VALUES ({0},{1},{2})",
+                                Guid.NewGuid(), tenant,
+                                endpoint.EndsWith("ACTIVATE", StringComparison.Ordinal));
+                            if (throwDuringMutation)
+                                throw new InvalidOperationException("test business failure");
+                        }, chosenMode);
+            }
+
+            static async Task<long> DomainCount(
+                IdentityDbContext database, Guid tenant, CancellationToken token) =>
+                await database.Database.SqlQueryRaw<long>(
+                    "SELECT COUNT_BIG(*) AS [Value] FROM dbo.FR17C3B_TestWrites " +
+                    "WHERE TenantId={0} AND IsActive=1", tenant)
+                    .SingleAsync(token);
+
+            var success = await Execute(userA.Id, tenantA.Id,
+                "APPOINTMENTS.BOOKINGS.CREATE", "exec-create-0001",
+                [], [new("appointments.monthly", 2)]);
+            Assert.True(success.Committed, success.Code);
+            Assert.Equal("commercial_operation_committed", success.Code);
+
+            Assert.Equal("duplicate_operation", (await Execute(userA.Id,
+                tenantA.Id, "APPOINTMENTS.BOOKINGS.CREATE",
+                "exec-create-0001", [], [new("appointments.monthly", 2)])).Code);
+            Assert.Equal("idempotency_conflict", (await Execute(userA.Id,
+                tenantA.Id, "APPOINTMENTS.BOOKINGS.CREATE",
+                "exec-create-0001", [], [new("appointments.monthly", 3)])).Code);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                Execute(userA.Id, tenantA.Id,
+                    "APPOINTMENTS.BOOKINGS.CREATE", "exec-rollback-0001",
+                    [], [new("appointments.monthly", 1)],
+                    throwDuringMutation: true));
+
+            Assert.Equal("missing_quota_adapter", (await Execute(userA.Id,
+                tenantA.Id, "APPOINTMENTS.BOOKINGS.CREATE",
+                "exec-missing-0001", [], [])).Code);
+            Assert.Equal("module_not_entitled", (await Execute(userB.Id,
+                tenantB.Id, "APPOINTMENTS.BOOKINGS.CREATE",
+                "exec-unlicensed-0001", [], [new("appointments.monthly", 1)])).Code);
+
+            // Unmetered commercial commands are still licensed and
+            // permission/Feature/Mode checked. The missing Count/Quota ceiling
+            // does NOT mean authorization bypass.
+            Assert.Equal("mode_unavailable", (await Execute(userA.Id,
+                tenantA.Id, "APPOINTMENTS.BOOKINGS.CONFIRM",
+                "exec-invalid-mode-001", [], [], chosenMode: "unknown")).Code);
+            var simple = await Execute(userA.Id, tenantA.Id,
+                "APPOINTMENTS.BOOKINGS.CONFIRM",
+                "exec-mode-allowed-001", [], [], chosenMode: "manual");
+            Assert.True(simple.Committed, simple.Code);
+
+            Assert.Equal("unexpected_meter_requirement", (await Execute(
+                userA.Id, tenantA.Id, "APPOINTMENTS.BOOKINGS.CONFIRM",
+                "exec-feature-meter-1", [],
+                [new("appointments.confirm-mode", 1)], chosenMode: "manual")).Code);
+
+            // Two requests contend for only one allowed active entity. The
+            // losing command MUST NOT charge quota or insert a domain row.
+            var countRequirements = new[]
+            {
+                new CommercialCountRequirement(
+                    "appointments.max-active", 1,
+                    (database, token) => DomainCount(database, tenantA.Id, token))
+            };
+            async Task<CommercialOperationResult> Activate(string key) =>
+                await Execute(userA.Id, tenantA.Id,
+                    "APPOINTMENTS.BOOKINGS.ACTIVATE", key,
+                    countRequirements, [new("appointments.monthly", 1)]);
+            var outcomes = await Task.WhenAll(
+                Task.Run(() => Activate("exec-activate-001")),
+                Task.Run(() => Activate("exec-activate-002")));
+            Assert.Single(outcomes, x => x.Committed);
+            Assert.Single(outcomes, x => x.Code == "limit_exceeded");
+
+            Assert.Equal("missing_count_adapter", (await Execute(
+                userA.Id, tenantA.Id, "APPOINTMENTS.BOOKINGS.ACTIVATE",
+                "exec-no-count-01", [], [new("appointments.monthly", 1)])).Code);
+
+            var contextA = Context(userA.Id, tenantA.Id);
+            await using (var checkDb = new IdentityDbContext(options, contextA))
+            {
+                Assert.Equal(1L, await DomainCount(checkDb, tenantA.Id, default));
+                var totalWrites = await checkDb.Database.SqlQueryRaw<long>(
+                    "SELECT COUNT_BIG(*) AS [Value] FROM dbo.FR17C3B_TestWrites " +
+                    "WHERE TenantId={0}", tenantA.Id).SingleAsync();
+                Assert.Equal(3L, totalWrites); // CREATE, CONFIRM, one ACTIVATE.
+                var balance = await checkDb.Database.SqlQueryRaw<long>(
+                    "SELECT ConsumedUnits AS [Value] FROM dbo.TenantUsageBalances " +
+                    "WHERE TenantId={0} AND CapabilityCode={1}",
+                    tenantA.Id, "appointments.monthly").SingleAsync();
+                Assert.Equal(3L, balance);
+            }
 
             Assert.Equal("mode_required", (await Check(userA.Id, tenantA.Id,
                 "APPOINTMENTS.BOOKINGS.CONFIRM")).Code);
