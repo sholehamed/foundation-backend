@@ -1,72 +1,112 @@
-﻿using Application.SharedKernel.Abstractions.Messaging;
+using System.Diagnostics;
+using Application.SharedKernel.Abstractions.Messaging;
 using Domain.SharedKernel.Common.Events;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Application.SharedKernel.Dispatcher
+namespace Application.SharedKernel.Dispatcher;
+
+/// <summary>
+/// Shared source-owned CQRS execution boundary. The Activity never captures
+/// commands, DTO values, results, exception messages or user-controlled IDs.
+/// Trace state is emitted only when the host has registered an ActivityListener.
+/// </summary>
+public sealed class Dispatcher(IServiceProvider serviceProvider) : IDispatcher
 {
-    public sealed class Dispatcher : IDispatcher
+    private static readonly ActivitySource Source = new("Foundation.Cqrs");
+
+    public async Task<TResult> Send<TResult>(
+        ICommand<TResult> command, CancellationToken cancellationToken = default)
     {
-        private readonly IServiceProvider _serviceProvider;
-
-        public Dispatcher(IServiceProvider serviceProvider)
+        ArgumentNullException.ThrowIfNull(command);
+        using var activity = Begin("command", command.GetType());
+        try
         {
-            _serviceProvider = serviceProvider;
-        }
-
-        public async Task<TResult> Send<TResult>(
-            ICommand<TResult> command,
-            CancellationToken cancellationToken = default)
-        {
-            var commandType = command.GetType();
-            var handlerType = typeof(ICommandHandler<,>).MakeGenericType(commandType, typeof(TResult));
-
-            dynamic handler = _serviceProvider.GetRequiredService(handlerType);
+            var handlerType = typeof(ICommandHandler<,>).MakeGenericType(command.GetType(), typeof(TResult));
+            dynamic handler = serviceProvider.GetRequiredService(handlerType);
             dynamic actualCommand = command;
-
             TResult result = await handler.Handle(actualCommand, cancellationToken);
             return result;
         }
-
-        public async Task Send(
-            ICommand command,
-            CancellationToken cancellationToken = default)
+        catch (Exception exception)
         {
-            var commandType = command.GetType();
-            var handlerType = typeof(ICommandHandler<>).MakeGenericType(commandType);
+            MarkFailure(activity, exception);
+            throw;
+        }
+    }
 
-            dynamic handler = _serviceProvider.GetRequiredService(handlerType);
+    public async Task Send(ICommand command, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        using var activity = Begin("command", command.GetType());
+        try
+        {
+            var handlerType = typeof(ICommandHandler<>).MakeGenericType(command.GetType());
+            dynamic handler = serviceProvider.GetRequiredService(handlerType);
             dynamic actualCommand = command;
-
             await handler.Handle(actualCommand, cancellationToken);
         }
-
-        public async Task<TResult> Query<TResult>(
-            IQuery<TResult> query,
-            CancellationToken cancellationToken = default)
+        catch (Exception exception)
         {
-            var queryType = query.GetType();
-            var handlerType = typeof(IQueryHandler<,>).MakeGenericType(queryType, typeof(TResult));
+            MarkFailure(activity, exception);
+            throw;
+        }
+    }
 
-            dynamic handler = _serviceProvider.GetRequiredService(handlerType);
+    public async Task<TResult> Query<TResult>(
+        IQuery<TResult> query, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        using var activity = Begin("query", query.GetType());
+        try
+        {
+            var handlerType = typeof(IQueryHandler<,>).MakeGenericType(query.GetType(), typeof(TResult));
+            dynamic handler = serviceProvider.GetRequiredService(handlerType);
             dynamic actualQuery = query;
-
             TResult result = await handler.Handle(actualQuery, cancellationToken);
             return result;
         }
-
-        public async Task Publish<TNotification>(
-            TNotification notification,
-            CancellationToken cancellationToken = default)
-            where TNotification : INotification
+        catch (Exception exception)
         {
-            var handlers = _serviceProvider.GetServices<INotificationHandler<TNotification>>();
+            MarkFailure(activity, exception);
+            throw;
+        }
+    }
 
-            foreach (var handler in handlers)
+    public async Task Publish<TNotification>(
+        TNotification notification, CancellationToken cancellationToken = default)
+        where TNotification : INotification
+    {
+        ArgumentNullException.ThrowIfNull(notification);
+        var handlers = serviceProvider.GetServices<INotificationHandler<TNotification>>();
+        foreach (var handler in handlers)
+        {
+            using var activity = Begin("notification", typeof(TNotification));
+            try
             {
                 await handler.Handle(notification, cancellationToken);
             }
+            catch (Exception exception)
+            {
+                MarkFailure(activity, exception);
+                throw;
+            }
         }
+    }
 
+    private static Activity? Begin(string category, Type request)
+    {
+        // The class name is compile-time application metadata, not a DTO,
+        // route parameter, custom header or user-provided display string.
+        var activity = Source.StartActivity("cqrs." + category, ActivityKind.Internal);
+        activity?.SetTag("foundation.cqrs.kind", category);
+        activity?.SetTag("foundation.cqrs.request_type", request.Name);
+        return activity;
+    }
 
+    private static void MarkFailure(Activity? activity, Exception exception)
+    {
+        activity?.SetStatus(exception is OperationCanceledException
+            ? ActivityStatusCode.Unset : ActivityStatusCode.Error);
+        activity?.SetTag("foundation.error.type", exception.GetType().Name);
     }
 }
