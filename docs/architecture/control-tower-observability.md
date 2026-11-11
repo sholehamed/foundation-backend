@@ -112,7 +112,7 @@ Recommended candidate stores (must be validated by POC): Collector -> Tempo, Lok
 
 Retention proposal for capacity planning ONLY (not a final compliance policy): sampled traces 7 days, redacted structured logs 14 days, detailed diagnostic 24 hours, aggregate metrics 30 days, durable administrative audit per separately approved policy. Delete/export/retention processes must be tested. Exact requirements reviewed with privacy, legal and operations.
 
-S sizing formula to calibrate from a load test: `raw_span_bytes_per_day = requests_per_second × avg_recorded_spans × avg_span_size_bytes × 86400 × effective_sample_ratio`; then apply replication/index and peaks separately. Logs and series have their own formulas. Do not choose hard-coded production quotas until measured.
+Sizing formula to calibrate from a load test: `raw_span_bytes_per_day = requests_per_second × avg_recorded_spans × avg_span_size_bytes × 86400 × effective_sample_ratio`; then apply replication/index and peaks separately. Logs and series have their own formulas. Do not choose hard-coded production quotas until measured.
 
 Facade sample read-only queries:
 - Overview metrics: `GET /api/system/control-tower/overview?fromUtc&toUtc&service`
@@ -130,7 +130,7 @@ Every endpoint is **planned**, not mapped today. All responses have `Cache-Contr
 
 ## 8. Permissions, tenancy and operating security
 
-**Source-owned central resources, never Tenant-defined:** proposed `control-tower` module class `PlatformCore`, resources and permission keys to be registered through the existing Feature Registry in a **later implementation PR**, not by this document.
+**Source-owned central resources, never Tenant-defined:** add a `control-tower` **Resource under the existing `system` Module** with `ModuleProductClass.PlatformCore`, registered through the existing Feature Registry in a **later implementation PR**. `ModuleResourceContracts.Validate` currently reserves the `PlatformCore` class for ModuleCode `system`; it is incorrect to create a separate `control-tower` PlatformCore module. No permission is defined or granted by this document.
 
 Example conceptual actions, NOT assigned permissions:
 - `CONTROL-TOWER.OVERVIEW.READ`
