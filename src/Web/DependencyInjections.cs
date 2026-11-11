@@ -2,6 +2,7 @@
 using Modules.System.FileStorage;
 using Modules.System.Bff;
 using Server.Bff;
+using Modules.System.Observability;
 using Modules.System.Identity;
 using Scalar.AspNetCore;
 using Scalar.ClientGeneration;
