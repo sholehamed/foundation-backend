@@ -155,11 +155,19 @@ def audit_sources(endpoint_sources: dict[str, str], feature_source: str,
 
         group_system = "MapGroup(this)" in source and (
             'RequireAuthorization("SystemAdministrator")' in source)
-        if name not in PROTOCOL_ENDPOINT_GROUPS and name not in TENANT_ENDPOINT_GROUPS and not group_system:
+        # Host-owned Control Tower endpoint is intentionally not in Identity's
+        # MapGroup. Every registered host route must carry its own exact live
+        # System Administrator and rate-limit gates (never a broad exception).
+        host_tower = name == "ControlTowerEndpoints"
+        if name not in PROTOCOL_ENDPOINT_GROUPS and name not in TENANT_ENDPOINT_GROUPS and not group_system and not host_tower:
             raise AuditError(name + ": System group lost SystemAdministrator policy")
 
         for method, handler, body, tail in registrations:
-            meta = metadata_from(body, source)
+            meta = metadata_from(body + " " + tail, source)
+            if host_tower and (
+                    '.RequireAuthorization("SystemAdministrator")' not in tail or
+                    '.RequireRateLimiting("control-tower-trace-read")' not in tail):
+                raise AuditError("Control Tower host route lacks exact System authorization or rate limit")
             if name in TENANT_ENDPOINT_GROUPS:
                 if name == "TenantWorkspace" and handler in PUBLIC_TENANT_HANDLERS:
                     if ".AllowAnonymous()" not in tail or ".RequireRateLimiting(" not in tail:
@@ -196,7 +204,7 @@ def audit_sources(endpoint_sources: dict[str, str], feature_source: str,
                                 None, None, "PROTOCOL_OWN_GATES"))
                 continue
 
-            if not group_system:
+            if not group_system and not host_tower:
                 raise AuditError("Expected SystemAdministrator group: " + name)
             if name in SPECIAL_SYSTEM_HANDLERS and handler in SPECIAL_SYSTEM_HANDLERS[name]:
                 if meta:
@@ -291,6 +299,12 @@ def audit(repo_root: Path = ROOT) -> list[Row]:
     source_dir = repo_root / "src/modules/Modules.System.Identity/Web/Endpoints"
     files = {x.stem: x.read_text(encoding="utf-8-sig")
              for x in source_dir.glob("*.cs")}
+    tower = repo_root / "src/Web/ControlTowerEndpoints.cs"
+    if tower.exists():
+        host = (repo_root / "src/Web/DependencyInjections.cs").read_text(encoding="utf-8-sig")
+        if "app.MapControlTower();" not in host:
+            raise AuditError("Control Tower host endpoint is not actually mapped")
+        files[tower.stem] = tower.read_text(encoding="utf-8-sig")
     identity_rows = audit_sources(
         files,
         (repo_root / "src/modules/Modules.System.Identity/Web/Util/FeatureRegistryDefinitions.cs")
