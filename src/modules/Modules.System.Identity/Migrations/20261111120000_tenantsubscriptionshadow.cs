@@ -81,13 +81,13 @@ public sealed class TenantSubscriptionShadowMigration : Migration
         migrationBuilder.CreateIndex(
             name: "IX_TenantPlanOrders_CreatedAt",
             table: "TenantPlanOrders",
-            columns: "CreatedAt",
+            column: "CreatedAt",
             unique: false,
             descending: new[] { true });
         migrationBuilder.CreateIndex(
             name: "IX_TenantPlanOrders_PlanVersionId",
             table: "TenantPlanOrders",
-            columns: "PlanVersionId",
+            column: "PlanVersionId",
             unique: false);
         migrationBuilder.CreateIndex(
             name: "IX_TenantPlanOrders_TenantId_Status_SettledAtUtc",
@@ -103,13 +103,13 @@ public sealed class TenantSubscriptionShadowMigration : Migration
         migrationBuilder.CreateIndex(
             name: "IX_TenantSubscriptions_CreatedAt",
             table: "TenantSubscriptions",
-            columns: "CreatedAt",
+            column: "CreatedAt",
             unique: false,
             descending: new[] { true });
         migrationBuilder.CreateIndex(
             name: "IX_TenantSubscriptions_PlanVersionId",
             table: "TenantSubscriptions",
-            columns: "PlanVersionId",
+            column: "PlanVersionId",
             unique: false);
         migrationBuilder.CreateIndex(
             name: "IX_TenantSubscriptions_TenantId_Status_EndsAtUtc",
@@ -119,13 +119,13 @@ public sealed class TenantSubscriptionShadowMigration : Migration
         migrationBuilder.CreateIndex(
             name: "IX_TenantSubscriptions_SourceOrderId",
             table: "TenantSubscriptions",
-            columns: "SourceOrderId",
+            column: "SourceOrderId",
             unique: true,
             filter: "[SourceOrderId] IS NOT NULL");
         migrationBuilder.CreateIndex(
             name: "UX_TenantSubscriptions_OneActive",
             table: "TenantSubscriptions",
-            columns: "TenantId",
+            column: "TenantId",
             unique: true,
             filter: "[Status] = 'Active'");
 
