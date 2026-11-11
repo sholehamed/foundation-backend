@@ -141,7 +141,10 @@ public sealed class TenantAtomicUsageService(
         // The callback must query authoritative business state through the
         // caller's same DbContext/connection/serializable transaction.
         var current = await readAuthoritativeCount(ct);
-        var decision = OperationLimitPolicy.Evaluate(operation, [definition],
+        // Meter one bound capability; other required Features/Modes and
+        // the effective permission are evaluated by the higher-level gate.
+        var scoped = operation with { RequiredCapabilities = [definition.Code] };
+        var decision = OperationLimitPolicy.Evaluate(scoped, [definition],
             [allowance], [new(definition.Code, current, delta)]);
         if (!decision.Permitted)
             return new(false, decision.Code, current);
@@ -225,7 +228,8 @@ public sealed class TenantAtomicUsageService(
         if (storedEnd.HasValue && storedEnd.Value != periodEndUtc)
             return new(false, "period_definition_conflict");
 
-        var decision = OperationLimitPolicy.Evaluate(operation,
+        var scoped = operation with { RequiredCapabilities = [definition.Code] };
+        var decision = OperationLimitPolicy.Evaluate(scoped,
             [definition], [allowance],
             [new(definition.Code, used, units)]);
         if (!decision.Permitted)
