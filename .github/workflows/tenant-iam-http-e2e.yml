@@ -7,6 +7,8 @@ on:
       - '.github/workflows/tenant-iam-http-e2e.yml'
       - 'src/**'
       - 'tests/http/tenant_iam_chain_e2e.py'
+      - 'tests/http/fr18d3_real_trace_to_tempo_e2e.py'
+      - 'observability/**'
       - 'tests/http/public_signup_e2e.py'
       - 'tests/Shinera.Identity.E2E.SqlMutator/**'
   pull_request:
@@ -14,6 +16,8 @@ on:
       - '.github/workflows/tenant-iam-http-e2e.yml'
       - 'src/**'
       - 'tests/http/tenant_iam_chain_e2e.py'
+      - 'tests/http/fr18d3_real_trace_to_tempo_e2e.py'
+      - 'observability/**'
       - 'tests/Shinera.Identity.E2E.SqlMutator/**'
 
 permissions:
@@ -45,6 +49,11 @@ jobs:
       Identity__PlatformPermissions__BootstrapDevelopmentGrants: 'true'
       Identity__TenantPermissions__EnableCatalogApply: 'true'
       Identity__Bff__Enabled: 'false'
+      # CI-only opt-in for real HTTP -> CQRS -> SQL -> Collector/Tempo proof.
+      Observability__ServiceName: 'foundation-web-iam-e2e'
+      Observability__Otlp__Enabled: 'true'
+      Observability__Otlp__Endpoint: 'http://127.0.0.1:4317'
+      Observability__TraceSampleRatio: '1'
       SHINERA_E2E_BASE_URL: 'http://127.0.0.1:5069'
     steps:
       - uses: actions/checkout@v4
@@ -61,6 +70,12 @@ jobs:
           dotnet build tests/Shinera.Identity.E2E.SqlMutator/Shinera.Identity.E2E.SqlMutator.csproj -c Release --no-restore
       - name: Initialize ephemeral database for integration job
         run: dotnet run --project tests/Shinera.Identity.E2E.SqlMutator --no-build -c Release -- ensure-e2e-database
+      - name: Start isolated development telemetry stack for actual signed API trace
+        shell: bash
+        run: |
+          docker compose -f observability/docker-compose.yml config -q
+          docker compose -f observability/docker-compose.yml up -d
+          python3 observability/smoke.py
       - name: Signed JWT real HTTP Tenant role -> permission -> member -> revoke
         shell: bash
         run: |
@@ -93,9 +108,20 @@ jobs:
           # CLI is gated to disposable loopback SQL and E2E Development only.
           dotnet run --project tests/Shinera.Identity.E2E.SqlMutator \
             --no-build -c Release -- seed-tenant-iam
+          # FR-18D3 validates *the API's own OTLP spans*, not synthetic OTLP.
+          python3 tests/http/fr18d3_real_trace_to_tempo_e2e.py
           python3 tests/http/tenant_iam_chain_e2e.py
           # Real first-run acceptance: System SuperAdmin sees all 13 menus
           # and a BRAND-NEW signup Owner sees all six + 17 permissions.
           python3 tests/http/public_signup_e2e.py
           dotnet run --project tests/Shinera.Identity.E2E.SqlMutator \
             --no-build -c Release -- assert-tenant-iam-audit
+
+      - name: Inspect bounded Collector logs only on failure
+        if: failure()
+        run: |
+          docker compose -f observability/docker-compose.yml ps || true
+          docker compose -f observability/docker-compose.yml logs --no-color --tail 40 || true
+      - name: Remove isolated temporary telemetry volumes
+        if: always()
+        run: docker compose -f observability/docker-compose.yml down -v --remove-orphans || true
