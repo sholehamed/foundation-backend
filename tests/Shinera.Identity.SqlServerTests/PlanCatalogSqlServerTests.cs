@@ -751,8 +751,24 @@ public sealed class PlanCatalogSqlServerTests
             }
 
             // Even a forged Active flag cannot borrow another Tenant's order.
+            // Use a *different* A order, since SQL also enforces one
+            // Subscription per SourceOrderId.
+            var borrowedOrderA = new TenantPlanOrder
+            {
+                TenantId = a.Id, PlanVersionId = version.Id,
+                Status = "Settled", BillingCycle = "monthly",
+                Currency = "IRR", GrossAmount = 10000m,
+                DiscountAmount = 0m, NetAmount = 10000m,
+                QuotedAtUtc = now.AddDays(-2),
+                SettledAtUtc = now.AddDays(-1),
+                SettlementKind = "GatewayVerified",
+                SettlementReference = "test-borrowed-a",
+                IdempotencyKey = "test-order-a-2"
+            };
+            db.TenantPlanOrders.Add(borrowedOrderA);
+            await db.SaveChangesAsync();
             subscriptionB.Status = "Active";
-            subscriptionB.SourceOrderId = orderA.Id;
+            subscriptionB.SourceOrderId = borrowedOrderA.Id;
             subscriptionB.ActivatedAtUtc = now.AddMinutes(-5);
             await db.SaveChangesAsync();
             await using (var dbB = new IdentityDbContext(options, contextB))
