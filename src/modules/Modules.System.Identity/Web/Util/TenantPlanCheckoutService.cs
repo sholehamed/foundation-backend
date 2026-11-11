@@ -145,6 +145,7 @@ public sealed class TenantPlanCheckoutService(
                 SettledAtUtc = zeroTotal ? nowUtc : null,
                 SettlementKind = zeroTotal ? "ZeroTotalCoupon" : null
             };
+            TenantSubscription? activated = null;
             if (zeroTotal)
             {
                 // The receipt refers to the server-created order itself, not
@@ -155,7 +156,7 @@ public sealed class TenantPlanCheckoutService(
                     CouponId = coupon!.Id, TenantId = tenantId, OrderId = order.Id,
                     DiscountAmount = discount, RedeemedAtUtc = nowUtc
                 });
-                db.TenantSubscriptions.Add(new TenantSubscription
+                activated = new TenantSubscription
                 {
                     TenantId = tenantId, PlanVersionId = request.PlanVersionId,
                     SourceOrderId = order.Id, Status = "Active",
@@ -163,14 +164,15 @@ public sealed class TenantPlanCheckoutService(
                     EndsAtUtc = request.BillingCycle == "yearly"
                         ? nowUtc.AddYears(1) : nowUtc.AddMonths(1),
                     ActivatedAtUtc = nowUtc
-                });
+                };
+                db.TenantSubscriptions.Add(activated);
             }
             db.TenantPlanOrders.Add(order);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
             return new OrderResult(true,
                 zeroTotal ? "zero_total_settled_and_activated" : "created_pending",
-                View(order));
+                View(order), activated?.Id);
         });
     }
 
