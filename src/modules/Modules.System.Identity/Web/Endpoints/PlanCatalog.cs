@@ -32,6 +32,12 @@ public sealed class PlanCatalog : EndpointGroupBase
                 "SYSTEM.PLAN-CATALOG.DRAFT", "plan-catalog", "PLAN-CATALOG.READ", "Read plan draft"))
             .MapGet(Preview, "drafts/{versionId:guid}/preview", configure: e => e.WithFeatureEndpoint(
                 "SYSTEM.PLAN-CATALOG.PREVIEW", "plan-catalog", "PLAN-CATALOG.READ", "Review draft"))
+            .MapGet(ListPendingOrders, "orders/pending", configure: e => e.WithFeatureEndpoint(
+                "SYSTEM.PLAN-CATALOG.PENDING-ORDERS", "plan-catalog", "PLAN-CATALOG.READ",
+                "Read pending plan orders"))
+            .MapPost(AttestExternalReceipt, "orders/{orderId:guid}/confirm-external", configure: e => e.WithFeatureEndpoint(
+                "SYSTEM.PLAN-CATALOG.ATTEST-EXTERNAL", "plan-catalog", "PLAN-CATALOG.SETTLE",
+                "Attest externally received payment and activate tenant license"))
             .MapPost(Publish, "drafts/{versionId:guid}/publish", configure: e => e.WithFeatureEndpoint(
                 "SYSTEM.PLAN-CATALOG.PUBLISH", "plan-catalog", "PLAN-CATALOG.PUBLISH",
                 "Commit reviewed publication"));
@@ -51,6 +57,36 @@ public sealed class PlanCatalog : EndpointGroupBase
             .AnyAsync(ur => ur.UserId == actor && ur.TenantId == master &&
                 ur.Role.TenantId == master && ur.Role.NormalizedName == "SUPERADMIN" &&
                 ur.Role.IsActive, ct);
+    }
+
+    private static async Task<IResult> ListPendingOrders(
+        ITenantContext actor, IdentityDbContext db, HttpContext http, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await IsLiveSystemAdministratorAsync(actor, db, ct)) return Results.Forbid();
+        return Results.Ok(await new TenantPlanCheckoutService(db)
+            .ListForSystemAsync("Pending", ct));
+    }
+
+    private static async Task<IResult> AttestExternalReceipt(
+        ITenantContext actor, IdentityDbContext db, HttpContext http,
+        Guid orderId, TenantPlanCheckoutService.ManualAttestation request,
+        CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await IsLiveSystemAdministratorAsync(actor, db, ct) ||
+            actor.UserId is not Guid systemActor)
+            return Results.Forbid();
+        try
+        {
+            var result = await new TenantPlanCheckoutService(db)
+                .AttestExternalSettlementAsync(orderId, systemActor, request, DateTime.UtcNow, ct);
+            return result.Ok ? Results.Ok(result) : Results.Conflict(result);
+        }
+        catch (DbUpdateException)
+        {
+            return Results.Conflict(new { code = "settlement_concurrent_retry" });
+        }
     }
 
     private static async Task<IResult> List(
