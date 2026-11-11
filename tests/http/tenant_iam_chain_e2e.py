@@ -229,6 +229,10 @@ def run():
     admin = login("admin", "system")
     owner = login("e2e-tenant", "tenant", SLUG)
     staff = login(STAFF_NAME, "tenant", SLUG)
+    # FR-18E1: a valid Tenant owner must not read System telemetry even
+    # with a perfectly formed guessed TraceId and a signed JWT.
+    check("GET", "/api/system/control-tower/traces/" + "a" * 32, 403,
+          token=owner)
 
     # FR-16B: the disposable Owner must mirror a real new Tenant signup.
     # It receives 17 explicit globally owned Tenant permissions at creation,
