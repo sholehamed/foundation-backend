@@ -1,3 +1,4 @@
+using Infrastructure.SharedKernel.Observability;
 using System.Security.Claims;
 using System.Data;
 using Microsoft.Data.SqlClient;
@@ -67,7 +68,7 @@ public sealed class PlatformAccessDenialAudit(IDbConnection connectionFactory)
         command.Parameters.Add("@method", SqlDbType.NVarChar, 8).Value = method;
         command.Parameters.Add("@route", SqlDbType.NVarChar, 256).Value = template;
         command.Parameters.Add("@outcome", SqlDbType.NVarChar, 16).Value = outcome;
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await SourceOwnedSqlTrace.ExecuteNonQueryAsync(command, cancellationToken);
     }
 }
 
