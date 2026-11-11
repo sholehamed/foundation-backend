@@ -36,7 +36,7 @@ public static class FoundationObservabilityRegistration
                 AllowAutoRedirect = false,
                 UseCookies = false,
                 UseProxy = false,
-                AutomaticDecompression = System.Net.DecompressionMethods.None,
+                AutomaticDecompression = global::System.Net.DecompressionMethods.None,
                 MaxConnectionsPerServer = 8,
                 PooledConnectionLifetime = TimeSpan.FromMinutes(5)
             });
