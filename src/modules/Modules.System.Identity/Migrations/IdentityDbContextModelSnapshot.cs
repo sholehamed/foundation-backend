@@ -345,6 +345,7 @@ namespace Modules.Identity.Migrations
 
                     b.ToTable("CatalogPlans", null, t =>
                         {
+                            t.HasTrigger("TR_CatalogPlans_ImmutablePublishedIdentity");
                             t.HasCheckConstraint("CK_CatalogPlans_Parent", "[ParentPlanId] IS NULL OR [ParentPlanId] <> [Id]");
                         });
                 });
@@ -423,6 +424,7 @@ namespace Modules.Identity.Migrations
 
                     b.ToTable("CatalogPlanDisplayItems", null, t =>
                         {
+                            t.HasTrigger("TR_CatalogPlanDisplayItems_Immutable");
                             t.HasCheckConstraint("CK_CatalogPlanDisplayItems_Kind", "[Kind] IN ('Module','Capability','Benefit')");
                             t.HasCheckConstraint("CK_CatalogPlanDisplayItems_Owner", "([Kind] = 'Module' AND [ModuleId] IS NOT NULL AND [CapabilityDefinitionId] IS NULL) OR ([Kind] = 'Capability' AND [CapabilityDefinitionId] IS NOT NULL AND [ModuleId] IS NULL) OR ([Kind] = 'Benefit' AND [ModuleId] IS NULL AND [CapabilityDefinitionId] IS NULL)");
                         });
@@ -496,6 +498,7 @@ namespace Modules.Identity.Migrations
 
                     b.ToTable("CatalogPlanPriceOffers", null, t =>
                         {
+                            t.HasTrigger("TR_CatalogPlanPriceOffers_Immutable");
                             t.HasCheckConstraint("CK_CatalogPlanPriceOffers_Amount", "[Amount] >= 0");
                             t.HasCheckConstraint("CK_CatalogPlanPriceOffers_Dates", "[SaleEndsAtUtc] IS NULL OR [SaleStartsAtUtc] IS NULL OR [SaleEndsAtUtc] > [SaleStartsAtUtc]");
                         });
@@ -587,6 +590,7 @@ namespace Modules.Identity.Migrations
 
                     b.ToTable("CatalogPlanVersions", null, t =>
                         {
+                            t.HasTrigger("TR_CatalogPlanVersions_Immutable");
                             t.HasCheckConstraint("CK_CatalogPlanVersions_Version", "[VersionNumber] > 0");
                             t.HasCheckConstraint("CK_CatalogPlanVersions_Status", "[Status] IN ('Draft','Published','Retired')");
                             t.HasCheckConstraint("CK_CatalogPlanVersions_PublishedAt", "[Status] <> 'Published' OR [PublishedAtUtc] IS NOT NULL");
@@ -656,6 +660,7 @@ namespace Modules.Identity.Migrations
 
                     b.ToTable("CatalogPlanVersionCapabilityValues", null, t =>
                         {
+                            t.HasTrigger("TR_CatalogPlanVersionCapabilityValues_Immutable");
                             t.HasCheckConstraint("CK_CatalogPlanVersionCapabilityValues_ExactlyOne", "(CASE WHEN [BooleanValue] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [IntegerValue] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [ModeSetJson] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [IsUnlimited] = 1 THEN 1 ELSE 0 END) = 1");
                             t.HasCheckConstraint("CK_CatalogPlanVersionCapabilityValues_NonNegative", "[IntegerValue] IS NULL OR [IntegerValue] >= 0");
                         });
@@ -709,7 +714,10 @@ namespace Modules.Identity.Migrations
 
                     b.HasIndex("ModuleId");
 
-                    b.ToTable("CatalogPlanVersionModules");
+                    b.ToTable("CatalogPlanVersionModules", null, t =>
+                        {
+                            t.HasTrigger("TR_CatalogPlanVersionModules_Immutable");
+                        });
                 });
 
             modelBuilder.Entity("Modules.System.Identity.Domain.Entities.BusinessProfile", b =>

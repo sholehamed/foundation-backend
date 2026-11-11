@@ -1,3 +1,9 @@
+## FR-17B-2C — SQL Server immutable Published Plan snapshots (2026-11-11)
+
+- [PR #132](https://github.com/sholehamed/foundation-backend/pull/132) adds reviewed SQL Server DML triggers for CatalogPlans, CatalogPlanVersions, CatalogPlanVersionModules, CatalogPlanVersionCapabilityValues, CatalogPlanPriceOffers, and CatalogPlanDisplayItems. Direct DML against Published/Retired versions is denied; Draft→Published remains legal, Draft editing and revision-copy are preserved. Trigger-aware EF Core configurations + matching ModelSnapshot prevent SQL Server OUTPUT errors. Real disposable SQL tests verify direct SQL rejection, no partial mixed-row updates, no forged Published inserts, and no commercial grants. See [detailed migration, security and rollback guidance](development/FR-17B2C-IMMUTABLE-PLAN-SNAPSHOTS.md).
+- Companion Angular [PR #62](https://github.com/sholehamed/foundation-frontend/pull/62) marks historical published snapshots as locked and offers revision-only editing.
+- **Not yet commercial**: zero code-owned Commercial Modules and no Subscription, Entitlement, Coupon or verified checkout. Published status/Plan identity cannot be directly retired/disabled; future audited availability overlay and privilege-restricted publication procedure are required. CI must be checked at PR head and post-merge main separately; no staging claim.
+
 ## FR-17B-2B — First-party System Plan Catalog admin workflows (2026-11-10)
 
 - [PR #131](https://github.com/sholehamed/foundation-backend/pull/131) adds centrally owned System `plan-catalog` Resource with READ/CREATE/UPDATE/PUBLISH permissions. Fresh install now registers **14 System root pages**, Master SuperAdmin grants and unchanged **six** Tenant admin menus/17 Tenant keys. Existing populated databases require reviewed System Registry apply and auditable Master role permissions; no silent regrant after revocation.
