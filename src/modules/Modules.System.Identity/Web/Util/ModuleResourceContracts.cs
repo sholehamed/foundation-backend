@@ -30,6 +30,14 @@ public enum CapabilityValueKind { Boolean, Integer, ModeSet }
 public enum CapabilityMergePolicy { Override, Additive, Maximum, SetUnion, DenyWins }
 
 /// <summary>
+/// An explicitly source-owned reset cadence for PeriodQuota only.
+/// SQL plan values contain the allowance, never the calendar algorithm.
+/// Null is intentionally unsupported for usage reporting until a module
+/// declares how its period is measured; no name-based inference.
+/// </summary>
+public enum QuotaPeriodCadence { SubscriptionTerm, MonthlyAnniversary, YearlyAnniversary }
+
+/// <summary>
 /// A future PLAN may assign a value to a registered capability definition;
 /// defining a capability does not grant a user, create a paid subscription,
 /// or register executable database-supplied code.
@@ -40,7 +48,8 @@ public sealed record CapabilityContract(
     string? ResourceCode,
     CapabilityKind Kind,
     CapabilityValueKind ValueKind,
-    CapabilityMergePolicy MergePolicy);
+    CapabilityMergePolicy MergePolicy,
+    QuotaPeriodCadence? QuotaPeriod = null);
 
 /// <summary>
 /// An operation (not an entire Resource) may require a specific typed
@@ -180,6 +189,10 @@ public static class ModuleResourceContracts
             };
             if (capability.ValueKind != expected)
                 issues.Add(new("capability_value_type_mismatch", key));
+            if (capability.QuotaPeriod is not null &&
+                (capability.Kind != CapabilityKind.PeriodQuota ||
+                 !Enum.IsDefined(capability.QuotaPeriod.Value)))
+                issues.Add(new("capability_period_invalid", key));
             if (!Enum.IsDefined(capability.MergePolicy) ||
                 (capability.Kind == CapabilityKind.AllowedModes &&
                  capability.MergePolicy is not (
