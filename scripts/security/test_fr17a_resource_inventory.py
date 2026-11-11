@@ -44,7 +44,7 @@ class ProductResourceInventoryTests(unittest.TestCase):
         tower = next(r for r in result["systemResources"]
                      if r["resourceCode"] == "control-tower")
         self.assertEqual(tower["moduleClass"], "platform_core")
-        self.assertEqual(tower["endpointGroups"], ["ControlTowerEndpoints.cs"])
+        self.assertEqual(tower["endpointGroups"], ["ControlTower.cs"])
         self.assertEqual(
             tower["permissionCodes"],
             ["CONTROL-TOWER.READ", "CONTROL-TOWER.TRACES.READ"])
