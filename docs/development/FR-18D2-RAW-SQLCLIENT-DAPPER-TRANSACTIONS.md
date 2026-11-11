@@ -13,7 +13,9 @@ FR-18D-1 introduced EF Core DbCommand interception and CQRS Handler Activities. 
 - Dapper owner: `SourceOwnedSqlTrace.RunDapperAsync` around an actual caller-owned Dapper operation; Dapper does *not* create another EF span.
 - No automatic instrumentation of arbitrary third-party SqlClient commands. A new source-owned module or raw SQL repository must call the wrapper or accept an explicit coverage gap.
 
-All raw SqlClient/Dapper spans are published by `ActivitySource("Foundation.SqlClient")`, subscribed to by `FoundationObservabilityRegistration` (part of existing .NET Host). They descend from the currently **recorded** `Activity.Current`; the wrapper never creates a trace root for standalone SQL and does not override sampling, Tenant context, Auth/CSRF or caller transactions.
+All raw SqlClient/Dapper spans are published by `ActivitySource("Foundation.SqlClient")`, subscribed to by `FoundationObservabilityRegistration` (part of existing .NET Host). They descend from a currently **recorded** `Activity.Current`; the wrapper never creates a trace root for standalone SQL and does not override sampling, Tenant context, Auth/CSRF or caller transactions.
+
+**Auth/OIDC exclusion (security hardening):** `SourceOwnedSqlTrace.CanCapture()` requires a code-owned `foundation.http.pipeline` Activity ancestor before emitting any EF/raw/transaction SQL child beneath an ASP.NET Core inbound root. The existing FR-18B middleware intentionally creates that Activity only for permitted routes, so a forged W3C `traceparent` with sampled flag cannot by itself turn on SQL child recording for sensitive `/api/system/Auth/*` or `/bff/auth/*` paths. Background work without an ASP.NET ancestor still requires an actual recorded parent. This is a source-owned emission gate, **not an authorization mechanism** or a guarantee that all application logs are safe.
 
 The wrapper is a pure `System.Diagnostics` extension in `Infrastructure.SharedKernel`, with no new external logger exporter or SQL persistence. It does not own connections, does not read results, does not mutate query text/parameters or isolation level, and does not retry operations on its own.
 
@@ -56,7 +58,7 @@ The test uses a **real disposable local SQL Server database** and a recorded par
 4. New transaction INSERT + confirmed `CommitAsync` → committed row remains.
 5. Real invalid SqlCommand with a secret argument → exactly one error span, type-only error, never secret content.
 6. Span tree keeps parent TraceId; transaction children are nested; no raw SQL/table identifiers, secret sentinel, connection strings or SQL param values in tags/names.
-7. Existing FR-18D-1 real EF Core test continues in **same required SQL CI filter**; no global SqlClient instrumentation is enabled, so EF execution remains exactly once.
+7. Excluded inbound auth/OIDC routes with sampled trace context do not emit deep SQL/transaction children; underlying work still executes. The same central gate is shared with EF interception.\n8. Existing FR-18D-1 real EF Core test continues in **same required SQL CI filter**; no global SqlClient instrumentation is enabled, so EF execution remains exactly once.
 
 Tests are in disposable CI, not a production running SaaS. PR-head and post-merge results must both be checked. No schema change to business SQL and no migration to the Identity context.
 
