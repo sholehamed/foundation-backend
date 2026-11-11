@@ -26,6 +26,7 @@ Authenticated, **Tenant Owner only**, no TenantId route/body/query parameter:
 - Read-only SQL `TenantUsageBalances` is queried by the server-derived TenantId + declared CapabilityCode + calculated period start. The matching `PeriodEndUtc` is verified against the calculated window; mismatches return `PeriodConflict`, **not an incorrect zero-consumption figure**.
 - An absent balance row means **zero committed units** for a valid current period. Ledger `ConsumedUnits` already reflects committed consume/reversal events; no extra storage is required.
 - `CountLimit` never derives a count from the quota ledger. Until a domain-defined active-row CountProvider is shipped, return `DomainCountUnavailable` with `currentUsage=null`, `remaining=null`, keeping the known plan limit. Unknown period returns `PeriodNotConfigured` with null counters.
+- All bigint unit amounts (`limit`, `currentUsage`, `remaining`) are invariant **decimal strings**, not JavaScript JSON numbers: this preserves exact values above 2^53-1. Missing or Unlimited values remain null.
 - Explicit `Unlimited` gives `isUnlimited=true`, `limit=null`, `remaining=null`; the actual committed usage may still be reported if its period exists. Finite zero is zero, not unlimited. If committed usage exceeds a downgraded finite limit, remaining is 0 and `overLimit=true`, never negative.
 
 DTO:
@@ -40,9 +41,9 @@ DTO:
       "kind": "PeriodQuota",
       "state": "Measured",
       "isUnlimited": false,
-      "limit": 500,
-      "currentUsage": 37,
-      "remaining": 463,
+      "limit": "500",
+      "currentUsage": "37",
+      "remaining": "463",
       "periodStartUtc": "2026-11-05T12:00:00Z",
       "periodEndUtc": "2026-12-05T12:00:00Z",
       "periodCadence": "MonthlyAnniversary",
