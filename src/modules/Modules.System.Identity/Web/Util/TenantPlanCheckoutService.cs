@@ -215,6 +215,8 @@ public sealed class TenantPlanCheckoutService(
             order.SettledAtUtc = nowUtc;
             order.SettlementKind = "ExternalManual";
             order.SettlementReference = reference;
+            order.LastModifiedBy = verifiedBySystemUserId;
+            order.LastModifiedAt = nowUtc;
             var subscription = new TenantSubscription
             {
                 TenantId = order.TenantId, PlanVersionId = order.PlanVersionId,
