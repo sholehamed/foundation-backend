@@ -108,7 +108,7 @@ def main():
         "System admin root PAGE permissions must be live on FIRST login")
     # A seeded SuperAdmin can reach the sensitive Trace API before any self-grant.
     # Invalid TraceId must be 400, not 403; the reader never contacts Tempo.
-    status, _ = request("GET", "/api/system/control-tower/traces/not-a-trace-id",
+    status, _ = request("GET", "/api/System/ControlTower/traces/not-a-trace-id",
                         token=system_token)
     assert status == 400, "Seeded SuperAdmin must have trace-read permission"
     status, _ = request("GET", "/api/tenant/workspace", token=system_token)
