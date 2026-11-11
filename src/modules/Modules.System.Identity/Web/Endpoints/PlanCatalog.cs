@@ -59,11 +59,48 @@ public sealed class PlanCatalog : EndpointGroupBase
                 ur.Role.IsActive, ct);
     }
 
+    // Payment attestation is financially privileged: unlike general
+    // catalog edit, this route ALWAYS enforces the live central permission,
+    // even before the broader optional granular endpoint rollout is enabled.
+    private static async Task<bool> CanPerformBillingAsync(
+        ITenantContext actor, IdentityDbContext db, string permissionCode,
+        CancellationToken ct)
+    {
+        if (!await IsLiveSystemAdministratorAsync(actor, db, ct) ||
+            actor.UserId is not Guid actorId ||
+            !new SystemFeatureEndpointPermissionRequirement(
+                "plan-catalog", permissionCode).IsRegistered)
+            return false;
+
+        var registered = await db.Permissions.AsNoTracking()
+            .Where(p => p.Code == permissionCode)
+            .Select(p => new
+            {
+                p.IsActive,
+                ResourceCode = p.Resource == null ? null : p.Resource.Code,
+                ResourceActive = p.Resource != null && p.Resource.IsActive,
+                ModuleCode = p.Resource == null || p.Resource.Module == null
+                    ? null : p.Resource.Module.Code,
+                ModuleActive = p.Resource != null && p.Resource.Module != null &&
+                    p.Resource.Module.IsActive
+            }).ToArrayAsync(ct);
+        if (registered.Length != 1 || !registered[0].IsActive ||
+            !registered[0].ResourceActive || !registered[0].ModuleActive ||
+            registered[0].ResourceCode != "plan-catalog" ||
+            registered[0].ModuleCode != "system")
+            return false;
+
+        return await new EffectivePermissionEvaluator(db).HasPermissionAsync(
+            actorId, DefaultSeedData.MasterTenant.Id, UserType.System,
+            permissionCode, ct);
+    }
+
     private static async Task<IResult> ListPendingOrders(
         ITenantContext actor, IdentityDbContext db, HttpContext http, CancellationToken ct)
     {
         http.Response.Headers.CacheControl = "no-store";
-        if (!await IsLiveSystemAdministratorAsync(actor, db, ct)) return Results.Forbid();
+        if (!await CanPerformBillingAsync(actor, db, "PLAN-CATALOG.READ", ct))
+            return Results.Forbid();
         return Results.Ok(await new TenantPlanCheckoutService(db)
             .ListForSystemAsync("Pending", ct));
     }
@@ -74,7 +111,7 @@ public sealed class PlanCatalog : EndpointGroupBase
         CancellationToken ct)
     {
         http.Response.Headers.CacheControl = "no-store";
-        if (!await IsLiveSystemAdministratorAsync(actor, db, ct) ||
+        if (!await CanPerformBillingAsync(actor, db, "PLAN-CATALOG.SETTLE", ct) ||
             actor.UserId is not Guid systemActor)
             return Results.Forbid();
         try
