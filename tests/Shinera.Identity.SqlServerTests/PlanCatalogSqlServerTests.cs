@@ -495,6 +495,145 @@ public sealed class PlanCatalogSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Database_triggers_reject_direct_mutation_of_published_plan_and_every_child_table()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var module = new Module("appointments", "Appointments", null, 0);
+            var plan = new CatalogPlan { Code = "starter", Name = "Starter", IsActive = true };
+            var version = new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 1,
+                Status = "Draft", DisplayTitle = "Starter"
+            };
+            var nextDraft = new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 2,
+                Status = "Draft", DisplayTitle = "Draft two"
+            };
+            var definition = new CatalogCapabilityDefinition
+            {
+                ModuleId = module.Id, Code = "appointments.recurring",
+                Title = "Recurring", Kind = "Feature", ValueKind = "Boolean",
+                MergePolicy = "Override", IsActive = true
+            };
+            var owned = new CatalogPlanVersionModule
+            {
+                PlanVersionId = version.Id, ModuleId = module.Id
+            };
+            var price = new CatalogPlanPriceOffer
+            {
+                PlanVersionId = version.Id, BillingCycle = "monthly",
+                Currency = "IRR", Amount = 100m, IsActive = true
+            };
+            var draftPrice = new CatalogPlanPriceOffer
+            {
+                PlanVersionId = nextDraft.Id, BillingCycle = "monthly",
+                Currency = "IRR", Amount = 42m, IsActive = true
+            };
+            var capability = new CatalogPlanVersionCapabilityValue
+            {
+                PlanVersionId = version.Id, CapabilityDefinitionId = definition.Id,
+                BooleanValue = true
+            };
+            var featureText = new CatalogPlanDisplayItem
+            {
+                PlanVersionId = version.Id, Kind = "Module",
+                ModuleId = module.Id, Title = "Appointments"
+            };
+            db.Modules.Add(module);
+            db.CatalogPlans.Add(plan);
+            db.CatalogPlanVersions.AddRange(version, nextDraft);
+            db.CatalogCapabilityDefinitions.Add(definition);
+            db.CatalogPlanVersionModules.Add(owned);
+            db.CatalogPlanPriceOffers.AddRange(price, draftPrice);
+            db.CatalogPlanVersionCapabilityValues.Add(capability);
+            db.CatalogPlanDisplayItems.Add(featureText);
+            await db.SaveChangesAsync();
+
+            // Original Draft is normally editable, and publication itself
+            // is an UPDATE of Draft status plus reviewed metadata.
+            version.Status = "Published";
+            version.PublishedAtUtc = DateTime.UtcNow;
+            version.ContentFingerprint = new string('a', 64);
+            await db.SaveChangesAsync();
+
+            static async Task CheckAsync(Func<Task<int>> query, int error)
+            {
+                var thrown = await Assert.ThrowsAsync<SqlException>(query);
+                Assert.Equal(error, thrown.Number);
+            }
+
+            await CheckAsync(() => db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.CatalogPlanVersions SET DisplayTitle = {"Tampered"} WHERE Id = {version.Id}"), 51022);
+            await CheckAsync(() => db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.CatalogPlanVersions SET Status = {"Draft"} WHERE Id = {version.Id}"), 51022);
+            await CheckAsync(() => db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.CatalogPlans SET Name = {"New plan identity"} WHERE Id = {plan.Id}"), 51024);
+
+            await CheckAsync(() => db.Database.ExecuteSqlInterpolatedAsync(
+                $"DELETE FROM dbo.CatalogPlanVersionModules WHERE Id = {owned.Id}"), 51025);
+            await CheckAsync(() => db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.CatalogPlanVersionCapabilityValues SET BooleanValue = {false} WHERE Id = {capability.Id}"), 51026);
+            await CheckAsync(() => db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.CatalogPlanPriceOffers SET Amount = {250m} WHERE Id = {price.Id}"), 51027);
+            await CheckAsync(() => db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.CatalogPlanDisplayItems SET Title = {"Fake feature"} WHERE Id = {featureText.Id}"), 51028);
+
+            // A published child cannot be moved to Draft in order to edit it.
+            await CheckAsync(() => db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.CatalogPlanPriceOffers SET PlanVersionId = {nextDraft.Id} WHERE Id = {price.Id}"), 51027);
+
+            // Mixed Published+Draft statement is all-or-nothing. The unrelated
+            // Draft row must retain its old price after the trigger throws.
+            await CheckAsync(() => db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.CatalogPlanPriceOffers SET Amount = {500m} WHERE Id = {price.Id} OR Id = {draftPrice.Id}"), 51027);
+            Assert.Equal(42m, (await db.CatalogPlanPriceOffers.AsNoTracking()
+                .SingleAsync(x => x.Id == draftPrice.Id)).Amount);
+
+            // A Draft row is still writable; the triggers aren't a global
+            // freeze of commercial authoring.
+            Assert.Equal(1, await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE dbo.CatalogPlanPriceOffers SET Amount = {48m} WHERE Id = {draftPrice.Id}"));
+            Assert.Equal(48m, (await db.CatalogPlanPriceOffers.AsNoTracking()
+                .SingleAsync(x => x.Id == draftPrice.Id)).Amount);
+
+            // Even if an application tries to INSERT an additional offer after
+            // publication, SQL fails, instead of EF attempting to bypass it.
+            db.CatalogPlanPriceOffers.Add(new CatalogPlanPriceOffer
+            {
+                PlanVersionId = version.Id, BillingCycle = "yearly",
+                Currency = "IRR", Amount = 1200m, IsActive = true
+            });
+            var rejected = await Assert.ThrowsAsync<DbUpdateException>(
+                () => db.SaveChangesAsync());
+            Assert.Equal(51027, Assert.IsType<SqlException>(rejected.InnerException).Number);
+            db.ChangeTracker.Clear();
+
+            // A newly inserted row can never start life as Published/Retired.
+            db.CatalogPlanVersions.Add(new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 3, Status = "Published",
+                DisplayTitle = "Forged", PublishedAtUtc = DateTime.UtcNow,
+                ContentFingerprint = new string('b', 64)
+            });
+            rejected = await Assert.ThrowsAsync<DbUpdateException>(
+                () => db.SaveChangesAsync());
+            Assert.Equal(51021, Assert.IsType<SqlException>(rejected.InnerException).Number);
+            db.ChangeTracker.Clear();
+
+            Assert.Equal("Starter", (await db.CatalogPlans.AsNoTracking()
+                .SingleAsync(x => x.Id == plan.Id)).Name);
+            Assert.Equal("Starter", (await db.CatalogPlanVersions.AsNoTracking()
+                .SingleAsync(x => x.Id == version.Id)).DisplayTitle);
+            Assert.Equal(100m, (await db.CatalogPlanPriceOffers.AsNoTracking()
+                .SingleAsync(x => x.Id == price.Id)).Amount);
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+            Assert.Empty(await db.TenantModules.ToArrayAsync());
+        });
+    }
+
     private static async Task WithDisposableDatabaseAsync(Func<IdentityDbContext, Task> action)
     {
         var raw = Environment.GetEnvironmentVariable("SHINERA_SQLSERVER_TEST_CONNECTION");
