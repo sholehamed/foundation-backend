@@ -24,7 +24,7 @@ public sealed class SourceOwnedTransactionTrace : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
         if (kind.Length > 64 || kind.Any(c => !char.IsAsciiLetterOrDigit(c) && c != '_'))
             throw new ArgumentException("Transaction kind must be source-owned metadata", nameof(kind));
-        var activity = Activity.Current is { Recorded: true }
+        var activity = SourceOwnedSqlTrace.CanCapture()
             ? SourceOwnedSqlTrace.Source.StartActivity("db.sqlclient.transaction", ActivityKind.Internal)
             : null;
         activity?.SetTag("foundation.db.transaction.kind", kind);
@@ -68,7 +68,7 @@ public static class SourceOwnedSqlTransactionCommands
 
     private static async Task ExecuteAsync(string operation, Func<Task> work)
     {
-        using var activity = Activity.Current is { Recorded: true }
+        using var activity = SourceOwnedSqlTrace.CanCapture()
             ? SourceOwnedSqlTrace.Source.StartActivity(
                 "db.sqlclient.transaction." + operation, ActivityKind.Client)
             : null;
