@@ -1,3 +1,9 @@
+## FR-17D-1 — Optional Operation Limit evaluation contract (2026-11-11)
+
+- New pure `OperationLimitPolicy` and xUnit tests distinguish *no declared usage ceiling* (`no_usage_limit`) from *explicit Unlimited*, finite 0/positive, missing required PlanVersion capability, invalid values and absent authoritative usage (fail closed). Supports Feature, CountLimit, PeriodQuota and AllowedModes, safe decrement after downgrade and checked arithmetic; declaration is source-owned at Module/Resource/operation level.
+- This is **not runtime authorization or metering**: no quota SQL tables, concurrency guard, HTTP enforcement, paid Module, plan checkout bypass or Angular changes. Legacy System/Tenant core access remains untouched. No commercial Module is seeded or fabricated.
+- [Full implementation contract, test matrix and FR-17D-2 backlog](development/FR-17D1-OPERATION-LIMIT-POLICY.md). Next: SQL Server serializable CountLimit writes and quota ledger, two-Tenant concurrency/idempotency acceptance, then effective Entitlement AND Permission gate and Angular usage view. Check CI before merge/deployment.
+
 ## FR-17C-2A — Server-priced Owner Orders and System external settlement (2026-11-11)
 
 - [PR #135](https://github.com/sholehamed/foundation-backend/pull/135) introduces Owner-only, rate-limited, idempotent `GET/POST /api/tenant/workspace/subscription/orders` (price/currency resolved only from the currently published and source-registered Commercial PlanVersion). Creating an order is always **Pending**. System Master SuperAdmin gets code-owned `PLAN-CATALOG.SETTLE`, a pending Order queue and an explicit external-receipt attestation endpoint. A validated positive IRR Order and matching Tenant/PlanVersion Subscription are settled+activated together in a Serializable SQL transaction; no TenantModule, RolePermission, UserPermission or automatic sale. [Complete protocol and limitations](development/FR-17C2A-TENANT-ORDERS-MANUAL-SETTLEMENT.md).
