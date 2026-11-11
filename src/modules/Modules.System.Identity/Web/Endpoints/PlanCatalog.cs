@@ -32,6 +32,15 @@ public sealed class PlanCatalog : EndpointGroupBase
                 "SYSTEM.PLAN-CATALOG.DRAFT", "plan-catalog", "PLAN-CATALOG.READ", "Read plan draft"))
             .MapGet(Preview, "drafts/{versionId:guid}/preview", configure: e => e.WithFeatureEndpoint(
                 "SYSTEM.PLAN-CATALOG.PREVIEW", "plan-catalog", "PLAN-CATALOG.READ", "Review draft"))
+            .MapGet(ListCoupons, "coupons", configure: e => e.WithFeatureEndpoint(
+                "SYSTEM.PLAN-CATALOG.COUPONS", "plan-catalog", "PLAN-CATALOG.COUPONS",
+                "List published discount coupons and settled usage"))
+            .MapPost(IssueCoupon, "coupons", configure: e => e.WithFeatureEndpoint(
+                "SYSTEM.PLAN-CATALOG.COUPON-ISSUE", "plan-catalog", "PLAN-CATALOG.COUPONS",
+                "Issue one-time revealed high entropy discount coupon"))
+            .MapPost(DisableCoupon, "coupons/{couponId:guid}/disable", configure: e => e.WithFeatureEndpoint(
+                "SYSTEM.PLAN-CATALOG.COUPON-DISABLE", "plan-catalog", "PLAN-CATALOG.COUPONS",
+                "Disable unused or future coupon redemption"))
             .MapGet(ListPendingOrders, "orders/pending", configure: e => e.WithFeatureEndpoint(
                 "SYSTEM.PLAN-CATALOG.PENDING-ORDERS", "plan-catalog", "PLAN-CATALOG.READ",
                 "Read pending plan orders"))
@@ -93,6 +102,45 @@ public sealed class PlanCatalog : EndpointGroupBase
         return await new EffectivePermissionEvaluator(db).HasPermissionAsync(
             actorId, DefaultSeedData.MasterTenant.Id, UserType.System,
             permissionCode, ct);
+    }
+
+    private static async Task<IResult> ListCoupons(
+        ITenantContext actor, IdentityDbContext db, HttpContext http, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await CanPerformBillingAsync(actor, db, "PLAN-CATALOG.COUPONS", ct))
+            return Results.Forbid();
+        return Results.Ok(await new SystemCouponCatalogService(db).ListAsync(ct));
+    }
+
+    private static async Task<IResult> IssueCoupon(
+        ITenantContext actor, IdentityDbContext db, HttpContext http,
+        SystemCouponCatalogService.IssueCoupon request, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await CanPerformBillingAsync(actor, db, "PLAN-CATALOG.COUPONS", ct))
+            return Results.Forbid();
+        try
+        {
+            var issued = await new SystemCouponCatalogService(db).IssueAsync(request, ct);
+            return issued.Ok ? Results.Ok(issued) : Results.Conflict(issued);
+        }
+        catch (DbUpdateException)
+        {
+            return Results.Conflict(new { code = "coupon_issuance_concurrent_retry" });
+        }
+    }
+
+    private static async Task<IResult> DisableCoupon(
+        ITenantContext actor, IdentityDbContext db, HttpContext http,
+        Guid couponId, CancellationToken ct)
+    {
+        http.Response.Headers.CacheControl = "no-store";
+        if (!await CanPerformBillingAsync(actor, db, "PLAN-CATALOG.COUPONS", ct))
+            return Results.Forbid();
+        return await new SystemCouponCatalogService(db).DisableAsync(couponId, ct)
+            ? Results.Ok(new { code = "coupon_disabled" })
+            : Results.NotFound();
     }
 
     private static async Task<IResult> ListPendingOrders(
