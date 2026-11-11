@@ -21,7 +21,7 @@ public sealed class TenantPlanCheckoutService(
     private readonly IReadOnlyCollection<CapabilityContract> capabilities =
         capabilities ?? [];
 
-    public sealed record CreateOrder(Guid PlanVersionId, string BillingCycle, string IdempotencyKey);
+    public sealed record CreateOrder(Guid PlanVersionId, string BillingCycle, string IdempotencyKey, string? CouponCode = null);
     public sealed record OrderView(Guid Id, Guid TenantId, Guid PlanVersionId,
         string Status, string BillingCycle, string Currency,
         decimal GrossAmount, decimal DiscountAmount, decimal NetAmount,
@@ -46,6 +46,9 @@ public sealed class TenantPlanCheckoutService(
     {
         if (tenantId == Guid.Empty || request is null ||
             request.PlanVersionId == Guid.Empty ||
+            (request.CouponCode is not null &&
+             (request.CouponCode.Trim().Length != 24 ||
+              request.CouponCode.Any(c => !Uri.IsHexDigit(c)))) ||
             request.BillingCycle is not ("monthly" or "yearly") ||
             string.IsNullOrWhiteSpace(request.IdempotencyKey) ||
             request.IdempotencyKey.Length is > 100 or < 16 ||
@@ -69,7 +72,8 @@ public sealed class TenantPlanCheckoutService(
             if (existing is not null)
             {
                 if (existing.PlanVersionId != request.PlanVersionId ||
-                    existing.BillingCycle != request.BillingCycle)
+                    existing.BillingCycle != request.BillingCycle ||
+                    !await MatchesCouponAsync(existing.CouponId, request.CouponCode, ct))
                     return new OrderResult(false, "idempotency_conflict");
                 return new OrderResult(true, "existing_order", View(existing));
             }
@@ -80,7 +84,8 @@ public sealed class TenantPlanCheckoutService(
                 .OrderByDescending(x => x.QuotedAtUtc).FirstOrDefaultAsync(ct);
             if (pending is not null)
                 return pending.PlanVersionId == request.PlanVersionId &&
-                       pending.BillingCycle == request.BillingCycle
+                       pending.BillingCycle == request.BillingCycle &&
+                       await MatchesCouponAsync(pending.CouponId, request.CouponCode, ct)
                     ? new OrderResult(true, "existing_pending", View(pending))
                     : new OrderResult(false, "pending_order_exists");
 
@@ -114,19 +119,69 @@ public sealed class TenantPlanCheckoutService(
             if (price.Amount == 0)
                 return new OrderResult(false, "zero_total_requires_coupon_checkout");
 
+            CatalogDiscountCoupon? coupon = null;
+            var discount = 0m;
+            if (request.CouponCode is not null)
+            {
+                var result = await CatalogCouponRules.CheckAsync(db,
+                    request.CouponCode, tenantId, request.PlanVersionId,
+                    price.Amount, nowUtc, forSettlement: true, ct);
+                if (result.Coupon is null)
+                    return new OrderResult(false, result.Error);
+                coupon = result.Coupon;
+                discount = CatalogCouponRules.Discount(coupon, price.Amount);
+            }
+            var net = price.Amount - discount;
+            var zeroTotal = net == 0m;
             var order = new TenantPlanOrder
             {
                 TenantId = tenantId, PlanVersionId = request.PlanVersionId,
-                Status = "Pending", BillingCycle = request.BillingCycle,
-                Currency = "IRR", GrossAmount = price.Amount,
-                DiscountAmount = 0m, NetAmount = price.Amount,
-                QuotedAtUtc = nowUtc, IdempotencyKey = request.IdempotencyKey
+                CouponId = coupon?.Id,
+                Status = zeroTotal ? "Settled" : "Pending",
+                BillingCycle = request.BillingCycle, Currency = "IRR",
+                GrossAmount = price.Amount, DiscountAmount = discount,
+                NetAmount = net, QuotedAtUtc = nowUtc,
+                IdempotencyKey = request.IdempotencyKey,
+                SettledAtUtc = zeroTotal ? nowUtc : null,
+                SettlementKind = zeroTotal ? "ZeroTotalCoupon" : null
             };
+            if (zeroTotal)
+            {
+                // The receipt refers to the server-created order itself, not
+                // a customer-provided payment / external bank transaction.
+                order.SettlementReference = "coupon:" + order.Id.ToString("N");
+                db.CatalogCouponRedemptions.Add(new CatalogCouponRedemption
+                {
+                    CouponId = coupon!.Id, TenantId = tenantId, OrderId = order.Id,
+                    DiscountAmount = discount, RedeemedAtUtc = nowUtc
+                });
+                db.TenantSubscriptions.Add(new TenantSubscription
+                {
+                    TenantId = tenantId, PlanVersionId = request.PlanVersionId,
+                    SourceOrderId = order.Id, Status = "Active",
+                    StartsAtUtc = nowUtc,
+                    EndsAtUtc = request.BillingCycle == "yearly"
+                        ? nowUtc.AddYears(1) : nowUtc.AddMonths(1),
+                    ActivatedAtUtc = nowUtc
+                });
+            }
             db.TenantPlanOrders.Add(order);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
-            return new OrderResult(true, "created_pending", View(order));
+            return new OrderResult(true,
+                zeroTotal ? "zero_total_settled_and_activated" : "created_pending",
+                View(order));
         });
+    }
+
+    private async Task<bool> MatchesCouponAsync(
+        Guid? existingCouponId, string? suppliedCode, CancellationToken ct)
+    {
+        if (existingCouponId is null) return suppliedCode is null;
+        if (suppliedCode is null) return false;
+        var hash = CatalogCouponRules.Fingerprint(suppliedCode);
+        return await db.CatalogDiscountCoupons.AsNoTracking()
+            .AnyAsync(x => x.Id == existingCouponId && x.CodeHash == hash, ct);
     }
 
     public async Task<IReadOnlyList<OrderView>> ListForTenantAsync(
@@ -186,8 +241,9 @@ public sealed class TenantPlanCheckoutService(
                     : new OrderResult(false, "already_settled_conflict");
             }
             if (order.Status != "Pending" || order.NetAmount <= 0 ||
-                order.Currency != "IRR" || order.GrossAmount != order.NetAmount ||
-                order.DiscountAmount != 0 || order.QuotedAtUtc > nowUtc)
+                order.Currency != "IRR" || order.QuotedAtUtc > nowUtc ||
+                order.GrossAmount != order.NetAmount + order.DiscountAmount ||
+                (order.CouponId is null && order.DiscountAmount != 0))
                 return new OrderResult(false, "order_not_payable");
 
             if (!await db.Tenants.IgnoreQueryFilters(["tenant"]).AsNoTracking()
@@ -217,6 +273,24 @@ public sealed class TenantPlanCheckoutService(
             catch (InvalidOperationException)
             {
                 return new OrderResult(false, "plan_not_saleable");
+            }
+
+            if (order.CouponId is Guid couponId)
+            {
+                var check = await CatalogCouponRules.CheckAsync(db,
+                    couponId.ToString("D"), order.TenantId, order.PlanVersionId,
+                    order.GrossAmount, nowUtc, forSettlement: true, ct, isId: true);
+                if (check.Coupon is null)
+                    return new OrderResult(false, check.Error);
+                if (CatalogCouponRules.Discount(check.Coupon, order.GrossAmount)
+                    != order.DiscountAmount)
+                    return new OrderResult(false, "coupon_quote_changed");
+                db.CatalogCouponRedemptions.Add(new CatalogCouponRedemption
+                {
+                    TenantId = order.TenantId, CouponId = couponId,
+                    OrderId = order.Id, DiscountAmount = order.DiscountAmount,
+                    RedeemedAtUtc = nowUtc
+                });
             }
 
             var end = order.BillingCycle == "yearly"
