@@ -1692,6 +1692,196 @@ namespace Modules.Identity.Migrations
                     b.ToTable("TenantModules");
                 });
 
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.TenantPlanOrder", b =>
+                {
+                    b.Property<string>("BillingCycle")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(19, 2)
+                        .HasColumnType("decimal(19,2)");
+
+                    b.Property<decimal>("GrossAmount")
+                        .HasPrecision(19, 2)
+                        .HasColumnType("decimal(19,2)");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<decimal>("NetAmount")
+                        .HasPrecision(19, 2)
+                        .HasColumnType("decimal(19,2)");
+
+                    b.Property<Guid>("PlanVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("QuotedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime?>("SettledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SettlementKind")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("SettlementReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("PlanVersionId");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("[IdempotencyKey] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "Status", "SettledAtUtc");
+
+                    b.ToTable("TenantPlanOrders", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_TenantPlanOrders_Amounts", "[GrossAmount] >= 0 AND [DiscountAmount] >= 0 AND [DiscountAmount] <= [GrossAmount] AND [NetAmount] = [GrossAmount] - [DiscountAmount]");
+                            t.HasCheckConstraint("CK_TenantPlanOrders_BillingCycle", "[BillingCycle] IN ('monthly','yearly')");
+                            t.HasCheckConstraint("CK_TenantPlanOrders_Currency", "[Currency] = 'IRR'");
+                            t.HasCheckConstraint("CK_TenantPlanOrders_Settlement", "([Status] <> 'Settled') OR ([SettledAtUtc] IS NOT NULL AND [SettlementKind] IS NOT NULL AND [SettlementReference] IS NOT NULL AND LEN([SettlementReference]) > 0 AND (([NetAmount] = 0 AND [SettlementKind] = 'ZeroTotalCoupon') OR ([NetAmount] > 0 AND [SettlementKind] IN ('GatewayVerified','ExternalManual'))))");
+                            t.HasCheckConstraint("CK_TenantPlanOrders_Status", "[Status] IN ('Pending','Settled','Cancelled','Refunded')");
+                        });
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.TenantSubscription", b =>
+                {
+                    b.Property<DateTime?>("ActivatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<DateTime>("EndsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LastModifiedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastModifiedByIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid>("PlanVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid?>("SourceOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("StartsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("PlanVersionId");
+
+                    b.HasIndex("SourceOrderId")
+                        .IsUnique()
+                        .HasFilter("[SourceOrderId] IS NOT NULL");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TenantSubscriptions_OneActive")
+                        .HasFilter("[Status] = 'Active'");
+
+                    b.HasIndex("TenantId", "Status", "EndsAtUtc");
+
+                    b.ToTable("TenantSubscriptions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_TenantSubscriptions_Activation", "[Status] <> 'Active' OR ([SourceOrderId] IS NOT NULL AND [ActivatedAtUtc] IS NOT NULL)");
+                            t.HasCheckConstraint("CK_TenantSubscriptions_Period", "[EndsAtUtc] > [StartsAtUtc]");
+                            t.HasCheckConstraint("CK_TenantSubscriptions_Status", "[Status] IN ('Pending','Active','Expired','Cancelled')");
+                        });
+                });
+
             modelBuilder.Entity("Modules.System.Identity.Domain.Entities.UiResource", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2623,6 +2813,41 @@ namespace Modules.Identity.Migrations
                     b.Navigation("Module");
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.TenantPlanOrder", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PlanVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Modules.System.Identity.Domain.Entities.TenantSubscription", b =>
+                {
+                    b.HasOne("Modules.System.Identity.Domain.Entities.CatalogPlanVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PlanVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.TenantPlanOrder", null)
+                        .WithMany()
+                        .HasForeignKey("SourceOrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Modules.System.Identity.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Modules.System.Identity.Domain.Entities.UiResource", b =>
