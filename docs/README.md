@@ -1,3 +1,4 @@
+- [FR-18B-1 — First real OpenTelemetry host tracing, privacy defaults, opt-in OTLP and test guide](development/FR-18B1-HOST-OTEL-TRACING.md)
 ## FR-18 — Control Tower (architecture baseline, documentation-only)
 
 - [ADR-0003 — Isolation of observability from primary business SQL and transactions](decisions/ADR-0003-control-tower-observability-isolation.md)

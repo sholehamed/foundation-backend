@@ -2,6 +2,7 @@
 using Modules.System.FileStorage;
 using Modules.System.Bff;
 using Server.Bff;
+using Modules.System.Observability;
 using Modules.System.Identity;
 using Scalar.AspNetCore;
 using Scalar.ClientGeneration;
@@ -12,6 +13,8 @@ namespace Server
     {
         public static void RegisterServices(this WebApplicationBuilder builder)
         {
+            // FR-18B: isolated, opt-in telemetry; no Identity or Tenant DB writes.
+            builder.Services.AddFoundationObservability(builder.Configuration, builder.Environment);
             builder.Services.AddOpenApi();
             builder.Services.AddAntiforgery();
             builder.Services.AddMediaStorage(builder.Configuration);
@@ -71,6 +74,10 @@ namespace Server
             {
                 ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
             });
+
+            // Runs around the existing HTTP pipeline: correlation only.
+            // Does not change authentication, authorization or CSRF order.
+            app.UseFoundationTelemetry();
 
             app.UseCors("Cors");
             app.UseMediaStorage(configuration);
