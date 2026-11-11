@@ -1,3 +1,8 @@
+## FR-17C-3B — Trusted Commercial write execution within one SQL transaction (2026-11-11)
+
+- New opt-in `TenantCommercialOperationExecutor` composes scoped resource Permission+verified settled Subscription+Features/Modes+all exact source-bound CountLimits/PeriodQuotas using one serializable SQL transaction and guarded domain callback. Quota replay does not rerun business writes; read-only usage API remains distinct. SQL tests add count+quota parallel contention, two-Tenant denied license, callback rollback, duplicate requests and no-limit modes. [Detailed handoff](development/FR-17C3B-TRANSACTIONAL-COMMERCIAL-EXECUTOR.md).
+- Still **not** a deployed commercial HTTP command or global policy switch: no real Commercial module exists; none is seeded. Next code-owned domain adapters and HTTP E2E with first real Module, CountLimit active count projections, Outbox/reservation for async workflows, subscription renewal/downgrade rules. Maintain backend/frontend separate tests and review CI before merge.
+
 ## FR-17D-2B — Read-only authoritative tenant usage and subscription cadence (2026-11-11)
 
 - Source-owned optional `QuotaPeriodCadence` (subscription term/monthly/yearly anniversary), UTC immutable start anchor and clipped subscription end. Read-only SQL projection of `TenantUsageBalances` scoped to signed current HomeTenant, current settled Subscription, owner-only GET route; uses explicit null for unmeasured CountLimits and missing cadence, 0 for no committed balance, SQL period mismatch denial. No new SQL schema/grants or fake commercial Modules. [Acceptance and API contract](development/FR-17D2B-SUBSCRIPTION-USAGE-PROJECTION.md).
