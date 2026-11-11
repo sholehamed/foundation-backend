@@ -12,7 +12,7 @@ public sealed class ModuleResourceContractsTests
         Assert.Empty(ModuleResourceContracts.Validate(registry));
 
         var system = registry.Where(x => x.ModuleCode == "system").ToArray();
-        Assert.Equal(14, system.Length);
+        Assert.Equal(15, system.Length);
         Assert.All(system, x =>
             Assert.Equal(ModuleProductClass.PlatformCore, x.ProductClass));
 
