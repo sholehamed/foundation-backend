@@ -89,8 +89,9 @@ public sealed class PlanCatalogSqlServerTests
             Assert.Equal(2, result.TotalTenants);
 
             // A disabled period is no longer part of the current count.
-            var actual = await db.TenantSubscriptions.SingleAsync(x =>
-                x.TenantId == first.Id);
+            var actual = await db.TenantSubscriptions
+                .IgnoreQueryFilters(["tenant"]).SingleAsync(x =>
+                    x.TenantId == first.Id);
             actual.Status = "Cancelled";
             await db.SaveChangesAsync();
             var after = await new SuperDashboardQueryHandler(db)
