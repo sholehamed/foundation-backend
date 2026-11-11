@@ -1,3 +1,8 @@
+## FR-18C-1 — Real isolated telemetry stores (2026-11-11; PR/CI pending)
+
+- Disposable dev/CI Docker stack for Collector->Tempo (traces) and Collector->Prometheus scrape (metrics), fixed image tags, localhost-bound ports, separate volumes, bounded memory/queue/retries and redaction. New PR+main GitHub Actions workflow sends synthetic OTLP and **verifies actual persisted trace + metric**, not only container startup. [Runbook/CI acceptance](development/FR-18C1-ISOLATED-COLLECTOR-STORES.md).
+- Keep app export opt-in; no SQL Identity writes, no log pipeline until authorized source sanitization, no real System trace viewer. **Next:** FR-18D CQRS/EF/Dapper/SqlClient business execution spans, then FR-18E authenticated, source-owned System read API + Angular Waterfall. Complete production deployment and hosted Staging remain FR-18H.
+
 ## FR-18B-1 — Initial host tracing / safe OTLP export (2026-11-11; validation pending)
 
 - Added isolated `Modules.System.Observability` package with ASP.NET Core request trace, W3C `traceparent`, safe `X-Trace-Id`, source `ActivitySource`, normalized route/status/duration logging, runtime/HTTP metrics and guarded opt-in OTLP gRPC trace/metrics exporter (bounded async queue, HTTPS production). No Identity/Tenant SQL writes or credentials/body/query capture. [Detailed implementation guide](development/FR-18B1-HOST-OTEL-TRACING.md). Auth/OIDC URLs are deliberately excluded, logs are not automatically exported. Tests cover untrusted baggage/redaction, disconnected Collector and HTTP 200/403/500; require PR-head and post-merge green before marking shipped.
