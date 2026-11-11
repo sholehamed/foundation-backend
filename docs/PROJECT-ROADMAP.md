@@ -1,3 +1,9 @@
+## FR-18D-3 — Real HTTP→CQRS→EF SQL→Collector→Tempo persisted trace (2026-11-11; PR CI pending)
+
+- Added required **real application** test to existing disposable signed Tenant IAM workflow, with CI-only OTLP enabled; retrieves emitted TraceId from a guarded System dashboard request and verifies actual Tempo parent/child spans, CQRS handler, SQL executions/timings and absence of secrets. Existing Tenant HTTP auth, real SQL and audit remain in same gate. [Source/test/runbook](development/FR-18D3-REAL-HTTP-SQL-TEMPO-E2E.md).
+- **Scope:** signed OpenIddict JWT HTTP, not live browser BFF/Cookie E2E. No test-only endpoints, no privilege migrations, no Dapper endpoint fabricated. Collector/Tempo container service remains disposable, not hosted Staging/Production.
+- **Next FR-18E:** System-owned privileged telemetry query API and Angular Control Tower with true TraceId search/Waterfall, SQL metadata, unavailable/redacted/partial states, followed by reviewed diagnostics and alerting; preserve central System feature definition and tenant isolation.
+
 ## FR-18D-2 — Explicit SqlClient/Dapper + transaction traces (2026-11-11; CI/merge pending)
 
 - Source-owned raw SqlClient command wrappers now instrument Tenant metering/app locks, BFF session SQL and denial audit. Explicit `RunDapperAsync` API is available and tested against disposable SQL Server. Existing EF core interceptor remains sole owner of EF commands; **no global SqlClient instrumentation and no EF duplication**. All events carry recorded parent's TraceId, timing and ephemeral HMAC fingerprint, not raw SQL, parameters, DTO or connection secrets. Commercial transaction lifecycle reports confirmed commit vs no confirmed commit/unknown, never falsely claims rollback. [Implementation, security and acceptance](development/FR-18D2-RAW-SQLCLIENT-DAPPER-TRANSACTIONS.md).
