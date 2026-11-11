@@ -298,6 +298,38 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Equal(systemCodes.Count, assigned.Count);
             Assert.True(assigned.ToHashSet(StringComparer.Ordinal).SetEquals(systemCodes));
             Assert.DoesNotContain(assigned, x => x.StartsWith("TENANT."));
+            // FR-18E: a real first-install System Admin must see the page
+            // AND be allowed to read traces without any manual self-grant.
+            const string pageCode = "CONTROL-TOWER.READ";
+            const string traceCode = "CONTROL-TOWER.TRACES.READ";
+            Assert.Contains(pageCode, assigned);
+            Assert.Contains(traceCode, assigned);
+            var tower = await db.Resources.SingleAsync(x => x.Code == "control-tower");
+            Assert.True(tower.IsActive);
+            foreach (var code in new[] { pageCode, traceCode })
+            {
+                var permission = await db.Permissions.SingleAsync(x =>
+                    x.Code == code && x.ResourceId == tower.Id && x.IsActive);
+                Assert.True(await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                    .AnyAsync(x => x.TenantId == masterId && x.RoleId == systemRole.Id &&
+                        x.PermissionId == permission.Id));
+            }
+            var towerMenu = await db.Menus.SingleAsync(x =>
+                x.Route == "/system/control-tower");
+            Assert.True(towerMenu.IsActive);
+            Assert.False(towerMenu.IsHidden);
+            Assert.Equal(await db.Permissions.Where(x => x.Code == pageCode)
+                .Select(x => x.Id).SingleAsync(), towerMenu.PermissionId);
+            var towerPage = await db.UiResources.SingleAsync(x =>
+                x.Key == "system.control-tower");
+            Assert.True(towerPage.IsActive);
+            Assert.Equal("/system/control-tower", towerPage.Description);
+            Assert.True(await db.PermissionUiResources.AnyAsync(x =>
+                x.PermissionId == towerMenu.PermissionId && x.UiResourceId == towerPage.Id));
+            Assert.DoesNotContain(traceCode,
+                await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                    .Where(x => x.TenantId != masterId)
+                    .Select(x => x.Permission!.Code).ToListAsync());
             Assert.Equal(15, await db.Menus.CountAsync(x =>
                 x.Route != null && x.Route.StartsWith("/system/")));
             Assert.Equal(6, await db.Menus.CountAsync(x =>
@@ -318,7 +350,7 @@ public sealed class FeatureRegistrySqlServerTests
 
             // An intentionally removed System grant must NEVER reappear on
             // another startup or "seed definitions" invocation.
-            var revokeCode = "MENU-MANAGEMENT.READ";
+            var revokeCode = "CONTROL-TOWER.TRACES.READ";
             var removal = await db.RolePermissions.IgnoreQueryFilters(["tenant"])
                 .SingleAsync(x => x.RoleId == systemRole.Id &&
                     x.Permission!.Code == revokeCode);
