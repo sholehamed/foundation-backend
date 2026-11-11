@@ -83,6 +83,25 @@ public sealed class TenantCommercialEntitlementReader(
             return Unlicensed("Invalid", "no_verified_settled_order",
                 current.Id, current.PlanVersionId, current.StartsAtUtc, current.EndsAtUtc);
 
+        // Discount amount and settlement kind alone are not proof of a
+        // redeemed coupon. Require the exact settled redemption/tenant/order
+        // ledger entry, including the zero-total no-gateway flow.
+        if (order.DiscountAmount > 0)
+        {
+            if (order.CouponId is not Guid couponId ||
+                !await db.CatalogCouponRedemptions.AsNoTracking()
+                    .AnyAsync(x => x.TenantId == tenantId &&
+                        x.OrderId == order.Id && x.CouponId == couponId &&
+                        x.DiscountAmount == order.DiscountAmount, ct))
+                return Unlicensed("Invalid", "missing_settled_coupon_redemption",
+                    current.Id, current.PlanVersionId,
+                    current.StartsAtUtc, current.EndsAtUtc);
+        }
+        else if (order.CouponId is not null)
+            return Unlicensed("Invalid", "unexpected_coupon_without_redemption",
+                current.Id, current.PlanVersionId,
+                current.StartsAtUtc, current.EndsAtUtc);
+
         try
         {
             var plan = await new PublishedPlanCatalogReader(db).ReadAsync(
