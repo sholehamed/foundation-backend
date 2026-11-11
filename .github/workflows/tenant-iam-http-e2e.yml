@@ -54,6 +54,8 @@ jobs:
       Observability__Otlp__Enabled: 'true'
       Observability__Otlp__Endpoint: 'http://127.0.0.1:4317'
       Observability__TraceSampleRatio: '1'
+      Observability__Read__Enabled: 'true'
+      Observability__Read__TempoEndpoint: 'http://127.0.0.1:3200'
       SHINERA_E2E_BASE_URL: 'http://127.0.0.1:5069'
     steps:
       - uses: actions/checkout@v4
