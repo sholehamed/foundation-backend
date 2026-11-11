@@ -43,8 +43,17 @@ BFF = "bff_protocol"
 
 def read_sources(root: Path = ROOT) -> dict[str, str]:
     base = root / "src/modules/Modules.System.Identity/Web/Endpoints"
-    return {p.stem: p.read_text(encoding="utf-8-sig")
-            for p in sorted(base.glob("*.cs"))}
+    sources = {p.stem: p.read_text(encoding="utf-8-sig")
+               for p in sorted(base.glob("*.cs"))}
+    # Audit the host-owned privileged trace endpoint as a real System
+    # resource. Never treat it as an unbound/automatically saleable module.
+    tower = root / "src/Web/ControlTowerEndpoints.cs"
+    if tower.exists():
+        host = (root / "src/Web/DependencyInjections.cs").read_text(encoding="utf-8-sig")
+        if "app.MapControlTower();" not in host:
+            raise AuditError("Control Tower host endpoint is not mapped")
+        sources[tower.stem] = tower.read_text(encoding="utf-8-sig")
+    return sources
 
 
 def tenant_permissions(source: str) -> list[str]:
@@ -74,7 +83,7 @@ def build_source_inventory(
 
     for source_name, source in sorted(endpoint_sources.items()):
         for method, handler, body, _tail in method_calls(source):
-            metadata = metadata_from(body, source)
+            metadata = metadata_from(body + " " + _tail, source)
             if metadata is None:
                 continue
             endpoint_key, resource, permission = metadata
