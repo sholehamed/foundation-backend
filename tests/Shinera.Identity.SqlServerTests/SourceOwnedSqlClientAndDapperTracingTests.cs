@@ -25,6 +25,42 @@ public sealed class SourceOwnedSqlClientAndDapperTracingTests
     }
 
     [Fact]
+    public async Task Sensitive_AspNet_path_does_not_export_SQL_children_just_because_traceparent_is_sampled()
+    {
+        var recorded = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name is
+                "Microsoft.AspNetCore" or SourceOwnedSqlTrace.ActivitySourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activity =>
+            {
+                if (activity.Source.Name == SourceOwnedSqlTrace.ActivitySourceName)
+                    recorded.Add(activity);
+            }
+        };
+        ActivitySource.AddActivityListener(listener);
+        using var httpSource = new ActivitySource("Microsoft.AspNetCore");
+        using var inbound = httpSource.StartActivity("POST /api/system/Auth/login", ActivityKind.Server);
+        Assert.NotNull(inbound);
+        Assert.False(SourceOwnedSqlTrace.CanCapture());
+
+        var executed = false;
+        var result = await SourceOwnedSqlTrace.RunDapperAsync(
+            "SELECT @token", () =>
+            {
+                executed = true;
+                return Task.FromResult(7);
+            });
+        Assert.True(executed);
+        Assert.Equal(7, result);
+        using (var ignored = SourceOwnedTransactionTrace.Start("auth_test"))
+            ignored.CommitConfirmed();
+        Assert.Empty(recorded);
+    }
+
+    [Fact]
     public async Task Real_raw_sqlclient_and_dapper_have_safe_once_only_spans_and_true_transaction_outcomes()
     {
         var raw = Environment.GetEnvironmentVariable("SHINERA_SQLSERVER_TEST_CONNECTION");
