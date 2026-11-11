@@ -1,3 +1,8 @@
+## FR-17D-2A — SQL Server tenant quota ledger and atomic CountLimit guard (2026-11-11)
+
+- SQL-only migration, tenant-scoped balance/append-only usage events, trusted-internal `TenantAtomicUsageService` using serializable caller-owned domain transaction and `sp_getapplock` per Tenant/Capability/Period. Supports count callback under same lock, quota Consume/Reverse, idempotency/rollback/parallel writes; disposable SQL tests added. [Handoff](development/FR-17D2A-ATOMIC-USAGE-SQL.md).
+- **Not yet live enforcement:** cannot treat a trusted internal snapshot as commercial purchase proof. Next: FR-17C-3 real Entitlement AND delegated Permission/Scope gate + two-Tenant HTTP tests, reviewed period anchor/renewal rules, optional async Reservation lease protocol, scoped usage API and Angular usage visualizations. No invented commercial Module or grants.
+
 ## FR-17D-1 — Optional Resource/operation limit decision engine (2026-11-11)
 
 - Pure code-owned `OperationLimitPolicy` and xUnit matrix added for absent binding (no usage ceiling only), finite/zero/explicit Unlimited limits, required capability absent from plan (deny), invalid/missing authoritative usage (deny), signed CountLimit cleanup, positive PeriodQuota consumption and allowed modes. No commercial source Module, runtime authorization changes or plan grants. [Handoff and next SQL acceptance](development/FR-17D1-OPERATION-LIMIT-POLICY.md).

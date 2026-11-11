@@ -1,3 +1,8 @@
+## FR-17D-2A — Atomic tenant Usage SQL and CountLimit guard (2026-11-11)
+
+- Additive raw-SQL EF migration creates `TenantUsageBalances` (Tenant+Capability+Period) and append-only `TenantUsageEvents` (Consume/Reverse; unique idempotency per event kind). `TenantAtomicUsageService` requires writable signed Tenant context and caller-owned SQL Server Serializable transaction; transaction-owned `sp_getapplock` serializes concurrent quota consumption and CountLimit authoritative domain callbacks. Consumed usage and domain write MUST commit together; rollback reverts both. Zero/finite/Unlimited behaviors follow FR-17D-1. No commercial Module or paid grants are fabricated.
+- [Detailed contracts and tests](development/FR-17D2A-ATOMIC-USAGE-SQL.md). Disposable real SQL Server tests cover parallel last-unit races, count capacity races, idempotency, rollback, reversals, append-only audit and Tenant isolation. No HTTP route, permission/licensing runtime switch, app seed, or Angular modifications. Real commercialization requires FR-17C-3 composition and subscription-bound periods; asynchronous multi-txn reservations remain separate. CI evidence and deployment state must be checked independently.
+
 ## FR-17D-1 — Optional Operation Limit evaluation contract (2026-11-11)
 
 - New pure `OperationLimitPolicy` and xUnit tests distinguish *no declared usage ceiling* (`no_usage_limit`) from *explicit Unlimited*, finite 0/positive, missing required PlanVersion capability, invalid values and absent authoritative usage (fail closed). Supports Feature, CountLimit, PeriodQuota and AllowedModes, safe decrement after downgrade and checked arithmetic; declaration is source-owned at Module/Resource/operation level.
