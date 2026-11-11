@@ -73,6 +73,17 @@ public sealed class TenantPlanCheckoutService(
                     return new OrderResult(false, "idempotency_conflict");
                 return new OrderResult(true, "existing_order", View(existing));
             }
+            // A lost HTTP response or a refreshed browser must not create
+            // duplicate unpaid quotes for the same Tenant.
+            var pending = await db.TenantPlanOrders.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Status == "Pending")
+                .OrderByDescending(x => x.QuotedAtUtc).FirstOrDefaultAsync(ct);
+            if (pending is not null)
+                return pending.PlanVersionId == request.PlanVersionId &&
+                       pending.BillingCycle == request.BillingCycle
+                    ? new OrderResult(true, "existing_pending", View(pending))
+                    : new OrderResult(false, "pending_order_exists");
+
             if (await db.TenantSubscriptions.AsNoTracking().AnyAsync(x =>
                 x.TenantId == tenantId && x.Status == "Active" &&
                 x.EndsAtUtc > nowUtc, ct))
