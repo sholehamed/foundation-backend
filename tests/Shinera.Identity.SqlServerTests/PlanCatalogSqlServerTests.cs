@@ -846,6 +846,198 @@ public sealed class PlanCatalogSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Tenant_order_is_server_priced_idempotent_and_system_attestation_activates_once()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var a = new Tenant { Name = "Checkout A", Slug = "checkout-a" };
+            var b = new Tenant { Name = "Checkout B", Slug = "checkout-b" };
+            var module = new Module("appointments", "Appointments", null, 0);
+            var plan = new CatalogPlan
+                { Code = "checkout", Name = "Checkout", IsActive = true };
+            var version = new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 1, Status = "Draft",
+                DisplayTitle = "Checkout"
+            };
+            db.Tenants.AddRange(a, b);
+            db.Modules.Add(module);
+            db.CatalogPlans.Add(plan);
+            db.CatalogPlanVersions.Add(version);
+            db.CatalogPlanVersionModules.Add(new CatalogPlanVersionModule
+                { PlanVersionId = version.Id, ModuleId = module.Id });
+            db.CatalogPlanPriceOffers.Add(new CatalogPlanPriceOffer
+            {
+                PlanVersionId = version.Id, BillingCycle = "monthly",
+                Currency = "IRR", Amount = 250000m, IsActive = true
+            });
+            await db.SaveChangesAsync();
+            version.Status = "Published";
+            version.PublishedAtUtc = DateTime.UtcNow.AddHours(-1);
+            version.ContentFingerprint = new string('d', 64);
+            await db.SaveChangesAsync();
+
+            var sources = new[]
+            {
+                new ResourceContract("appointments", "bookings",
+                    ModuleProductClass.Commercial, ["APPOINTMENTS.READ"])
+            };
+            var opts = new DbContextOptionsBuilder<IdentityDbContext>()
+                .UseSqlServer(db.Database.GetConnectionString()).Options;
+            var now = DateTime.UtcNow;
+
+            var tenantA = new TenantContext();
+            tenantA.InitializeTenant(Guid.NewGuid(), a.Id, [a.Id], [a.Id], a.Id);
+            Guid orderId;
+            await using (var scoped = new IdentityDbContext(opts, tenantA))
+            {
+                var checkout = new TenantPlanCheckoutService(scoped, sources);
+                var request = new TenantPlanCheckoutService.CreateOrder(
+                    version.Id, "monthly", "checkout-request-0001");
+                var created = await checkout.CreatePendingAsync(
+                    a.Id, request, now, CancellationToken.None);
+                Assert.True(created.Ok, created.Code);
+                Assert.Equal("Pending", created.Order!.Status);
+                Assert.Equal(250000m, created.Order.GrossAmount);
+                Assert.Equal(0m, created.Order.DiscountAmount);
+                Assert.Equal(250000m, created.Order.NetAmount);
+                orderId = created.Order.Id;
+                var replay = await checkout.CreatePendingAsync(
+                    a.Id, request, now, CancellationToken.None);
+                Assert.Equal("existing_order", replay.Code);
+                Assert.Equal(orderId, replay.Order!.Id);
+                var changed = await checkout.CreatePendingAsync(
+                    a.Id, request with { BillingCycle = "yearly" },
+                    now, CancellationToken.None);
+                Assert.False(changed.Ok);
+                Assert.Equal("idempotency_conflict", changed.Code);
+                // Even a second valid UUID for the same plan cannot create a
+                // second unpaid quote after a lost response/browser refresh.
+                var browserRetry = await checkout.CreatePendingAsync(a.Id,
+                    request with { IdempotencyKey = "checkout-request-0001-retry" },
+                    now, CancellationToken.None);
+                Assert.True(browserRetry.Ok);
+                Assert.Equal("existing_pending", browserRetry.Code);
+                Assert.Equal(orderId, browserRetry.Order!.Id);
+                Assert.Single(await checkout.ListForTenantAsync(a.Id, CancellationToken.None));
+            }
+
+            var tenantB = new TenantContext();
+            tenantB.InitializeTenant(Guid.NewGuid(), b.Id, [b.Id], [b.Id], b.Id);
+            await using (var other = new IdentityDbContext(opts, tenantB))
+            {
+                var checkout = new TenantPlanCheckoutService(other, sources);
+                Assert.Empty(await checkout.ListForTenantAsync(b.Id, CancellationToken.None));
+                Assert.Empty(await other.TenantPlanOrders.ToArrayAsync());
+            }
+
+            var system = new TenantContext();
+            system.InitializeSystem(Guid.NewGuid(), true);
+            Guid subscriptionId;
+            await using (var systemDb = new IdentityDbContext(opts, system))
+            {
+                var checkout = new TenantPlanCheckoutService(systemDb, sources);
+                Assert.Contains(await checkout.ListForSystemAsync("Pending", CancellationToken.None),
+                    x => x.Id == orderId);
+                var noAttestation = await checkout.AttestExternalSettlementAsync(
+                    orderId, Guid.NewGuid(), new("receipt-101", false),
+                    now.AddMinutes(5), CancellationToken.None);
+                Assert.False(noAttestation.Ok);
+
+                var attestor = Guid.NewGuid();
+                var paid = await checkout.AttestExternalSettlementAsync(
+                    orderId, attestor, new("receipt-101", true),
+                    now.AddMinutes(5), CancellationToken.None);
+                Assert.True(paid.Ok, paid.Code);
+                Assert.Equal("Settled", paid.Order!.Status);
+                Assert.Equal("ExternalManual", paid.Order.SettlementKind);
+                subscriptionId = paid.SubscriptionId!.Value;
+
+                var replay = await checkout.AttestExternalSettlementAsync(
+                    orderId, attestor, new("receipt-101", true),
+                    now.AddMinutes(6), CancellationToken.None);
+                Assert.True(replay.Ok);
+                Assert.Equal("already_settled", replay.Code);
+                Assert.Equal(subscriptionId, replay.SubscriptionId);
+
+                var differentReceipt = await checkout.AttestExternalSettlementAsync(
+                    orderId, attestor, new("receipt-102", true),
+                    now.AddMinutes(7), CancellationToken.None);
+                Assert.Equal("already_settled_conflict", differentReceipt.Code);
+
+                var settled = await systemDb.TenantPlanOrders
+                    .IgnoreQueryFilters(["tenant"]).AsNoTracking()
+                    .SingleAsync(x => x.Id == orderId);
+                Assert.Equal(attestor, settled.LastModifiedBy);
+                var license = await systemDb.TenantSubscriptions
+                    .IgnoreQueryFilters(["tenant"]).AsNoTracking()
+                    .SingleAsync(x => x.SourceOrderId == orderId);
+                Assert.Equal(a.Id, license.TenantId);
+                Assert.Equal(version.Id, license.PlanVersionId);
+                Assert.Equal("Active", license.Status);
+                Assert.Equal(now.AddMinutes(5).AddMonths(1), license.EndsAtUtc);
+            }
+
+            await using (var scoped = new IdentityDbContext(opts, tenantA))
+            {
+                var snapshot = await new TenantCommercialEntitlementReader(scoped, tenantA)
+                    .ReadCurrentAsync(now.AddHours(1), sources, []);
+                Assert.True(snapshot.HasCommercialEntitlement);
+                Assert.Equal("appointments", Assert.Single(snapshot.ModuleCodes));
+                Assert.Equal(subscriptionId, snapshot.SubscriptionId);
+
+                var checkout = new TenantPlanCheckoutService(scoped, sources);
+                var secondOrder = await checkout.CreatePendingAsync(
+                    a.Id, new(version.Id, "monthly", "checkout-request-0002"),
+                    now.AddHours(1), CancellationToken.None);
+                Assert.False(secondOrder.Ok);
+                Assert.Equal("active_subscription_exists", secondOrder.Code);
+            }
+
+            // Production source registry contains zero Commercial modules.
+            // Even settled SQL records are never licensed without deployed code.
+            await using (var scoped = new IdentityDbContext(opts, tenantA))
+            {
+                var production = await new TenantCommercialEntitlementReader(scoped, tenantA)
+                    .ReadCurrentAsync(now.AddHours(1));
+                Assert.False(production.HasCommercialEntitlement);
+                Assert.Empty(production.ModuleCodes);
+            }
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+            Assert.Empty(await db.TenantModules.ToArrayAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Checkout_rejects_noncommercial_catalog_without_creating_orders()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var tenant = new Tenant { Name = "No products", Slug = "no-products" };
+            var plan = new CatalogPlan { Code = "nop", Name = "None" };
+            var draft = new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 1, Status = "Draft",
+                DisplayTitle = "No products"
+            };
+            db.Tenants.Add(tenant);
+            db.CatalogPlans.Add(plan);
+            db.CatalogPlanVersions.Add(draft);
+            await db.SaveChangesAsync();
+
+            var service = new TenantPlanCheckoutService(db);
+            var rejected = await service.CreatePendingAsync(tenant.Id,
+                new(draft.Id, "monthly", "checkout-no-products-0001"),
+                DateTime.UtcNow, CancellationToken.None);
+            Assert.False(rejected.Ok);
+            Assert.Equal("plan_not_saleable", rejected.Code);
+            Assert.Empty(await db.TenantPlanOrders.ToArrayAsync());
+            Assert.Empty(await db.TenantSubscriptions.ToArrayAsync());
+        });
+    }
+
     private static async Task WithDisposableDatabaseAsync(Func<IdentityDbContext, Task> action)
     {
         var raw = Environment.GetEnvironmentVariable("SHINERA_SQLSERVER_TEST_CONNECTION");

@@ -93,7 +93,7 @@ public static class FeatureRegistryDefinitions
             "system.plan-catalog", "پلن‌ها و اشتراک‌ها", "/system/plan-catalog", "sell", 125,
             "PLAN-CATALOG.READ",
             ["PLAN-CATALOG.READ", "PLAN-CATALOG.CREATE",
-             "PLAN-CATALOG.UPDATE", "PLAN-CATALOG.PUBLISH"]),
+             "PLAN-CATALOG.UPDATE", "PLAN-CATALOG.PUBLISH", "PLAN-CATALOG.SETTLE"]),
         new("system", "System", "feature-registry", "Feature Registry",
             "system.feature-registry", "رجیستری قابلیت‌ها", "/system/feature-registry", "sync", 120,
             "FEATURE-REGISTRY.READ",

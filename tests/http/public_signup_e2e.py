@@ -109,6 +109,13 @@ def main():
     status, _ = request("GET", "/api/tenant/workspace/subscription/me",
                         token=system_token)
     assert status == 403, "System Admin must not read arbitrary Tenant license"
+    status, pending_order_queue = request(
+        "GET", "/api/system/PlanCatalog/orders/pending", token=system_token)
+    assert status == 200 and isinstance(pending_order_queue, list), (
+        "Master System admin must read reviewed order queue", status, pending_order_queue)
+    status, _ = request("GET", "/api/tenant/workspace/subscription/orders",
+                        token=system_token)
+    assert status == 403, "System admin cannot create Tenant-local orders"
 
     slug = "ci-signup-onboarding"
     mobile = "09123456789"
@@ -145,6 +152,14 @@ def main():
     assert status == 401, status
     status, _ = request("GET", "/api/tenant/workspace/subscription/me")
     assert status == 401, status
+    status, _ = request("GET", "/api/system/PlanCatalog/orders/pending")
+    assert status == 401, status
+    status, _ = request("POST", "/api/tenant/workspace/subscription/orders", {
+        "planVersionId": "00000000-0000-0000-0000-000000000001",
+        "billingCycle": "monthly",
+        "idempotencyKey": "anonymous-order-0001",
+    })
+    assert status == 401, status
 
     status, tokens = request("POST", "/api/system/Auth/login", {
         "grant_type": "password", "client_id": "postman", "username": mobile,
@@ -176,6 +191,21 @@ def main():
     assert shadow["hasCommercialEntitlement"] is False, shadow
     assert shadow["moduleCodes"] == [] and shadow["capabilities"] == [], shadow
     assert shadow["subscriptionId"] is None and shadow["planVersionId"] is None, shadow
+
+    status, orders = request("GET", "/api/tenant/workspace/subscription/orders",
+                             token=access_token)
+    assert status == 200 and orders == [], (status, orders)
+    status, rejected_order = request("POST", "/api/tenant/workspace/subscription/orders", {
+        "planVersionId": "00000000-0000-0000-0000-000000000001",
+        "billingCycle": "monthly",
+        "idempotencyKey": "owner-unpublished-0001",
+    }, token=access_token)
+    assert status == 409, (status, rejected_order)
+    status, after_rejection = request("GET", "/api/tenant/workspace/subscription/me",
+                                      token=access_token)
+    assert status == 200 and after_rejection["hasCommercialEntitlement"] is False
+    status, _ = request("GET", "/api/system/PlanCatalog/orders/pending", token=access_token)
+    assert status == 403, "Tenant Owner cannot access System payment settlement"
 
     # First Tenant Owner login: real signup's Role+RolePermissions must
     # render every permitted menu immediately, never through Owner fallback
