@@ -11,9 +11,9 @@ public sealed record TenantCapabilityUsage(
     string Kind,
     string State,
     bool IsUnlimited,
-    long? Limit,
-    long? CurrentUsage,
-    long? Remaining,
+    string? Limit,
+    string? CurrentUsage,
+    string? Remaining,
     DateTime? PeriodStartUtc,
     DateTime? PeriodEndUtc,
     string? PeriodCadence,
@@ -41,6 +41,11 @@ public sealed class TenantUsageProjectionReader(
         sourceResources ?? ModuleResourceContracts.Current();
     private readonly IReadOnlyCollection<CapabilityContract> definitions =
         sourceCapabilities ?? [];
+
+    // JSON JavaScript numbers lose integer precision above 2^53-1. All
+    // bigint meter values are returned as exact invariant decimal strings.
+    private static string? Units(long? value) =>
+        value?.ToString(global::System.Globalization.CultureInfo.InvariantCulture);
 
     public async Task<TenantUsageProjection> ReadCurrentAsync(
         DateTime nowUtc, CancellationToken ct = default)
@@ -122,7 +127,7 @@ public sealed class TenantUsageProjectionReader(
             {
                 entries.Add(new(allowance.Code, "CountLimit",
                     "DomainCountUnavailable", allowance.IsUnlimited,
-                    allowance.IntegerValue, null, null, null, null, null, false));
+                    Units(allowance.IntegerValue), null, null, null, null, null, false));
                 continue;
             }
 
@@ -130,7 +135,7 @@ public sealed class TenantUsageProjectionReader(
             {
                 entries.Add(new(allowance.Code, "PeriodQuota",
                     "PeriodNotConfigured", allowance.IsUnlimited,
-                    allowance.IntegerValue, null, null, null, null, null, false));
+                    Units(allowance.IntegerValue), null, null, null, null, null, false));
                 continue;
             }
 
@@ -140,7 +145,7 @@ public sealed class TenantUsageProjectionReader(
             {
                 entries.Add(new(allowance.Code, "PeriodQuota",
                     "PeriodUnavailable", allowance.IsUnlimited,
-                    allowance.IntegerValue, null, null, null, null,
+                    Units(allowance.IntegerValue), null, null, null, null,
                     definition.QuotaPeriod.ToString(), false));
                 continue;
             }
@@ -171,7 +176,7 @@ public sealed class TenantUsageProjectionReader(
                             storedEnd.Value != period.EndUtc))
             {
                 entries.Add(new(allowance.Code, "PeriodQuota",
-                    "PeriodConflict", allowance.IsUnlimited, allowance.IntegerValue,
+                    "PeriodConflict", allowance.IsUnlimited, Units(allowance.IntegerValue),
                     null, null, period.StartUtc, period.EndUtc,
                     period.Cadence.ToString(), false));
                 continue;
@@ -181,7 +186,7 @@ public sealed class TenantUsageProjectionReader(
                 ? (long?)null
                 : Math.Max(0, allowance.IntegerValue!.Value - used);
             entries.Add(new(allowance.Code, "PeriodQuota", "Measured",
-                allowance.IsUnlimited, allowance.IntegerValue, used, remaining,
+                allowance.IsUnlimited, Units(allowance.IntegerValue), Units(used), Units(remaining),
                 period.StartUtc, period.EndUtc, period.Cadence.ToString(),
                 !allowance.IsUnlimited && used > allowance.IntegerValue!.Value));
         }
