@@ -118,6 +118,14 @@ namespace Modules.System.Identity
                             PermitLimit = 5, Window = TimeSpan.FromMinutes(1),
                             QueueLimit = 0, AutoReplenishment = true
                         }));
+                options.AddPolicy("control-tower-trace-read", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        context.User.FindFirst("sub")?.Value ?? "anonymous",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 15, Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0, AutoReplenishment = true
+                        }));
                 options.AddPolicy("identity-login", context =>
                     RateLimitPartition.GetFixedWindowLimiter(
                         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
