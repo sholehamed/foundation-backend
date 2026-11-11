@@ -240,7 +240,12 @@ public sealed class FoundationTempoTraceReader(
     }
 
     private static bool TryProperty(JsonElement item, string name, out JsonElement value)
-        => item.ValueKind == JsonValueKind.Object && item.TryGetProperty(name, out value);
+    {
+        if (item.ValueKind == JsonValueKind.Object)
+            return item.TryGetProperty(name, out value);
+        value = default;
+        return false;
+    }
 
     private static string? ReadString(JsonElement item, string name)
     {
