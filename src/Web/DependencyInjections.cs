@@ -97,6 +97,8 @@ namespace Server
             }
 
             app.UseIdentityModule(configuration);
+            // FR-18E: host-owned sanitized, read-only Tempo facade.
+            app.MapControlTower();
             app.MapBffEndpoints(configuration);
 
             // Salon Modules
