@@ -21,6 +21,30 @@ public static class SourceOwnedSqlTrace
     private static readonly byte[] FingerprintKey = RandomNumberGenerator.GetBytes(32);
     private const int MaxCommandChars = 32768;
 
+    /// <summary>
+    /// A sampled inbound HTTP Activity alone does NOT authorize deep SQL
+    /// capture. The Foundation HTTP middleware creates a reviewed child only
+    /// on allowed routes; auth/OIDC paths do not have that child. Background
+    /// operations with no ASP.NET ancestor may opt in under a recorded parent.
+    /// </summary>
+    public static bool CanCapture()
+    {
+        if (Activity.Current is not { Recorded: true } current)
+            return false;
+
+        for (var ancestor = current; ancestor is not null; ancestor = ancestor.Parent)
+        {
+            if (ancestor.Source.Name == "Foundation.Observability" &&
+                ancestor.OperationName == "foundation.http.pipeline")
+                return true;
+
+            if (ancestor.Source.Name == "Microsoft.AspNetCore")
+                return false;
+        }
+
+        return true;
+    }
+
     public static Task<int> ExecuteNonQueryAsync(
         SqlCommand command, CancellationToken cancellationToken = default)
     {
@@ -119,7 +143,7 @@ public static class SourceOwnedSqlTrace
     private static Activity? Begin(
         string client, string kind, string? sql, int? parameterCount, string commandType)
     {
-        if (Activity.Current is not { Recorded: true })
+        if (!CanCapture())
             return null;
 
         var activity = Source.StartActivity("db.sqlclient.command", ActivityKind.Client);
