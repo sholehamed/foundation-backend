@@ -1793,7 +1793,7 @@ namespace Modules.Identity.Migrations
                             t.HasCheckConstraint("CK_TenantPlanOrders_Amounts", "[GrossAmount] >= 0 AND [DiscountAmount] >= 0 AND [DiscountAmount] <= [GrossAmount] AND [NetAmount] = [GrossAmount] - [DiscountAmount]");
                             t.HasCheckConstraint("CK_TenantPlanOrders_BillingCycle", "[BillingCycle] IN ('monthly','yearly')");
                             t.HasCheckConstraint("CK_TenantPlanOrders_Currency", "[Currency] = 'IRR'");
-                            t.HasCheckConstraint("CK_TenantPlanOrders_Settlement", "([Status] <> 'Settled') OR ([SettledAtUtc] IS NOT NULL AND [SettlementKind] IS NOT NULL AND [SettlementReference] IS NOT NULL AND LEN([SettlementReference]) > 0 AND (([NetAmount] = 0 AND [SettlementKind] = 'ZeroTotalCoupon') OR ([NetAmount] > 0 AND [SettlementKind] IN ('GatewayVerified','ExternalManual'))))");
+                            t.HasCheckConstraint("CK_TenantPlanOrders_Settlement", "([Status] <> 'Settled') OR ([SettledAtUtc] IS NOT NULL AND [SettlementKind] IS NOT NULL AND [SettlementReference] IS NOT NULL AND [SettlementReference] <> '' AND (([NetAmount] = 0 AND [SettlementKind] = 'ZeroTotalCoupon') OR ([NetAmount] > 0 AND [SettlementKind] IN ('GatewayVerified','ExternalManual'))))");
                             t.HasCheckConstraint("CK_TenantPlanOrders_Status", "[Status] IN ('Pending','Settled','Cancelled','Refunded')");
                         });
                 });
