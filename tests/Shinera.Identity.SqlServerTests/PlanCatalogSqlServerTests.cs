@@ -1038,6 +1038,203 @@ public sealed class PlanCatalogSqlServerTests
         });
     }
 
+    [Fact]
+    public async Task Percent_100_coupon_settles_without_gateway_once_and_global_cap_is_atomic()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var a = new Tenant { Name = "Coupon A", Slug = "coupon-a" };
+            var b = new Tenant { Name = "Coupon B", Slug = "coupon-b" };
+            var module = new Module("appointments", "Appointments", null, 0);
+            var plan = new CatalogPlan { Code = "coupon-plan", Name = "Coupon Plan", IsActive = true };
+            var version = new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 1, Status = "Draft",
+                DisplayTitle = "Coupon Plan"
+            };
+            db.Tenants.AddRange(a, b);
+            db.Modules.Add(module);
+            db.CatalogPlans.Add(plan);
+            db.CatalogPlanVersions.Add(version);
+            db.CatalogPlanVersionModules.Add(new CatalogPlanVersionModule
+            { PlanVersionId = version.Id, ModuleId = module.Id });
+            db.CatalogPlanPriceOffers.Add(new CatalogPlanPriceOffer
+            {
+                PlanVersionId = version.Id, BillingCycle = "monthly",
+                Currency = "IRR", Amount = 300000m, IsActive = true
+            });
+            await db.SaveChangesAsync();
+            version.Status = "Published";
+            version.PublishedAtUtc = DateTime.UtcNow.AddHours(-1);
+            version.ContentFingerprint = new string('f', 64);
+            await db.SaveChangesAsync();
+
+            var now = DateTime.UtcNow;
+            var manager = new SystemCouponCatalogService(db);
+            var issued = await manager.IssueAsync(new("Full discount", "Percentage",
+                100m, version.Id, now.AddDays(-1), now.AddDays(3),
+                1, 1), CancellationToken.None);
+            Assert.True(issued.Ok, issued.Code);
+            var code = Assert.IsType<string>(issued.SecretCode);
+            Assert.Equal(24, code.Length);
+            var stored = Assert.Single(await db.CatalogDiscountCoupons.ToArrayAsync());
+            Assert.NotEqual(code, stored.CodeHash);
+            Assert.Equal(CatalogCouponRules.Fingerprint(code), stored.CodeHash);
+            Assert.DoesNotContain(code, stored.Title);
+            var list = await manager.ListAsync(CancellationToken.None);
+            Assert.Equal(0, Assert.Single(list).SettledUses);
+
+            var manifest = new[]
+            {
+                new ResourceContract("appointments", "bookings",
+                    ModuleProductClass.Commercial, ["APPOINTMENTS.READ"])
+            };
+            var options = new DbContextOptionsBuilder<IdentityDbContext>()
+                .UseSqlServer(db.Database.GetConnectionString()).Options;
+            var contextA = new TenantContext();
+            contextA.InitializeTenant(Guid.NewGuid(), a.Id, [a.Id], [a.Id], a.Id);
+            Guid orderId;
+            await using (var scoped = new IdentityDbContext(options, contextA))
+            {
+                var service = new TenantPlanCheckoutService(scoped, manifest);
+                var request = new TenantPlanCheckoutService.CreateOrder(
+                    version.Id, "monthly", "coupon-checkout-00001", code);
+                var purchased = await service.CreatePendingAsync(
+                    a.Id, request, now, CancellationToken.None);
+                Assert.True(purchased.Ok, purchased.Code);
+                Assert.Equal("zero_total_settled_and_activated", purchased.Code);
+                Assert.Equal("Settled", purchased.Order!.Status);
+                Assert.Equal(300000m, purchased.Order.DiscountAmount);
+                Assert.Equal(0m, purchased.Order.NetAmount);
+                Assert.Equal("ZeroTotalCoupon", purchased.Order.SettlementKind);
+                orderId = purchased.Order.Id;
+                var repeated = await service.CreatePendingAsync(
+                    a.Id, request, now, CancellationToken.None);
+                Assert.True(repeated.Ok);
+                Assert.Equal("existing_order", repeated.Code);
+                Assert.Equal(orderId, repeated.Order!.Id);
+                var otherCode = await service.CreatePendingAsync(a.Id,
+                    request with { CouponCode = null }, now, CancellationToken.None);
+                Assert.Equal("idempotency_conflict", otherCode.Code);
+
+                var license = await new TenantCommercialEntitlementReader(scoped, contextA)
+                    .ReadCurrentAsync(now.AddMinutes(2), manifest, []);
+                Assert.True(license.HasCommercialEntitlement);
+                Assert.Equal("appointments", Assert.Single(license.ModuleCodes));
+            }
+
+            var contextB = new TenantContext();
+            contextB.InitializeTenant(Guid.NewGuid(), b.Id, [b.Id], [b.Id], b.Id);
+            await using (var scoped = new IdentityDbContext(options, contextB))
+            {
+                var rejected = await new TenantPlanCheckoutService(scoped, manifest)
+                    .CreatePendingAsync(b.Id,
+                        new(version.Id, "monthly", "coupon-checkout-00002", code),
+                        now.AddMinutes(1), CancellationToken.None);
+                Assert.False(rejected.Ok);
+                Assert.Equal("coupon_usage_exhausted", rejected.Code);
+                Assert.Empty(await scoped.TenantPlanOrders.ToArrayAsync());
+            }
+            Assert.Equal(1, await db.CatalogCouponRedemptions
+                .IgnoreQueryFilters(["tenant"]).CountAsync());
+            Assert.Equal(1, await db.TenantSubscriptions
+                .IgnoreQueryFilters(["tenant"]).CountAsync());
+            Assert.Single((await manager.ListAsync(CancellationToken.None))
+                .Where(x => x.SettledUses == 1));
+
+            // Test-only commercial source; unregistered production modules remain OFF.
+            await using (var scoped = new IdentityDbContext(options, contextA))
+            {
+                var shadow = await new TenantCommercialEntitlementReader(scoped, contextA)
+                    .ReadCurrentAsync(now.AddMinutes(2));
+                Assert.False(shadow.HasCommercialEntitlement);
+            }
+            Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+            Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Partial_coupon_consumes_use_only_on_verified_external_settlement()
+    {
+        await WithDisposableDatabaseAsync(async db =>
+        {
+            var tenant = new Tenant { Name = "Partial", Slug = "coupon-partial" };
+            var module = new Module("appointments", "Appointments", null, 0);
+            var plan = new CatalogPlan { Code = "partial-plan", Name = "Partial", IsActive = true };
+            var version = new CatalogPlanVersion
+            {
+                PlanId = plan.Id, VersionNumber = 1, Status = "Draft", DisplayTitle = "Partial"
+            };
+            db.Tenants.Add(tenant);
+            db.Modules.Add(module);
+            db.CatalogPlans.Add(plan);
+            db.CatalogPlanVersions.Add(version);
+            db.CatalogPlanVersionModules.Add(new CatalogPlanVersionModule
+                { PlanVersionId = version.Id, ModuleId = module.Id });
+            db.CatalogPlanPriceOffers.Add(new CatalogPlanPriceOffer
+            {
+                PlanVersionId = version.Id, BillingCycle = "yearly",
+                Currency = "IRR", Amount = 400000m, IsActive = true
+            });
+            await db.SaveChangesAsync();
+            version.Status = "Published";
+            version.PublishedAtUtc = DateTime.UtcNow.AddHours(-1);
+            version.ContentFingerprint = new string('a', 64);
+            await db.SaveChangesAsync();
+
+            var now = DateTime.UtcNow;
+            var issued = await new SystemCouponCatalogService(db).IssueAsync(
+                new("Annual voucher", "FixedIRR", 120000m,
+                    version.Id, now.AddHours(-1), now.AddDays(2), 2, 1),
+                CancellationToken.None);
+            Assert.True(issued.Ok);
+            var code = issued.SecretCode!;
+            var source = new[] { new ResourceContract("appointments", "bookings",
+                ModuleProductClass.Commercial, ["APPOINTMENTS.READ"]) };
+            var tenantContext = new TenantContext();
+            tenantContext.InitializeTenant(Guid.NewGuid(), tenant.Id, [tenant.Id],
+                [tenant.Id], tenant.Id);
+            var systemContext = new TenantContext();
+            systemContext.InitializeSystem(Guid.NewGuid(), true);
+            var opts = new DbContextOptionsBuilder<IdentityDbContext>()
+                .UseSqlServer(db.Database.GetConnectionString()).Options;
+            Guid orderId;
+            await using (var scoped = new IdentityDbContext(opts, tenantContext))
+            {
+                var placed = await new TenantPlanCheckoutService(scoped, source)
+                    .CreatePendingAsync(tenant.Id,
+                        new(version.Id, "yearly", "coupon-partial-00001", code),
+                        now, CancellationToken.None);
+                Assert.True(placed.Ok, placed.Code);
+                Assert.Equal("Pending", placed.Order!.Status);
+                Assert.Equal(120000m, placed.Order.DiscountAmount);
+                Assert.Equal(280000m, placed.Order.NetAmount);
+                orderId = placed.Order.Id;
+            }
+            Assert.Empty(await db.CatalogCouponRedemptions
+                .IgnoreQueryFilters(["tenant"]).ToArrayAsync());
+
+            await using (var systemDb = new IdentityDbContext(opts, systemContext))
+            {
+                var settled = await new TenantPlanCheckoutService(systemDb, source)
+                    .AttestExternalSettlementAsync(orderId, Guid.NewGuid(),
+                        new("receipt-partial-101", true), now.AddMinutes(5),
+                        CancellationToken.None);
+                Assert.True(settled.Ok, settled.Code);
+                Assert.Equal("settled_and_activated", settled.Code);
+            }
+            Assert.Equal(1, await db.CatalogCouponRedemptions
+                .IgnoreQueryFilters(["tenant"]).CountAsync());
+            await using (var scoped = new IdentityDbContext(opts, tenantContext))
+            {
+                var entitlement = await new TenantCommercialEntitlementReader(scoped, tenantContext)
+                    .ReadCurrentAsync(now.AddMinutes(6), source, []);
+                Assert.True(entitlement.HasCommercialEntitlement);
+            }
+        });
+    }
+
     private static async Task WithDisposableDatabaseAsync(Func<IdentityDbContext, Task> action)
     {
         var raw = Environment.GetEnvironmentVariable("SHINERA_SQLSERVER_TEST_CONNECTION");
