@@ -1,3 +1,4 @@
+using Infrastructure.SharedKernel.Observability;
 using System.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -107,7 +108,7 @@ public sealed class TenantAtomicUsageService(
             (SqlConnection)db.Database.GetDbConnection(),
             (SqlTransaction)db.Database.CurrentTransaction!.GetDbTransaction());
         cmd.Parameters.Add("@lockName", SqlDbType.NVarChar, 255).Value = key;
-        var result = await cmd.ExecuteScalarAsync(ct);
+        var result = await SourceOwnedSqlTrace.ExecuteScalarAsync(cmd, ct);
         return result is int codeValue && codeValue >= 0;
     }
 
@@ -193,7 +194,7 @@ public sealed class TenantAtomicUsageService(
         {
             var consumed = (long?)null;
             var reversed = false;
-            await using var reader = await replay.ExecuteReaderAsync(ct);
+            await using var reader = await SourceOwnedSqlTrace.ExecuteReaderAsync(replay, ct);
             while (await reader.ReadAsync(ct))
             {
                 if (reader.GetString(0) == "Consume") consumed = reader.GetInt64(1);
@@ -218,7 +219,7 @@ public sealed class TenantAtomicUsageService(
             WHERE TenantId=@tenant AND CapabilityCode=@code AND PeriodStartUtc=@start;
             """, tenantId, definition.Code, periodStartUtc))
         {
-            await using var reader = await balance.ExecuteReaderAsync(ct);
+            await using var reader = await SourceOwnedSqlTrace.ExecuteReaderAsync(balance, ct);
             if (await reader.ReadAsync(ct))
             {
                 used = reader.GetInt64(0);
@@ -250,7 +251,7 @@ public sealed class TenantAtomicUsageService(
                 """, tenantId, definition.Code, periodStartUtc);
             create.Parameters.Add("@end", SqlDbType.DateTime2).Value = periodEndUtc;
             create.Parameters.Add("@next", SqlDbType.BigInt).Value = next;
-            await create.ExecuteNonQueryAsync(ct);
+            await SourceOwnedSqlTrace.ExecuteNonQueryAsync(create, ct);
         }
         else
         {
@@ -260,7 +261,7 @@ public sealed class TenantAtomicUsageService(
                 WHERE TenantId=@tenant AND CapabilityCode=@code AND PeriodStartUtc=@start;
                 """, tenantId, definition.Code, periodStartUtc);
             update.Parameters.Add("@next", SqlDbType.BigInt).Value = next;
-            if (await update.ExecuteNonQueryAsync(ct) != 1)
+            if (await SourceOwnedSqlTrace.ExecuteNonQueryAsync(update, ct) != 1)
                 return new(false, "usage_balance_missing");
         }
         await using (var write = Command("""
@@ -272,7 +273,7 @@ public sealed class TenantAtomicUsageService(
         {
             write.Parameters.Add("@units", SqlDbType.BigInt).Value = units;
             write.Parameters.Add("@actor", SqlDbType.UniqueIdentifier).Value = actor;
-            await write.ExecuteNonQueryAsync(ct);
+            await SourceOwnedSqlTrace.ExecuteNonQueryAsync(write, ct);
         }
         return new(true, "consumed", next,
             allowance.IsUnlimited ? null : allowance.IntegerValue!.Value - next);
@@ -309,7 +310,7 @@ public sealed class TenantAtomicUsageService(
               AND PeriodStartUtc=@start AND OperationKey=@operation;
             """, tenantId, capabilityCode, periodStartUtc, operationKey))
         {
-            await using var reader = await read.ExecuteReaderAsync(ct);
+            await using var reader = await SourceOwnedSqlTrace.ExecuteReaderAsync(read, ct);
             while (await reader.ReadAsync(ct))
             {
                 if (reader.GetString(0) == "Consume") consumed = reader.GetInt64(1);
@@ -327,7 +328,7 @@ public sealed class TenantAtomicUsageService(
             """, tenantId, capabilityCode, periodStartUtc))
         {
             update.Parameters.Add("@units", SqlDbType.BigInt).Value = consumed.Value;
-            if (await update.ExecuteNonQueryAsync(ct) != 1)
+            if (await SourceOwnedSqlTrace.ExecuteNonQueryAsync(update, ct) != 1)
                 return new(false, "usage_balance_inconsistent");
         }
         await using (var write = Command("""
@@ -339,7 +340,7 @@ public sealed class TenantAtomicUsageService(
         {
             write.Parameters.Add("@units", SqlDbType.BigInt).Value = consumed.Value;
             write.Parameters.Add("@actor", SqlDbType.UniqueIdentifier).Value = actor;
-            await write.ExecuteNonQueryAsync(ct);
+            await SourceOwnedSqlTrace.ExecuteNonQueryAsync(write, ct);
         }
         return new(true, "reversed");
     }
