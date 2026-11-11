@@ -48,6 +48,8 @@ public static class FoundationObservabilityRegistration
                     .SetSampler(new TraceIdRatioBasedSampler(settings.TraceSampleRatio))
                     .AddSource(FoundationTelemetry.ActivitySourceName)
                     .AddSource("Foundation.Cqrs")
+                    // Explicit raw SqlClient/Dapper wrappers only; EF has its own interceptor.
+                    .AddSource("Foundation.SqlClient")
                     .AddAspNetCoreInstrumentation(options =>
                     {
                         options.Filter = context =>
