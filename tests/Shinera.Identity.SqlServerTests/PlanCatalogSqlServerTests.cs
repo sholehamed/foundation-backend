@@ -912,6 +912,14 @@ public sealed class PlanCatalogSqlServerTests
                     now, CancellationToken.None);
                 Assert.False(changed.Ok);
                 Assert.Equal("idempotency_conflict", changed.Code);
+                // Even a second valid UUID for the same plan cannot create a
+                // second unpaid quote after a lost response/browser refresh.
+                var browserRetry = await checkout.CreatePendingAsync(a.Id,
+                    request with { IdempotencyKey = "checkout-request-0001-retry" },
+                    now, CancellationToken.None);
+                Assert.True(browserRetry.Ok);
+                Assert.Equal("existing_pending", browserRetry.Code);
+                Assert.Equal(orderId, browserRetry.Order!.Id);
                 Assert.Single(await checkout.ListForTenantAsync(a.Id, CancellationToken.None));
             }
 
