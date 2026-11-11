@@ -1,0 +1,65 @@
+# FR-18C local/CI only. Never deploy directly to an Internet-facing host.
+# Production requires TLS/mTLS, authentication, independently managed volumes
+# and an explicit operator-reviewed network and backup plan.
+name: foundation-observability-dev
+
+services:
+  tempo:
+    image: grafana/tempo:3.1.1
+    command: ["-target=all", "-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"
+    mem_limit: 768m
+    cpus: "1.0"
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    networks: [telemetry]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.164.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:13133:13133"
+    depends_on: [tempo]
+    mem_limit: 256m
+    cpus: "1.0"
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    networks: [telemetry]
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=512MB
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on: [otel-collector]
+    mem_limit: 384m
+    cpus: "0.75"
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    networks: [telemetry]
+
+volumes:
+  tempo_data:
+  prometheus_data:
+
+networks:
+  telemetry:
+    driver: bridge
