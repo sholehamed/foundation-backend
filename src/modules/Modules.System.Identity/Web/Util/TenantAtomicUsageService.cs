@@ -97,7 +97,7 @@ public sealed class TenantAtomicUsageService(
                   tenantId.ToString("N") + ":" + code.ToLowerInvariant() +
                   (periodStartUtc.HasValue
                       ? ":" + periodStartUtc.Value.ToString("yyyyMMddHHmmssfffffff",
-                          System.Globalization.CultureInfo.InvariantCulture)
+                          global::System.Globalization.CultureInfo.InvariantCulture)
                       : "");
         if (key.Length > 255) return false;
         await using var cmd = new SqlCommand(
