@@ -13,6 +13,7 @@
   <Folder Name="/src/modules/">
     <Project Path="src/modules/Modules.System.Bff/Modules.System.Bff.csproj" />
     <Project Path="src/modules/Modules.System.FileStorage/Modules.System.FileStorage.csproj" />
+    <Project Path="src/modules/Modules.System.Observability/Modules.System.Observability.csproj" />
     <Project Path="src/modules/Modules.System.Identity/Modules.System.Identity.csproj" />
     <Project Path="src/modules/Modules.System.Scalar.ClientGeneration/Modules.System.Scalar.ClientGeneration.csproj" Id="1d522f36-5396-4efe-92b5-61dafe661cc7" />
   </Folder>
