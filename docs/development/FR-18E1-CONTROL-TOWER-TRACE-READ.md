@@ -54,3 +54,9 @@ See [FR-18D3 real Tempo proof](FR-18D3-REAL-HTTP-SQL-TEMPO-E2E.md), [FR-18A arch
 - FR-14A static audit now requires the reviewed `control-tower-trace-read` limiter on the source-owned EndpointGroup, with a mutation-style negative test.
 - Both expensive PR workflows use `concurrency.cancel-in-progress` keyed by workflow and PR, so future superseded executions can be canceled; the HTTP workflow watches first-login acceptance script changes. These changes **cannot** guarantee GitHub hosted runners or restore a blocked queue/billing limit.
 - Latest-head acceptance still requires green BFF build + unit tests, SQL Server integration tests and real signed HTTP/Tempo tests. Queued workflows, absent Check Runs and local source inspections are **not** test passes. No local .NET/SQL test runtime was available for this change.
+
+## FR-18E-1 post-run count regressions (2026-11-12)
+
+- CI run [BFF #559](https://github.com/sholehamed/foundation-backend/actions/runs/43252077695) exposed two pre-existing fixture-count assumptions after introducing the 15th System root `system.control-tower`. In Identity snapshot tests: 83 total UI resources (47 PAGE / 36 ACTION), not 82 (46 PAGE / 36 ACTION); in combined System+Tenant SQL readiness: 21 active menu definitions (15 System / 6 Tenant), not 20.
+- Fixed those test assertions and added an explicit fail-closed snapshot assertion that the Control Tower PAGE is not accessible without its grant. This is **test expectation maintenance**, not a production permission or seed change.
+- Previous commit's real JWT/SQL/Collector/Tempo CI [#283](https://github.com/sholehamed/foundation-backend/actions/runs/43252077684) passed. Latest-head BFF/Identity/SQL and HTTP E2E CI remain the merge gate; do not infer green from an earlier commit.

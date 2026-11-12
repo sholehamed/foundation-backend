@@ -477,7 +477,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Contains("tenant_navigation_not_ready", assessed.BlockingChecks);
             Assert.Contains("system_endpoints_not_ready", assessed.BlockingChecks);
             Assert.False(assessed.CentralCatalogConsistent);
-            Assert.Equal(15, await db.Menus.CountAsync()); // 14 System-only menus
+            Assert.Equal(15, await db.Menus.CountAsync()); // 15 System-only menus
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             var again = await CentralAccessReadiness.ReadAsync(db, source);
@@ -561,7 +561,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.True(green.SystemEndpoints.Ready);
             Assert.Equal(6, green.TenantNavigation.Observed);
             Assert.Equal(1, green.SystemEndpoints.Observed);
-            Assert.Equal(20, await db.Menus.CountAsync()); // 14 System + 6 Tenant
+            Assert.Equal(21, await db.Menus.CountAsync()); // 15 System + 6 Tenant
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
 
