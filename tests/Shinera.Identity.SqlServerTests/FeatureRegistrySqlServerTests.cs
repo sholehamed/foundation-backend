@@ -58,7 +58,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Single(await db.UserRoles.IgnoreQueryFilters(["tenant"])
                 .Where(x => x.TenantId == master && x.UserId == admin.Id &&
                     x.RoleId == role.Id).ToListAsync());
-            Assert.Equal(14, await db.Menus.CountAsync(x =>
+            Assert.Equal(15, await db.Menus.CountAsync(x =>
                 x.IsActive && x.Route != null &&
                 x.Route.StartsWith("/system/")));
 
@@ -158,8 +158,8 @@ public sealed class FeatureRegistrySqlServerTests
             var accepted = await registry.ApplyReviewedAsync(preview.Fingerprint);
             Assert.True(accepted.CanApply);
             Assert.Equal(preview.Fingerprint, accepted.Fingerprint);
-            Assert.Equal(14, await db.Resources.CountAsync());
-            Assert.Equal(14, await db.Menus.CountAsync());
+            Assert.Equal(15, await db.Resources.CountAsync());
+            Assert.Equal(15, await db.Menus.CountAsync());
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
 
@@ -169,7 +169,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.NotEqual(preview.Fingerprint, stable.Fingerprint);
             var stale = await registry.ApplyReviewedAsync(preview.Fingerprint);
             Assert.NotEqual(preview.Fingerprint, stale.Fingerprint);
-            Assert.Equal(14, await db.Menus.CountAsync());
+            Assert.Equal(15, await db.Menus.CountAsync());
 
             // A change to an already Present row must invalidate the token,
             // even if the change-state remains Present (no new records).
@@ -181,13 +181,13 @@ public sealed class FeatureRegistrySqlServerTests
             var rejected = await registry.ApplyReviewedAsync(stable.Fingerprint);
             Assert.NotEqual(stable.Fingerprint, rejected.Fingerprint);
             Assert.False((await db.UiResources.SingleAsync(x => x.Id == page.Id)).IsActive);
-            Assert.Equal(14, await db.Menus.CountAsync());
+            Assert.Equal(15, await db.Menus.CountAsync());
 
             // Repeating the approved no-pending snapshot is idempotent.
             var repeat = await registry.ApplyReviewedAsync(changed.Fingerprint);
             Assert.False(repeat.HasPending);
             Assert.True(repeat.CanApply);
-            Assert.Equal(14, await db.Menus.CountAsync());
+            Assert.Equal(15, await db.Menus.CountAsync());
         });
     }
 
@@ -204,10 +204,10 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Empty(await db.UiResources.AsNoTracking().ToListAsync());
 
             await registry.ApplyAsync();
-            Assert.Equal(14, await db.Resources.CountAsync());
-            Assert.Equal(14, await db.Menus.CountAsync());
-            Assert.Equal(82, await db.UiResources.CountAsync());
-            Assert.Equal(82, await db.PermissionUiResources.CountAsync());
+            Assert.Equal(15, await db.Resources.CountAsync());
+            Assert.Equal(15, await db.Menus.CountAsync());
+            Assert.Equal(83, await db.UiResources.CountAsync());
+            Assert.Equal(83, await db.PermissionUiResources.CountAsync());
             Assert.Equal(68, FeatureRegistryDefinitions.UiElements.Count);
             foreach (var descriptor in FeatureRegistryDefinitions.UiElements)
             {
@@ -237,8 +237,8 @@ public sealed class FeatureRegistrySqlServerTests
                 x.Id == preservedId);
             Assert.Equal("Operator-owned title", result.Title);
             Assert.False(result.IsActive);
-            Assert.Equal(82, await db.UiResources.CountAsync());
-            Assert.Equal(14, await db.Menus.CountAsync());
+            Assert.Equal(83, await db.UiResources.CountAsync());
+            Assert.Equal(15, await db.Menus.CountAsync());
         });
     }
 
@@ -253,8 +253,8 @@ public sealed class FeatureRegistrySqlServerTests
                     new DefaultEndpointDataSource([]));
                 Assert.True((await registry.PreviewAsync()).CanApply);
                 await registry.ApplyAsync();
-                Assert.Equal(82, await db.UiResources.CountAsync());
-                Assert.Equal(14, await db.Menus.CountAsync());
+                Assert.Equal(83, await db.UiResources.CountAsync());
+                Assert.Equal(15, await db.Menus.CountAsync());
                 await transaction.RollbackAsync();
             }
 
@@ -298,7 +298,39 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Equal(systemCodes.Count, assigned.Count);
             Assert.True(assigned.ToHashSet(StringComparer.Ordinal).SetEquals(systemCodes));
             Assert.DoesNotContain(assigned, x => x.StartsWith("TENANT."));
-            Assert.Equal(14, await db.Menus.CountAsync(x =>
+            // FR-18E: a real first-install System Admin must see the page
+            // AND be allowed to read traces without any manual self-grant.
+            const string pageCode = "CONTROL-TOWER.READ";
+            const string traceCode = "CONTROL-TOWER.TRACES.READ";
+            Assert.Contains(pageCode, assigned);
+            Assert.Contains(traceCode, assigned);
+            var tower = await db.Resources.SingleAsync(x => x.Code == "control-tower");
+            Assert.True(tower.IsActive);
+            foreach (var code in new[] { pageCode, traceCode })
+            {
+                var permission = await db.Permissions.SingleAsync(x =>
+                    x.Code == code && x.ResourceId == tower.Id && x.IsActive);
+                Assert.True(await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                    .AnyAsync(x => x.TenantId == masterId && x.RoleId == systemRole.Id &&
+                        x.PermissionId == permission.Id));
+            }
+            var towerMenu = await db.Menus.SingleAsync(x =>
+                x.Route == "/system/control-tower");
+            Assert.True(towerMenu.IsActive);
+            Assert.False(towerMenu.IsHidden);
+            Assert.Equal(await db.Permissions.Where(x => x.Code == pageCode)
+                .Select(x => x.Id).SingleAsync(), towerMenu.PermissionId);
+            var towerPage = await db.UiResources.SingleAsync(x =>
+                x.Key == "system.control-tower");
+            Assert.True(towerPage.IsActive);
+            Assert.Equal("/system/control-tower", towerPage.Description);
+            Assert.True(await db.PermissionUiResources.AnyAsync(x =>
+                x.PermissionId == towerMenu.PermissionId && x.UiResourceId == towerPage.Id));
+            Assert.DoesNotContain(traceCode,
+                await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                    .Where(x => x.TenantId != masterId)
+                    .Select(x => x.Permission!.Code).ToListAsync());
+            Assert.Equal(15, await db.Menus.CountAsync(x =>
                 x.Route != null && x.Route.StartsWith("/system/")));
             Assert.Equal(6, await db.Menus.CountAsync(x =>
                 x.Route != null && x.Route.StartsWith("/dashboard")));
@@ -318,7 +350,7 @@ public sealed class FeatureRegistrySqlServerTests
 
             // An intentionally removed System grant must NEVER reappear on
             // another startup or "seed definitions" invocation.
-            var revokeCode = "MENU-MANAGEMENT.READ";
+            var revokeCode = "CONTROL-TOWER.TRACES.READ";
             var removal = await db.RolePermissions.IgnoreQueryFilters(["tenant"])
                 .SingleAsync(x => x.RoleId == systemRole.Id &&
                     x.Permission!.Code == revokeCode);
@@ -336,6 +368,77 @@ public sealed class FeatureRegistrySqlServerTests
                 .ToListAsync());
             Assert.Empty(await db.UserRoles.IgnoreQueryFilters(["tenant"])
                 .ToListAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Control_tower_live_grants_honor_direct_denies_and_no_restart_regrant()
+    {
+        await WithIsolatedDatabaseAsync(async db =>
+        {
+            var master = DefaultSeedData.MasterTenantId;
+            db.Tenants.Add(DefaultSeedData.CreateMasterTenant());
+            await db.SaveChangesAsync();
+            Assert.True(await InitialAccessBootstrap.SeedFreshInstallAsync(db));
+            var config = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Identity:Bootstrap:InitialSystemAdmin:Enabled"] = "true",
+                    ["Identity:Bootstrap:InitialSystemAdmin:UserName"] = "tower-admin",
+                    ["Identity:Bootstrap:InitialSystemAdmin:Email"] = "tower-admin@example.test",
+                    ["Identity:Bootstrap:InitialSystemAdmin:Password"] = "StrongTowerBootstrap2026!"
+                }).Build();
+            Assert.True(await InitialSystemAdministratorBootstrap.CreateOnceAsync(
+                db, new PasswordHasher<User>(), config));
+
+            var admin = await db.Users.SingleAsync(x =>
+                x.NormalizedUserName == "TOWER-ADMIN" &&
+                x.UserType == UserType.System && x.TenantId == null);
+            var role = await db.Roles.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.TenantId == master &&
+                    x.NormalizedName == "SUPERADMIN");
+            var page = await db.Permissions.SingleAsync(x =>
+                x.Code == "CONTROL-TOWER.READ");
+            var trace = await db.Permissions.SingleAsync(x =>
+                x.Code == "CONTROL-TOWER.TRACES.READ");
+            var evaluator = new EffectivePermissionEvaluator(db);
+            Task<bool> Can(string code) => evaluator.HasPermissionAsync(
+                admin.Id, master, UserType.System, code);
+
+            Assert.True(await Can(page.Code));
+            Assert.True(await Can(trace.Code));
+            var deny = new UserPermission
+            {
+                TenantId = master,
+                UserId = admin.Id,
+                PermissionId = trace.Id,
+                IsGranted = false
+            };
+            db.UserPermissions.Add(deny);
+            await db.SaveChangesAsync();
+            Assert.False(await Can(trace.Code)); // Direct deny overrides role.
+            Assert.True(await Can(page.Code));
+
+            db.UserPermissions.Remove(deny);
+            await db.SaveChangesAsync();
+            Assert.True(await Can(trace.Code));
+
+            // Remove only TRACE read, not the Control Tower PAGE permission.
+            var grant = await db.RolePermissions.IgnoreQueryFilters(["tenant"])
+                .SingleAsync(x => x.TenantId == master &&
+                    x.RoleId == role.Id && x.PermissionId == trace.Id);
+            db.RolePermissions.Remove(grant);
+            await db.SaveChangesAsync();
+            Assert.False(await Can(trace.Code));
+            Assert.True(await Can(page.Code));
+            Assert.False(await InitialAccessBootstrap.SeedFreshInstallAsync(db));
+            Assert.False(await InitialSystemAdministratorBootstrap.CreateOnceAsync(
+                db, new PasswordHasher<User>(), config));
+            Assert.False(await Can(trace.Code)); // Restart never regrants.
+
+            admin.IsActive = false;
+            await db.SaveChangesAsync();
+            Assert.False(await Can(page.Code)); // Disabled user has no PAGE.
         });
     }
 
@@ -374,7 +477,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.Contains("tenant_navigation_not_ready", assessed.BlockingChecks);
             Assert.Contains("system_endpoints_not_ready", assessed.BlockingChecks);
             Assert.False(assessed.CentralCatalogConsistent);
-            Assert.Equal(14, await db.Menus.CountAsync()); // 14 System-only menus
+            Assert.Equal(15, await db.Menus.CountAsync()); // 15 System-only menus
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             var again = await CentralAccessReadiness.ReadAsync(db, source);
@@ -458,7 +561,7 @@ public sealed class FeatureRegistrySqlServerTests
             Assert.True(green.SystemEndpoints.Ready);
             Assert.Equal(6, green.TenantNavigation.Observed);
             Assert.Equal(1, green.SystemEndpoints.Observed);
-            Assert.Equal(20, await db.Menus.CountAsync()); // 14 System + 6 Tenant
+            Assert.Equal(21, await db.Menus.CountAsync()); // 15 System + 6 Tenant
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
             Assert.Empty(await db.UserPermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
 
@@ -894,7 +997,7 @@ public sealed class FeatureRegistrySqlServerTests
             var wrongVerb = await SystemEndpointRegistryIntegrity.ReadAsync(db, source);
             Assert.Contains("api_route_or_verb_mismatch",
                 Assert.Single(wrongVerb.Endpoints).Issues);
-            Assert.Equal(14, await db.Menus.CountAsync());
+            Assert.Equal(15, await db.Menus.CountAsync());
             Assert.Empty(await db.RolePermissions.IgnoreQueryFilters(["tenant"]).ToListAsync());
 
             var http = new Microsoft.AspNetCore.Http.DefaultHttpContext();

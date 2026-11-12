@@ -5,8 +5,12 @@ from pathlib import Path
 from fr14a_audit import AuditError, ENDPOINTS, FEATURES, TENANT_CATALOG, audit_sources, audit_protocol_and_media, ROOT
 
 def sources():
-    return {p.stem: p.read_text(encoding="utf-8-sig")
-            for p in ENDPOINTS.glob("*.cs")}
+    result = {p.stem: p.read_text(encoding="utf-8-sig")
+              for p in ENDPOINTS.glob("*.cs")}
+    host_tower = ROOT / "src/Web/ControlTowerEndpoints.cs"
+    if host_tower.exists():
+        result[host_tower.stem] = host_tower.read_text(encoding="utf-8-sig")
+    return result
 
 def validate(data):
     return audit_sources(
@@ -32,6 +36,36 @@ class SecurityInventoryTests(unittest.TestCase):
         self.assertEqual(len([r for r in rows if r.surface == "dev_tooling"]), 3)
         self.assertTrue(all(r.security_boundary != "SYSTEM_ADMIN_PLUS_GRANULAR_OPT_IN"
                             for r in rows))
+
+    def test_control_tower_uses_central_SystemAdministrator_group(self):
+        data = sources()
+        tower = data["ControlTower"]
+        self.assertIn('app.MapGroup(this).RequireAuthorization("SystemAdministrator")', tower)
+        compromised = dict(data)
+        compromised["ControlTower"] = tower.replace(
+            '.RequireAuthorization("SystemAdministrator")', '', 1)
+        with self.assertRaisesRegex(AuditError, "System group lost SystemAdministrator"):
+            validate(compromised)
+
+    def test_control_tower_permission_owner_mismatch_is_blocked(self):
+        data = sources()
+        tower = data["ControlTower"]
+        altered = tower.replace(
+            '"SYSTEM.CONTROL-TOWER.TRACE-DETAIL", "control-tower",',
+            '"SYSTEM.CONTROL-TOWER.TRACE-DETAIL", "roles",', 1)
+        self.assertNotEqual(altered, tower)
+        data["ControlTower"] = altered
+        with self.assertRaisesRegex(AuditError, "Unregistered/wrong-resource"):
+            validate(data)
+
+    def test_control_tower_removing_rate_limit_fails_security_audit(self):
+        data = sources()
+        original = data["ControlTower"]
+        required = '.RequireRateLimiting("control-tower-trace-read")'
+        self.assertIn(required, original)
+        data["ControlTower"] = original.replace(required, "", 1)
+        with self.assertRaisesRegex(AuditError, "mandatory rate limiting"):
+            validate(data)
 
     def test_new_system_endpoint_without_metadata_is_blocked(self):
         data = sources()

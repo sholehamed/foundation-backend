@@ -23,12 +23,12 @@ def source_manifest(sources=None, feature=None, tenant=None):
 
 
 class ProductResourceInventoryTests(unittest.TestCase):
-    def test_all_13_real_system_resources_and_registered_endpoints_present(self):
+    def test_all_15_real_system_resources_and_registered_endpoints_present(self):
         result = generate()
-        self.assertEqual(result["counts"]["systemResources"], 14)
+        self.assertEqual(result["counts"]["systemResources"], 15)
         self.assertGreaterEqual(result["counts"]["systemEndpointRegistrations"], 75)
         self.assertEqual(
-            len({x["resourceCode"] for x in result["systemResources"]}), 14)
+            len({x["resourceCode"] for x in result["systemResources"]}), 15)
         self.assertFalse(result["commercialEntitlementEnforced"])
         self.assertTrue(all(x["moduleCode"] == "system"
                             for x in result["systemResources"]))
@@ -38,6 +38,19 @@ class ProductResourceInventoryTests(unittest.TestCase):
             sum(len(r["registeredEndpoints"]) for r in result["systemResources"]),
             result["counts"]["systemEndpointRegistrations"],
         )
+
+    def test_host_control_tower_is_scanned_as_a_real_system_resource(self):
+        result = generate()
+        tower = next(r for r in result["systemResources"]
+                     if r["resourceCode"] == "control-tower")
+        self.assertEqual(tower["moduleClass"], "platform_core")
+        self.assertEqual(tower["endpointGroups"], ["ControlTower.cs"])
+        self.assertEqual(
+            tower["permissionCodes"],
+            ["CONTROL-TOWER.READ", "CONTROL-TOWER.TRACES.READ"])
+        self.assertEqual(len(tower["registeredEndpoints"]), 1)
+        self.assertEqual(tower["registeredEndpoints"][0]["endpointKey"],
+                         "SYSTEM.CONTROL-TOWER.TRACE-DETAIL")
 
     def test_shared_menu_resource_is_explicit_and_not_one_to_one(self):
         result = source_manifest()

@@ -15,13 +15,14 @@ public sealed class FeatureRegistrySyncTests
     public void Feature_keys_and_permissions_are_stable_and_unambiguous()
     {
         var features = FeatureRegistryDefinitions.Features;
-        Assert.Equal(14, features.Count);
+        Assert.Equal(15, features.Count);
         var expectedRoutes = new[]
         {
             "/system/admins", "/system/users", "/system/roles", "/system/groups",
             "/system/dashboard", "/system/tenants", "/system/modules",
             "/system/permissions", "/system/api-resources", "/system/ui-resources",
-            "/system/resources", "/system/feature-registry", "/system/menu-management", "/system/plan-catalog"
+            "/system/resources", "/system/feature-registry", "/system/menu-management", "/system/plan-catalog",
+            "/system/control-tower"
         };
         Assert.Equal(expectedRoutes.Order(StringComparer.Ordinal),
             features.Select(x => x.Route).Order(StringComparer.Ordinal));
@@ -36,6 +37,11 @@ public sealed class FeatureRegistrySyncTests
         Assert.Equal(keys.Length, keys.Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.All(keys, x => Assert.Equal(x.ToUpperInvariant(), x));
         Assert.All(features, x => Assert.Contains(x.ReadPermission, x.PermissionCodes));
+        var tower = Assert.Single(features, x => x.PageKey == "system.control-tower");
+        Assert.Equal("/system/control-tower", tower.Route);
+        Assert.Equal("CONTROL-TOWER.READ", tower.ReadPermission);
+        Assert.Equal(new[] { "CONTROL-TOWER.READ", "CONTROL-TOWER.TRACES.READ" },
+            tower.PermissionCodes);
         var contract = FeatureRegistryDefinitions.ExportManifest();
         Assert.Equal(2, contract.SchemaVersion);
         Assert.Equal(68, contract.UiElements.Count);
@@ -107,12 +113,12 @@ public sealed class FeatureRegistrySyncTests
         var applied = await registry.ApplyAsync();
         Assert.True(applied.CanApply);
         Assert.Single(db.Modules);
-        Assert.Equal(14, db.Resources.Count());
-        Assert.Equal(82, db.UiResources.Count());
-        Assert.Equal(14, db.Menus.Count());
+        Assert.Equal(15, db.Resources.Count());
+        Assert.Equal(83, db.UiResources.Count());
+        Assert.Equal(15, db.Menus.Count());
         Assert.Equal(2, db.ApiResources.Count());
         Assert.Equal(2, db.PermissionApiResources.Count());
-        Assert.Equal(82, db.PermissionUiResources.Count());
+        Assert.Equal(83, db.PermissionUiResources.Count());
 
         var persisted = await db.Permissions.SingleAsync(x => x.Code == "ROLES.CREATE");
         Assert.NotEqual(manual.Id, persisted.Id);
@@ -133,7 +139,7 @@ public sealed class FeatureRegistrySyncTests
         Assert.All(second.Changes, x => Assert.Equal("Present", x.State));
 
         await registry.ApplyAsync();
-        Assert.Equal(14, db.Menus.Count());
+        Assert.Equal(15, db.Menus.Count());
         Assert.Equal(2, db.ApiResources.Count());
     }
 
@@ -239,15 +245,15 @@ public sealed class FeatureRegistrySyncTests
 
         var preview = await service.PreviewAsync();
         Assert.True(preview.CanApply);
-        Assert.Equal(82, preview.Changes.Count(x =>
+        Assert.Equal(83, preview.Changes.Count(x =>
             x.Type == "UiResource" && x.State == "Create"));
-        Assert.Equal(14, preview.Changes.Count(x =>
+        Assert.Equal(15, preview.Changes.Count(x =>
             x.Type == "Menu" && x.State == "Create"));
 
         var applied = await service.ApplyAsync();
         Assert.True(applied.CanApply);
-        Assert.Equal(14, await db.Menus.CountAsync());
-        Assert.Equal(82, await db.UiResources.CountAsync());
+        Assert.Equal(15, await db.Menus.CountAsync());
+        Assert.Equal(83, await db.UiResources.CountAsync());
 
         foreach (var feature in FeatureRegistryDefinitions.Features)
         {
@@ -274,7 +280,7 @@ public sealed class FeatureRegistrySyncTests
         Assert.True((await service.PreviewAsync()).CanApply);
         await service.ApplyAsync();
 
-        Assert.Equal(14, await db.Menus.CountAsync());
+        Assert.Equal(15, await db.Menus.CountAsync());
         foreach (var descriptor in FeatureRegistryDefinitions.UiElements)
         {
             var ui = await db.UiResources.SingleAsync(x => x.Key == descriptor.Key);
@@ -326,7 +332,7 @@ public sealed class FeatureRegistrySyncTests
         var after = await db.UiResources.SingleAsync(x => x.Id == originalId);
         Assert.False(after.IsActive);
         Assert.Equal("Manually customized title", after.Title);
-        Assert.Equal(82, await db.UiResources.CountAsync());
+        Assert.Equal(83, await db.UiResources.CountAsync());
     }
 
     [Fact]
@@ -350,7 +356,7 @@ public sealed class FeatureRegistrySyncTests
             x.Type == "PermissionUiResource" && x.State == "Conflict" &&
             x.Key.Contains("system.roles.create"));
         Assert.False((await service.ApplyAsync()).CanApply);
-        Assert.Equal(82, await db.UiResources.CountAsync());
+        Assert.Equal(83, await db.UiResources.CountAsync());
     }
 
     [Fact]

@@ -8,6 +8,7 @@ on:
       - 'src/**'
       - 'tests/http/tenant_iam_chain_e2e.py'
       - 'tests/http/fr18d3_real_trace_to_tempo_e2e.py'
+      - 'tests/http/tenant_iam_chain_e2e.py'
       - 'observability/**'
       - 'tests/http/public_signup_e2e.py'
       - 'tests/Shinera.Identity.E2E.SqlMutator/**'
@@ -17,8 +18,13 @@ on:
       - 'src/**'
       - 'tests/http/tenant_iam_chain_e2e.py'
       - 'tests/http/fr18d3_real_trace_to_tempo_e2e.py'
+      - 'tests/http/public_signup_e2e.py'
       - 'observability/**'
       - 'tests/Shinera.Identity.E2E.SqlMutator/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -54,6 +60,8 @@ jobs:
       Observability__Otlp__Enabled: 'true'
       Observability__Otlp__Endpoint: 'http://127.0.0.1:4317'
       Observability__TraceSampleRatio: '1'
+      Observability__Read__Enabled: 'true'
+      Observability__Read__TempoEndpoint: 'http://127.0.0.1:3200'
       SHINERA_E2E_BASE_URL: 'http://127.0.0.1:5069'
     steps:
       - uses: actions/checkout@v4
@@ -111,7 +119,7 @@ jobs:
           # FR-18D3 validates *the API's own OTLP spans*, not synthetic OTLP.
           python3 tests/http/fr18d3_real_trace_to_tempo_e2e.py
           python3 tests/http/tenant_iam_chain_e2e.py
-          # Real first-run acceptance: System SuperAdmin sees all 13 menus
+          # Real first-run acceptance: System SuperAdmin sees all 15 System menus
           # and a BRAND-NEW signup Owner sees all six + 17 permissions.
           python3 tests/http/public_signup_e2e.py
           dotnet run --project tests/Shinera.Identity.E2E.SqlMutator \
